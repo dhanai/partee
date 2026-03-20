@@ -1,5 +1,14 @@
 const DEFAULT_MAX_LONG_EDGE = 2048;
 
+/** RN / Expo often yield blobs with empty or generic MIME; we always output JPEG from the manipulator. */
+async function ensureJpegBlob(blob: Blob): Promise<Blob> {
+  const t = (blob.type ?? "").toLowerCase();
+  if (t === "image/jpeg" || t === "image/jpg") {
+    return blob;
+  }
+  return new Blob([await blob.arrayBuffer()], { type: "image/jpeg" });
+}
+
 /**
  * JPEG re-encode with resize + quality steps until the file is under maxBytes (or limits hit).
  * Image manipulator is loaded on demand so the app can boot even if the dev client was built
@@ -35,7 +44,7 @@ export async function compressImageToMaxBytes(
       },
     );
     currentUri = nextUri;
-    const blob = await (await fetch(currentUri)).blob();
+    const blob = await ensureJpegBlob(await (await fetch(currentUri)).blob());
     if (blob.size <= maxBytes) {
       return blob;
     }
@@ -46,5 +55,5 @@ export async function compressImageToMaxBytes(
     }
   }
 
-  return (await fetch(currentUri)).blob();
+  return ensureJpegBlob(await (await fetch(currentUri)).blob());
 }

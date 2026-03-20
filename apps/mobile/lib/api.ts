@@ -17,7 +17,24 @@ const baseUrlFromExpoConfig =
   (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ??
   fallbackBaseUrl;
 
-export const apiBaseUrl = String(baseUrlFromExpoConfig).replace(/\/$/, "");
+/**
+ * Site origin only (no path). Request paths already include `/api/...`.
+ * If env is `https://app.vercel.app/api`, requests become `/api/api/...` → 404.
+ */
+function normalizeApiBaseUrl(raw: string): string {
+  let s = String(raw).trim().replace(/\/+$/, "");
+  if (/\/api$/i.test(s)) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.warn(
+        "[Partee] EXPO_PUBLIC_API_BASE_URL should not end with /api (paths add /api/...). Stripping trailing /api.",
+      );
+    }
+    s = s.replace(/\/api$/i, "");
+  }
+  return s.replace(/\/$/, "");
+}
+
+export const apiBaseUrl = normalizeApiBaseUrl(baseUrlFromExpoConfig);
 
 function responseLooksLikeHtmlPage(raw: string): boolean {
   const s = raw.trimStart().toLowerCase();
@@ -41,8 +58,14 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
       json = JSON.parse(raw) as T & ApiError;
     } catch {
       if (responseLooksLikeHtmlPage(raw)) {
+        const fullUrl = `${apiBaseUrl}${path}`;
+        if (res.status === 404) {
+          throw new Error(
+            `404 for ${fullUrl} (got HTML, not JSON). Common fixes: (1) From repo root run npm run dev:lan so Next listens on your LAN; ensure MAMP/nothing else uses :3000. (2) If /api/* worked then broke after a compile, Next’s .next cache is corrupt — stop dev, rm -rf .next, npm run dev:lan. Check: curl -s -o /dev/null -w "%{http_code}" ${apiBaseUrl}/api/rounds/discover → want 401/200, not 404.`,
+          );
+        }
         throw new Error(
-          `Server returned an HTML error page (${res.status}) for ${path} — usually a Next.js crash or bad build, not your API JSON. Base URL: ${apiBaseUrl}. Try: stop dev server, rm -rf .next, npm run dev; check the terminal running Next for the real stack trace.`,
+          `Server returned an HTML error page (${res.status}) for ${path} — often a Next dev crash or stale .next. Base: ${apiBaseUrl}. Try: rm -rf .next && npx next dev -H 0.0.0.0 -p 3000; check the Next terminal for the stack trace.`,
         );
       }
       const preview = raw.replace(/\s+/g, " ").trim().slice(0, 240);

@@ -2,7 +2,10 @@
 
 ## Run locally
 
-1. Copy `.env.example` to `.env` and set `EXPO_PUBLIC_API_BASE_URL`.
+1. Copy `.env.example` to `.env` and set:
+   - **`EXPO_PUBLIC_API_BASE_URL`** — `http://localhost:3000` if the Next app runs on your machine, or **`https://your-deployed-app.example`** to use the **cloud server** while Expo runs locally (no LAN IP / `dev:lan` needed).
+   - **`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`** — must match the Clerk environment used by that API (production key if the cloud app uses production Clerk).
+   After changing `.env`, restart Metro with a clean cache: `npx expo start -c`.
 2. Install dependencies:
    - `npm install`
 3. Start Expo:

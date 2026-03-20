@@ -4,7 +4,8 @@
 
 On a **physical device**, `http://localhost:3000` is the **phone**, not your Mac. The app reads **`EXPO_PUBLIC_API_BASE_URL`** first (see `lib/api.ts`).
 
-- **Local LAN:** In `apps/mobile/.env`, set e.g. `EXPO_PUBLIC_API_BASE_URL=http://192.168.x.x:3000` (your Mac’s IP). Run Next with `npx next dev -H 0.0.0.0` so it listens on the LAN. Restart Metro (`npx expo start -c`).
+- **Local LAN:** In `apps/mobile/.env`, set e.g. `EXPO_PUBLIC_API_BASE_URL=http://192.168.x.x:3000` (your Mac’s IP). From the **repo root** run **`npm run dev:lan`** (or `npx next dev -H 0.0.0.0 -p 3000`) so Next listens on all interfaces — plain `next dev` often binds to `localhost` only, and another app on `:3000` can return **HTML 404** for `/api/...`. Restart Metro after env changes (`npx expo start -c`).
+- **Intermittent HTML 404 on `/api/*` after things worked:** Often a corrupt `.next` dev cache (Next terminal may show `/_not-found` and webpack `ENOENT` / `vendor-chunks`). Stop Next, then from repo root: **`npm run dev:lan:clean`** (deletes `.next` and starts on `0.0.0.0:3000`).
 - **No Mac / easiest:** Set `EXPO_PUBLIC_API_BASE_URL=https://your-app.vercel.app` in **`apps/mobile/.env`** for dev-client sessions, and add the same variable under **EAS → Project → Environment variables** for **development** builds so installs work without Metro.
 
 ---

@@ -202,9 +202,17 @@ export default function EditProfileScreen() {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: formData,
       });
-      const json = (await response.json()) as { url?: string; error?: string };
+      const bodyText = await response.text();
+      let json: { url?: string; error?: string } = {};
+      try {
+        json = JSON.parse(bodyText) as { url?: string; error?: string };
+      } catch {
+        throw new Error(`Image upload failed (${response.status}).`);
+      }
       if (!response.ok || !json.url) {
-        throw new Error(json.error ?? "Image upload failed.");
+        throw new Error(
+          json.error ?? `Image upload failed (HTTP ${response.status}).`,
+        );
       }
       setAvatar(json.url);
     } catch (uploadError) {
