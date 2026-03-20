@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { resolveValidatedUsLocationLabel } from "@/lib/places";
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -28,6 +29,7 @@ const updateSchema = z.object({
     .regex(/^\d{1,2}(\.\d{1,2})?$/, "Handicap must be a number like 8.4")
     .nullable()
     .optional(),
+  location: z.string().trim().max(120).nullable().optional(),
   homeCourse: z.string().trim().max(120).nullable().optional(),
 });
 
@@ -41,6 +43,7 @@ export async function GET(req: Request) {
         email: user.email,
         avatar: user.avatar,
         handicap: user.handicap,
+        location: user.homeCourse,
         homeCourse: user.homeCourse,
       },
     });
@@ -69,8 +72,41 @@ export async function PATCH(req: Request) {
     if (parsed.email !== undefined) updates.email = parsed.email;
     if (parsed.avatar !== undefined) updates.avatar = parsed.avatar?.trim() || null;
     if (parsed.handicap !== undefined) updates.handicap = parsed.handicap?.trim() || null;
-    if (parsed.homeCourse !== undefined) {
-      updates.homeCourse = parsed.homeCourse?.trim() || null;
+    if (parsed.location !== undefined) {
+      const nextLocation = parsed.location?.trim() || null;
+      if (nextLocation) {
+        const canonical = await resolveValidatedUsLocationLabel(nextLocation);
+        if (!canonical) {
+          return NextResponse.json(
+            {
+              error:
+                "Location must be a valid US City, ST selected from suggestions.",
+            },
+            { status: 400 },
+          );
+        }
+        updates.homeCourse = canonical;
+      } else {
+        updates.homeCourse = null;
+      }
+    }
+    if (parsed.homeCourse !== undefined && parsed.location === undefined) {
+      const legacyLocation = parsed.homeCourse?.trim() || null;
+      if (legacyLocation) {
+        const canonical = await resolveValidatedUsLocationLabel(legacyLocation);
+        if (!canonical) {
+          return NextResponse.json(
+            {
+              error:
+                "Location must be a valid US City, ST selected from suggestions.",
+            },
+            { status: 400 },
+          );
+        }
+        updates.homeCourse = canonical;
+      } else {
+        updates.homeCourse = null;
+      }
     }
 
     if (Object.keys(updates).length === 0) {
@@ -87,6 +123,7 @@ export async function PATCH(req: Request) {
         email: users.email,
         avatar: users.avatar,
         handicap: users.handicap,
+        location: users.homeCourse,
         homeCourse: users.homeCourse,
       });
 

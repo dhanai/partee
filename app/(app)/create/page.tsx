@@ -6,6 +6,8 @@ import Image from "next/image";
 type CourseResult = { id: string; name: string; address: string };
 type UserSearchResult = { id: string; name: string; email: string | null; avatar: string | null };
 type CreateRoundResponse = { round: { id: string; inviteToken: string }; invitePath: string; invitedCount: number };
+type MeResponse = { user: { location: string | null; homeCourse: string | null } };
+type LocationResult = { label: string; city: string; state: string };
 
 function useDebounce(value: string, delayMs: number): string {
   const [debounced, setDebounced] = useState(value);
@@ -33,6 +35,12 @@ export default function CreateRoundPage() {
 
   const [teeTime, setTeeTime] = useState("");
   const [targetDate, setTargetDate] = useState("");
+  const [planningLocation, setPlanningLocation] = useState("");
+  const [planningLocationIsValidated, setPlanningLocationIsValidated] = useState(true);
+  const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [showLocationResults, setShowLocationResults] = useState(false);
+  const locationRef = useRef<HTMLDivElement>(null);
   const [planningMode, setPlanningMode] = useState(false);
   const [preferredTimeWindow, setPreferredTimeWindow] = useState<
     "morning" | "afternoon" | "twilight"
@@ -49,12 +57,28 @@ export default function CreateRoundPage() {
 
   const debouncedCourse = useDebounce(query, 300);
   const debouncedFriend = useDebounce(friendQuery, 300);
+  const debouncedPlanningLocation = useDebounce(planningLocation, 300);
   const canSubmit = useMemo(
     () =>
       planningMode
-        ? Boolean(targetDate && !submitting && !uploadingImage)
+        ? Boolean(
+            targetDate &&
+              planningLocation.trim().length >= 2 &&
+              planningLocationIsValidated &&
+              !submitting &&
+              !uploadingImage,
+          )
         : Boolean(selectedCourse && teeTime && !submitting && !uploadingImage),
-    [planningMode, selectedCourse, teeTime, targetDate, submitting, uploadingImage],
+    [
+      planningMode,
+      selectedCourse,
+      teeTime,
+      targetDate,
+      planningLocation,
+      planningLocationIsValidated,
+      submitting,
+      uploadingImage,
+    ],
   );
 
   const searchCourses = useCallback(async (q: string) => {
@@ -88,9 +112,76 @@ export default function CreateRoundPage() {
   useEffect(() => { searchFriends(debouncedFriend); }, [debouncedFriend, searchFriends]);
 
   useEffect(() => {
+    if (!planningMode) return;
+    let active = true;
+    async function searchLocations(q: string) {
+      if (planningLocationIsValidated) {
+        if (!active) return;
+        setLocationResults([]);
+        setShowLocationResults(false);
+        setLoadingLocations(false);
+        return;
+      }
+      if (q.trim().length < 2) {
+        if (!active) return;
+        setLocationResults([]);
+        setShowLocationResults(false);
+        return;
+      }
+      setLoadingLocations(true);
+      try {
+        const res = await fetch("/api/locations/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: q }),
+        });
+        const json = (await res.json()) as { locations: LocationResult[]; error?: string };
+        if (!res.ok) throw new Error(json.error ?? "Location search failed.");
+        if (!active) return;
+        setLocationResults(json.locations);
+        setShowLocationResults(true);
+      } catch (e) {
+        if (!active) return;
+        setError(e instanceof Error ? e.message : "Location search failed.");
+      } finally {
+        if (active) setLoadingLocations(false);
+      }
+    }
+    void searchLocations(debouncedPlanningLocation);
+    return () => {
+      active = false;
+    };
+  }, [debouncedPlanningLocation, planningMode, planningLocationIsValidated]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadDefaultPlanningLocation() {
+      try {
+        const res = await fetch("/api/users/me");
+        if (!res.ok) return;
+        const json = (await res.json()) as MeResponse;
+        const fallbackLocation =
+          json.user.location?.trim() ?? json.user.homeCourse?.trim() ?? "";
+        if (!active || !fallbackLocation) return;
+        setPlanningLocation((prev) => (prev.trim().length > 0 ? prev : fallbackLocation));
+        setPlanningLocationIsValidated(true);
+      } catch {
+        // Ignore profile preload failures on create page.
+      }
+    }
+    void loadDefaultPlanningLocation();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     function onClick(e: MouseEvent) {
       if (courseRef.current && !courseRef.current.contains(e.target as Node)) setShowCourseResults(false);
       if (friendRef.current && !friendRef.current.contains(e.target as Node)) setShowFriendResults(false);
+      if (locationRef.current && !locationRef.current.contains(e.target as Node)) {
+        setShowLocationResults(false);
+      }
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -138,6 +229,7 @@ export default function CreateRoundPage() {
         body: JSON.stringify({
           planningMode,
           preferredTimeWindow: planningMode ? preferredTimeWindow : undefined,
+          planningLocation: planningMode ? planningLocation.trim() : undefined,
           courseId: planningMode ? undefined : selectedCourse?.id,
           teeTime: planningMode ? undefined : new Date(teeTime).toISOString(),
           targetDate: planningMode
@@ -247,6 +339,53 @@ export default function CreateRoundPage() {
             <p className="mt-2 text-xs text-charcoal-300">
               You can choose course and tee time after players join.
             </p>
+            <div ref={locationRef} className="relative">
+              <p className="partee-label mt-3">Location</p>
+              <input
+                type="text"
+                value={planningLocation}
+                onChange={(e) => {
+                  setPlanningLocation(e.target.value);
+                  setPlanningLocationIsValidated(false);
+                }}
+                onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
+                className="partee-input"
+                placeholder="City, State"
+                required
+              />
+              {loadingLocations && (
+                <span className="absolute right-4 top-10 text-xs text-charcoal-300">
+                  Searching...
+                </span>
+              )}
+              {showLocationResults && locationResults.length > 0 && (
+                <ul className="absolute z-20 mt-2 max-h-44 w-full overflow-auto rounded-2xl bg-white shadow-lg">
+                  {locationResults.map((loc) => (
+                    <li key={loc.label}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPlanningLocation(loc.label);
+                          setPlanningLocationIsValidated(true);
+                          setLocationResults([]);
+                          setShowLocationResults(false);
+                        }}
+                        className="w-full px-4 py-3 text-left transition hover:bg-cream-100"
+                      >
+                        <span className="block text-sm font-semibold text-charcoal">
+                          {loc.label}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!planningLocationIsValidated && planningLocation.trim().length > 0 && (
+                <p className="mt-2 text-xs text-charcoal-300">
+                  Select a suggested city/state.
+                </p>
+              )}
+            </div>
             <p className="partee-label mt-3">Preferred time</p>
             <div className="grid grid-cols-3 gap-2">
               {[
@@ -318,6 +457,49 @@ export default function CreateRoundPage() {
           </>
         )}
 
+        <div>
+          <p className="partee-label">Visibility</p>
+          <select
+            value={visibility}
+            onChange={(e) =>
+              setVisibility(e.target.value as "private" | "public")
+            }
+            className="partee-select"
+          >
+            <option value="private">Invite only</option>
+            <option value="public">Public</option>
+          </select>
+        </div>
+
+        {/* Spots + settings */}
+        <div>
+          <p className="partee-label">Spots</p>
+          <div className="flex gap-2">
+            {[2, 3, 4].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setTotalSpots(n)}
+                className={`flex-1 rounded-xl py-3 text-sm font-semibold transition ${totalSpots === n ? "bg-fairway text-white" : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"}`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="partee-label">Join policy</p>
+          <select
+            value={joinPolicy}
+            onChange={(e) => setJoinPolicy(e.target.value as "instant" | "approval")}
+            className="partee-select"
+          >
+            <option value="instant">Instant</option>
+            <option value="approval">Approval</option>
+          </select>
+        </div>
+
         {/* Friends */}
         <div ref={friendRef} className="relative">
           <p className="partee-label">Invite friends</p>
@@ -358,40 +540,6 @@ export default function CreateRoundPage() {
             ))}
           </div>
         )}
-
-        {/* Spots + settings */}
-        <div>
-          <p className="partee-label">Spots</p>
-          <div className="flex gap-2">
-            {[2, 3, 4].map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setTotalSpots(n)}
-                className={`flex-1 rounded-xl py-3 text-sm font-semibold transition ${totalSpots === n ? "bg-fairway text-white" : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"}`}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <p className="partee-label">Visibility</p>
-            <select value={visibility} onChange={(e) => setVisibility(e.target.value as "private" | "public")} className="partee-select">
-              <option value="private">Private</option>
-              <option value="public">Public</option>
-            </select>
-          </div>
-          <div>
-            <p className="partee-label">Join policy</p>
-            <select value={joinPolicy} onChange={(e) => setJoinPolicy(e.target.value as "instant" | "approval")} className="partee-select">
-              <option value="instant">Instant</option>
-              <option value="approval">Approval</option>
-            </select>
-          </div>
-        </div>
 
         {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
 

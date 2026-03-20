@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { ensureDbUser, requireDbUser } from "@/lib/auth";
+import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
 type RouteContext = {
@@ -14,6 +15,7 @@ const updateRoundSchema = z
   .object({
     planningMode: z.boolean().default(false),
     preferredTimeWindow: z.enum(["morning", "afternoon", "twilight"]).optional(),
+    planningLocation: z.string().trim().min(2).max(80).optional(),
     courseId: z.string().uuid().optional(),
     teeTime: z.string().datetime().optional(),
     targetDate: z.string().datetime().optional(),
@@ -45,6 +47,13 @@ const updateRoundSchema = z
           message: "Target date is required for planning rounds.",
         });
       }
+      if (!payload.planningLocation) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["planningLocation"],
+          message: "Planning location is required for planning rounds.",
+        });
+      }
       return;
     }
     if (!payload.courseId) {
@@ -61,6 +70,13 @@ const updateRoundSchema = z
         message: "Tee time is required for scheduled rounds.",
       });
     }
+    if (payload.planningLocation) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["planningLocation"],
+        message: "planningLocation is only valid for planning rounds.",
+      });
+    }
   });
 
 export async function GET(req: Request, { params }: RouteContext) {
@@ -75,6 +91,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       inviteToken: rounds.inviteToken,
       mode: rounds.mode,
       preferredTimeWindow: rounds.preferredTimeWindow,
+      planningLocation: rounds.planningLocation,
       courseId: rounds.courseId,
       courseName: rounds.courseName,
       teeTime: rounds.teeTime,
@@ -125,12 +142,24 @@ export async function GET(req: Request, { params }: RouteContext) {
     .where(and(eq(spots.roundId, round.id), eq(spots.status, "confirmed")))
     .orderBy(asc(spots.createdAt));
 
+  const declinedPlayers = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      avatar: users.avatar,
+    })
+    .from(spots)
+    .innerJoin(users, eq(users.id, spots.userId))
+    .where(and(eq(spots.roundId, round.id), eq(spots.status, "declined")))
+    .orderBy(asc(spots.createdAt));
+
   return NextResponse.json({
     round: {
       id: round.id,
       inviteToken: round.inviteToken,
       mode: round.mode,
       preferredTimeWindow: round.preferredTimeWindow,
+      planningLocation: round.planningLocation,
       courseId: round.courseId,
       courseName: round.courseName ?? "Course TBD",
       teeTime: round.teeTime,
@@ -145,6 +174,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       hostAvatar: round.hostAvatar,
       confirmedCount: round.confirmedCount,
       confirmedPlayers,
+      declinedPlayers,
       spotsRemaining: Math.max(0, round.totalSpots - round.confirmedCount),
       isHost: currentUser?.id === round.hostId,
       currentUserSpotStatus,
@@ -196,6 +226,19 @@ export async function PATCH(req: Request, { params }: RouteContext) {
           { status: 400 },
         );
       }
+      const canonicalPlanningLocation = await resolveValidatedUsLocationLabel(
+        parsed.planningLocation ?? "",
+      );
+      if (!canonicalPlanningLocation) {
+        return NextResponse.json(
+          {
+            error:
+              "Planning location must be a valid US City, ST selected from suggestions.",
+          },
+          { status: 400 },
+        );
+      }
+      parsed.planningLocation = canonicalPlanningLocation;
     } else {
       teeTime = new Date(parsed.teeTime as string);
       if (teeTime.getTime() < now) {
@@ -221,6 +264,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         mode: parsed.planningMode ? "planning" : "scheduled",
         preferredTimeWindow: parsed.planningMode
           ? (parsed.preferredTimeWindow ?? null)
+          : null,
+        planningLocation: parsed.planningMode
+          ? (parsed.planningLocation?.trim() ?? null)
           : null,
         courseId: course?.id ?? null,
         courseName: course?.name ?? null,

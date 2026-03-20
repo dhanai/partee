@@ -3,6 +3,7 @@ export type DiscoverRound = {
   inviteToken: string;
   mode: "scheduled" | "planning";
   preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  planningLocation: string | null;
   courseName: string;
   teeTime: string | null;
   targetDate: string;
@@ -21,6 +22,7 @@ export type RoundDetails = {
   inviteToken: string;
   mode: "scheduled" | "planning";
   preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  planningLocation: string | null;
   courseId?: string | null;
   courseName: string;
   teeTime: string | null;
@@ -39,6 +41,11 @@ export type RoundDetails = {
     name: string;
     avatar: string | null;
   }>;
+  declinedPlayers: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+  }>;
   spotsRemaining: number;
   isHost: boolean;
   currentUserSpotStatus: string | null;
@@ -52,6 +59,7 @@ export type MineRound = {
   targetDate: string;
   mode: "scheduled" | "planning";
   preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  planningLocation: string | null;
   status: "forming" | "confirmed" | "completed";
   totalSpots?: number;
   confirmedCount?: number;

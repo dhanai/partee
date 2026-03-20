@@ -29,7 +29,13 @@
     },
     "plugins": [
       "expo-router",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Partee uses your location to show nearby rounds."
+        }
+      ]
     ],
     "extra": {
       "apiBaseUrl": "http://localhost:3000"

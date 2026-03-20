@@ -1,5 +1,5 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, {
@@ -29,6 +29,7 @@ import { RoundDetails } from "../../../types/round";
 
 type RoundResponse = { round: RoundDetails };
 type CourseResult = { id: string; name: string; address: string };
+type LocationResult = { label: string; city: string; state: string };
 
 function useDebounce(value: string, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
@@ -41,19 +42,26 @@ function useDebounce(value: string, delayMs: number) {
 
 export default function EditRoundScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
-  const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
+  const initialSnapshotRef = useRef<string | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+  const [snapshotReady, setSnapshotReady] = useState(false);
 
   const [planningMode, setPlanningMode] = useState(true);
   const [preferredTimeWindow, setPreferredTimeWindow] = useState<
     "morning" | "afternoon" | "twilight"
   >("morning");
+  const [planningLocation, setPlanningLocation] = useState("");
+  const [planningLocationIsValidated, setPlanningLocationIsValidated] = useState(true);
+  const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [showLocationResults, setShowLocationResults] = useState(false);
   const [targetDate, setTargetDate] = useState<Date | null>(null);
   const [teeDate, setTeeDate] = useState<Date | null>(null);
   const [teeTimeValue, setTeeTimeValue] = useState<Date>(() => {
@@ -77,6 +85,7 @@ export default function EditRoundScreen() {
   const [selectedCourse, setSelectedCourse] = useState<CourseResult | null>(null);
   const [showCourseResults, setShowCourseResults] = useState(false);
   const debouncedCourseQuery = useDebounce(query, 320);
+  const debouncedPlanningLocation = useDebounce(planningLocation, 320);
 
   const [totalSpots, setTotalSpots] = useState(4);
   const [visibility, setVisibility] = useState<"private" | "public">("private");
@@ -119,6 +128,8 @@ export default function EditRoundScreen() {
         setCustomImageUrl(round.customImageUrl ?? null);
 
         if (round.mode === "planning") {
+          setPlanningLocation(round.planningLocation ?? "");
+          setPlanningLocationIsValidated(Boolean(round.planningLocation?.trim()));
           const d = new Date(round.targetDate);
           d.setHours(0, 0, 0, 0);
           setTargetDate(d);
@@ -139,6 +150,25 @@ export default function EditRoundScreen() {
             setTeeTimeValue(tee);
           }
         }
+        const roundTargetDate = new Date(round.targetDate);
+        roundTargetDate.setHours(0, 0, 0, 0);
+        const roundTeeDate = round.teeTime ? new Date(round.teeTime) : null;
+        if (roundTeeDate) roundTeeDate.setHours(0, 0, 0, 0);
+        const roundTeeTime = round.teeTime ? new Date(round.teeTime) : new Date();
+        initialSnapshotRef.current = JSON.stringify({
+          planningMode: round.mode === "planning",
+          preferredTimeWindow: round.preferredTimeWindow ?? "morning",
+          planningLocation: round.planningLocation?.trim() ?? "",
+          targetDate: round.mode === "planning" ? roundTargetDate.toISOString() : null,
+          teeDate: round.mode === "scheduled" && roundTeeDate ? roundTeeDate.toISOString() : null,
+          teeTime: `${roundTeeTime.getHours()}:${roundTeeTime.getMinutes()}`,
+          selectedCourseId: round.mode === "scheduled" ? (round.courseId ?? null) : null,
+          totalSpots: round.totalSpots,
+          visibility: round.visibility,
+          joinPolicy: round.joinPolicy,
+          customImageUrl: round.customImageUrl ?? null,
+        });
+        setSnapshotReady(true);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Unable to load round.");
       } finally {
@@ -188,12 +218,100 @@ export default function EditRoundScreen() {
     };
   }, [debouncedCourseQuery, planningMode, selectedCourse]);
 
+  useEffect(() => {
+    let active = true;
+    async function runLocationSearch() {
+      if (!planningMode) return;
+      if (planningLocationIsValidated) {
+        if (active) {
+          setLocationResults([]);
+          setShowLocationResults(false);
+          setLoadingLocations(false);
+        }
+        return;
+      }
+      const q = debouncedPlanningLocation.trim();
+      if (q.length < 2) {
+        if (active) {
+          setLocationResults([]);
+          setShowLocationResults(false);
+        }
+        return;
+      }
+      setLoadingLocations(true);
+      try {
+        const authToken = await getTokenRef.current();
+        const data = await apiPost<{ locations: LocationResult[] }>(
+          "/api/locations/search",
+          { query: q },
+          authToken,
+        );
+        if (!active) return;
+        setLocationResults(data.locations);
+        setShowLocationResults(true);
+      } catch {
+        if (!active) return;
+      } finally {
+        if (active) setLoadingLocations(false);
+      }
+    }
+
+    void runLocationSearch();
+    return () => {
+      active = false;
+    };
+  }, [debouncedPlanningLocation, planningMode, planningLocationIsValidated]);
+
   const canSubmit = useMemo(() => {
     if (uploadingImage || submitting) return false;
-    if (planningMode) return Boolean(targetDate);
+    if (planningMode) {
+      return Boolean(
+        targetDate &&
+          planningLocation.trim().length >= 2 &&
+          planningLocationIsValidated,
+      );
+    }
     return Boolean(selectedCourse && teeDate);
-  }, [planningMode, targetDate, selectedCourse, teeDate, submitting, uploadingImage]);
+  }, [
+    planningMode,
+    targetDate,
+    planningLocation,
+    planningLocationIsValidated,
+    selectedCourse,
+    teeDate,
+    submitting,
+    uploadingImage,
+  ]);
 
+  const currentSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        planningMode,
+        preferredTimeWindow,
+        planningLocation: planningLocation.trim(),
+        targetDate: targetDate ? startOfDay(targetDate).toISOString() : null,
+        teeDate: teeDate ? startOfDay(teeDate).toISOString() : null,
+        teeTime: `${teeTimeValue.getHours()}:${teeTimeValue.getMinutes()}`,
+        selectedCourseId: selectedCourse?.id ?? null,
+        totalSpots,
+        visibility,
+        joinPolicy,
+        customImageUrl: customImageUrl ?? null,
+      }),
+    [
+      planningMode,
+      preferredTimeWindow,
+      planningLocation,
+      targetDate,
+      teeDate,
+      teeTimeValue,
+      selectedCourse,
+      totalSpots,
+      visibility,
+      joinPolicy,
+      customImageUrl,
+    ],
+  );
   function startOfDay(date: Date) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
   }
@@ -307,11 +425,11 @@ export default function EditRoundScreen() {
     }
   }
 
-  async function submit() {
+  const submit = useCallback(async () => {
     if (!token || !canSubmit) return;
     setSubmitting(true);
     setError(null);
-    setSuccess(null);
+    setSaveNote(null);
     try {
       const authToken = await getTokenRef.current();
       let teeTimeIso: string | undefined;
@@ -335,6 +453,7 @@ export default function EditRoundScreen() {
         {
           planningMode,
           preferredTimeWindow: planningMode ? preferredTimeWindow : undefined,
+          planningLocation: planningMode ? planningLocation.trim() : undefined,
           courseId: planningMode ? undefined : selectedCourse?.id,
           teeTime: teeTimeIso,
           targetDate: planningTargetDateIso,
@@ -346,14 +465,43 @@ export default function EditRoundScreen() {
         authToken,
       );
 
-      setSuccess("Round updated.");
-      router.replace({ pathname: "/round/[token]", params: { token } });
+      initialSnapshotRef.current = currentSnapshot;
+      setSaveNote("Saved");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Update failed.");
     } finally {
       setSubmitting(false);
     }
-  }
+  }, [
+    token,
+    canSubmit,
+    planningMode,
+    teeDate,
+    teeTimeValue,
+    targetDate,
+    preferredTimeWindow,
+    planningLocation,
+    selectedCourse,
+    totalSpots,
+    visibility,
+    joinPolicy,
+    customImageUrl,
+    currentSnapshot,
+  ]);
+
+  useEffect(() => {
+    if (!snapshotReady) return;
+    if (!canSubmit || submitting || uploadingImage) return;
+    if (initialSnapshotRef.current === currentSnapshot) return;
+    setSaveNote(null);
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      void submit();
+    }, 700);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [snapshotReady, canSubmit, submitting, uploadingImage, currentSnapshot, submit]);
 
   if (loading) {
     return (
@@ -366,7 +514,7 @@ export default function EditRoundScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Edit round</Text>
-      <Text style={styles.copy}>Update details, then save your round.</Text>
+      <Text style={styles.copy}>Update details. Changes save automatically.</Text>
 
       <View style={styles.card}>
         <Text style={styles.label}>Flow</Text>
@@ -447,11 +595,42 @@ export default function EditRoundScreen() {
                 </Pressable>
               ))}
             </View>
+            <Text style={styles.label}>Location</Text>
+            <TextInput
+              value={planningLocation}
+              onChangeText={(value) => {
+                setPlanningLocation(value);
+                setPlanningLocationIsValidated(false);
+              }}
+              onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
+              placeholder="City, State"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
+            {loadingLocations ? <Text style={styles.loadingHint}>Searching...</Text> : null}
+            {showLocationResults &&
+              locationResults.map((item) => (
+                <Pressable
+                  key={item.label}
+                  style={styles.listRow}
+                  onPress={() => {
+                    setPlanningLocation(item.label);
+                    setPlanningLocationIsValidated(true);
+                    setLocationResults([]);
+                    setShowLocationResults(false);
+                  }}
+                >
+                  <Text style={styles.listTitle}>{item.label}</Text>
+                </Pressable>
+              ))}
+            {!planningLocationIsValidated && planningLocation.trim().length > 0 ? (
+              <Text style={styles.loadingHint}>Select a suggested city/state.</Text>
+            ) : null}
           </>
         ) : (
           <>
             <Text style={styles.label}>Course search</Text>
-            <View>
+            <View style={styles.inputRow}>
               <TextInput
                 value={query}
                 onChangeText={(value) => {
@@ -465,6 +644,19 @@ export default function EditRoundScreen() {
                 placeholderTextColor={colors.muted}
                 style={styles.input}
               />
+              {query.trim().length > 0 ? (
+                <Pressable
+                  style={styles.inputClearBtn}
+                  onPress={() => {
+                    setSelectedCourse(null);
+                    setQuery("");
+                    setResults([]);
+                    setShowCourseResults(false);
+                  }}
+                >
+                  <Ionicons name="close" size={15} color={colors.muted} />
+                </Pressable>
+              ) : null}
               {loadingCourses ? <Text style={styles.loadingHint}>Searching...</Text> : null}
             </View>
             {showCourseResults &&
@@ -483,21 +675,6 @@ export default function EditRoundScreen() {
                   <Text style={styles.listMeta}>{course.address}</Text>
                 </Pressable>
               ))}
-            {selectedCourse ? (
-              <View style={styles.selectedRow}>
-                <Text style={styles.selectedText}>{selectedCourse.name}</Text>
-                <Pressable
-                  onPress={() => {
-                    setSelectedCourse(null);
-                    setQuery("");
-                    setResults([]);
-                  }}
-                >
-                  <Text style={styles.removeText}>Change</Text>
-                </Pressable>
-              </View>
-            ) : null}
-
             <Text style={styles.label}>Tee time</Text>
             <View style={styles.row}>
               <Pressable
@@ -542,7 +719,7 @@ export default function EditRoundScreen() {
             onPress={() => setVisibility("private")}
           >
             <Text style={[styles.pillText, visibility === "private" && styles.pillTextActive]}>
-              Private
+              Invite only
             </Text>
           </Pressable>
           <Pressable
@@ -575,23 +752,17 @@ export default function EditRoundScreen() {
           </Pressable>
         </View>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {success ? <Text style={styles.success}>{success}</Text> : null}
-
-        <Pressable
-          style={[styles.primaryButton, !canSubmit && styles.disabled]}
-          onPress={() => void submit()}
-          disabled={!canSubmit}
-        >
-          <Text style={styles.primaryButtonText}>
-            {submitting ? "Saving..." : "Save changes"}
-          </Text>
-        </Pressable>
       </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {submitting ? <Text style={styles.success}>Saving...</Text> : null}
+      {!submitting && saveNote ? <Text style={styles.success}>{saveNote}</Text> : null}
 
       <Modal visible={calendarOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setCalendarOpen(false)}>
+          <Pressable
+            style={styles.modalCard}
+            onPress={(event) => event.stopPropagation()}
+          >
             <Text style={styles.modalTitle}>
               {calendarTarget === "targetDate" ? "Select target date" : "Select tee date"}
             </Text>
@@ -659,8 +830,8 @@ export default function EditRoundScreen() {
             <Pressable style={styles.modalDoneBtn} onPress={() => setCalendarOpen(false)}>
               <Text style={styles.modalDoneText}>Done</Text>
             </Pressable>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {timePickerOpen && (
@@ -706,6 +877,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     color: colors.text,
+  },
+  inputRow: {
+    position: "relative",
+  },
+  inputClearBtn: {
+    position: "absolute",
+    right: 10,
+    top: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ece8e1",
   },
   datePickerBtn: {
     backgroundColor: "#f1efea",
@@ -761,14 +946,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryButtonText: { color: colors.text, fontWeight: "700" },
-  primaryButton: {
-    backgroundColor: colors.fairway,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginTop: 6,
-  },
-  primaryButtonText: { color: "#fff", fontWeight: "700" },
   disabled: { opacity: 0.5 },
   error: { color: colors.danger },
   success: { color: colors.fairway, fontWeight: "600" },

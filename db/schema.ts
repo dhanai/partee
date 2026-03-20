@@ -92,6 +92,7 @@ export const rounds = pgTable(
       .notNull()
       .defaultNow(),
     preferredTimeWindow: planningTimeWindowEnum("preferred_time_window"),
+    planningLocation: text("planning_location"),
     totalSpots: integer("total_spots").notNull(),
     visibility: roundVisibilityEnum("visibility").notNull(),
     status: roundStatusEnum("status").notNull().default("forming"),

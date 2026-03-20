@@ -9,6 +9,7 @@ type RoundDetails = {
   inviteToken: string;
   mode: "scheduled" | "planning";
   preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  planningLocation: string | null;
   courseName: string;
   teeTime: string | null;
   targetDate: string;
@@ -266,6 +267,9 @@ export default function RoundInvitePage({
                     minute: "2-digit",
                   })}
             </p>
+            {round.mode === "planning" && round.planningLocation ? (
+              <p className="mt-1 text-xs text-charcoal-300">{round.planningLocation}</p>
+            ) : null}
           </div>
         </div>
 

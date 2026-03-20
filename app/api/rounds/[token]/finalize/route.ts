@@ -72,6 +72,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         teeTime,
         targetDate: teeTime,
         preferredTimeWindow: null,
+        planningLocation: null,
       })
       .where(and(eq(rounds.id, round.id), eq(rounds.hostId, user.id)))
       .returning({

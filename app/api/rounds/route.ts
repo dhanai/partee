@@ -5,12 +5,14 @@ import { z } from "zod";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
 const createRoundSchema = z
   .object({
     planningMode: z.boolean().default(false),
     preferredTimeWindow: z.enum(["morning", "afternoon", "twilight"]).optional(),
+    planningLocation: z.string().trim().min(2).max(80).optional(),
     courseId: z.string().uuid().optional(),
     teeTime: z.string().datetime().optional(),
     targetDate: z.string().datetime().optional(),
@@ -43,6 +45,13 @@ const createRoundSchema = z
           message: "Target date is required for planning rounds.",
         });
       }
+      if (!payload.planningLocation) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["planningLocation"],
+          message: "Planning location is required for planning rounds.",
+        });
+      }
       return;
     }
     if (payload.preferredTimeWindow) {
@@ -50,6 +59,13 @@ const createRoundSchema = z
         code: z.ZodIssueCode.custom,
         path: ["preferredTimeWindow"],
         message: "preferredTimeWindow is only valid for planning rounds.",
+      });
+    }
+    if (payload.planningLocation) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["planningLocation"],
+        message: "planningLocation is only valid for planning rounds.",
       });
     }
 
@@ -86,6 +102,20 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+
+      const canonicalPlanningLocation = await resolveValidatedUsLocationLabel(
+        parsed.planningLocation ?? "",
+      );
+      if (!canonicalPlanningLocation) {
+        return NextResponse.json(
+          {
+            error:
+              "Planning location must be a valid US City, ST selected from suggestions.",
+          },
+          { status: 400 },
+        );
+      }
+      parsed.planningLocation = canonicalPlanningLocation;
     } else {
       teeTime = new Date(parsed.teeTime as string);
       if (teeTime.getTime() < now) {
@@ -123,6 +153,9 @@ export async function POST(req: Request) {
           targetDate,
           preferredTimeWindow: parsed.planningMode
             ? (parsed.preferredTimeWindow ?? null)
+            : null,
+          planningLocation: parsed.planningMode
+            ? (parsed.planningLocation?.trim() ?? null)
             : null,
           totalSpots: parsed.totalSpots,
           visibility: parsed.visibility,
@@ -200,6 +233,7 @@ export async function GET(req: Request) {
         id: rounds.id,
         mode: rounds.mode,
         preferredTimeWindow: rounds.preferredTimeWindow,
+        planningLocation: rounds.planningLocation,
         courseName: rounds.courseName,
         targetDate: rounds.targetDate,
         customImageUrl: rounds.customImageUrl,
@@ -226,6 +260,7 @@ export async function GET(req: Request) {
             id: round.id,
             mode: round.mode,
             preferredTimeWindow: round.preferredTimeWindow,
+            planningLocation: round.planningLocation,
             courseName: round.courseName ?? "Course TBD",
             targetDate: round.targetDate,
             teeTime: round.teeTime,
@@ -244,6 +279,7 @@ export async function GET(req: Request) {
         id: round.id,
         mode: round.mode,
         preferredTimeWindow: round.preferredTimeWindow,
+        planningLocation: round.planningLocation,
         courseName: round.courseName,
         targetDate: round.targetDate,
         teeTime: round.teeTime,

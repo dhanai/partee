@@ -9,6 +9,7 @@ type DiscoverRound = {
   inviteToken: string;
   mode: "scheduled" | "planning";
   preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  planningLocation: string | null;
   courseName: string;
   teeTime: string | null;
   targetDate: string;
@@ -22,6 +23,11 @@ type DiscoverRound = {
 
 export default function DiscoverPage() {
   const [date, setDate] = useState("");
+  const [radiusMiles, setRadiusMiles] = useState("25");
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationStatus, setLocationStatus] = useState<
+    "idle" | "locating" | "ready" | "denied" | "unavailable"
+  >("idle");
   const [rounds, setRounds] = useState<DiscoverRound[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +37,11 @@ export default function DiscoverPage() {
     setError(null);
     const params = new URLSearchParams();
     if (filterDate) params.set("date", filterDate);
+    if (coords) {
+      params.set("lat", String(coords.lat));
+      params.set("lng", String(coords.lng));
+      params.set("distanceMiles", radiusMiles);
+    }
 
     try {
       const response = await fetch(`/api/rounds/discover?${params.toString()}`);
@@ -44,11 +55,36 @@ export default function DiscoverPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [coords, radiusMiles]);
 
   useEffect(() => {
     loadRounds();
   }, [loadRounds]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("geolocation" in navigator)) {
+      setLocationStatus("unavailable");
+      return;
+    }
+    setLocationStatus("locating");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+        setLocationStatus("ready");
+      },
+      (geoError) => {
+        if (geoError.code === geoError.PERMISSION_DENIED) {
+          setLocationStatus("denied");
+        } else {
+          setLocationStatus("unavailable");
+        }
+      },
+      { enableHighAccuracy: false, maximumAge: 5 * 60 * 1000, timeout: 10000 },
+    );
+  }, []);
 
   function handleDateChange(value: string) {
     setDate(value);
@@ -95,6 +131,35 @@ export default function DiscoverPage() {
           </button>
         )}
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          { label: "10 mi", value: "10" },
+          { label: "25 mi", value: "25" },
+          { label: "50 mi", value: "50" },
+          { label: "100 mi", value: "100" },
+          { label: "Any", value: "9999" },
+        ].map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setRadiusMiles(option.value)}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+              radiusMiles === option.value
+                ? "bg-fairway text-white"
+                : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {locationStatus !== "ready" && (
+        <p className="text-xs text-charcoal-300">
+          {locationStatus === "locating"
+            ? "Detecting your location for nearby rounds..."
+            : "Location unavailable. Showing all public rounds."}
+        </p>
+      )}
 
       {error && (
         <p className="partee-card text-sm text-red-600">{error}</p>
@@ -142,7 +207,11 @@ export default function DiscoverPage() {
                           minute: "2-digit",
                         })}`}
                   </p>
-                  <p className="text-sm text-charcoal-300">Hosted by {round.hostName}</p>
+                  {round.mode === "planning" && round.planningLocation ? (
+                    <p className="text-sm text-charcoal-300">{round.planningLocation}</p>
+                  ) : (
+                    <p className="text-sm text-charcoal-300">Hosted by {round.hostName}</p>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="rounded-full bg-fairway-50 px-3 py-1 text-sm font-semibold text-fairway">

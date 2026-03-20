@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { apiBaseUrl, apiGet, apiPatch, toAbsoluteUrl } from "../../lib/api";
+import { apiBaseUrl, apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../../lib/api";
 import { colors } from "../../lib/theme";
 
 type MeResponse = {
@@ -21,9 +21,20 @@ type MeResponse = {
     email: string | null;
     avatar: string | null;
     handicap: string | null;
+    location: string | null;
     homeCourse: string | null;
   };
 };
+type LocationResult = { label: string; city: string; state: string };
+
+function useDebounce(value: string, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 export default function ProfileScreen() {
   const { signOut } = useClerk();
@@ -39,8 +50,13 @@ export default function ProfileScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [handicap, setHandicap] = useState("");
-  const [homeCourse, setHomeCourse] = useState("");
+  const [location, setLocation] = useState("");
+  const [locationIsValidated, setLocationIsValidated] = useState(true);
+  const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [showLocationResults, setShowLocationResults] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const debouncedLocation = useDebounce(location, 320);
 
   const initials = useMemo(() => {
     if (!name.trim()) return "P";
@@ -66,7 +82,9 @@ export default function ProfileScreen() {
       setName(json.user.name ?? "");
       setEmail(json.user.email ?? "");
       setHandicap(json.user.handicap ?? "");
-      setHomeCourse(json.user.homeCourse ?? "");
+      const existingLocation = json.user.location ?? json.user.homeCourse ?? "";
+      setLocation(existingLocation);
+      setLocationIsValidated(existingLocation.trim().length > 0);
       setAvatar(json.user.avatar ?? null);
     } catch (profileError) {
       setError(
@@ -141,6 +159,11 @@ export default function ProfileScreen() {
     setSaving(true);
     setError(null);
     setSuccess(null);
+    if (location.trim().length > 0 && !locationIsValidated) {
+      setSaving(false);
+      setError("Choose a location from suggestions.");
+      return;
+    }
     try {
       const token = await getToken();
       await apiPatch<MeResponse>(
@@ -149,7 +172,7 @@ export default function ProfileScreen() {
           name: name.trim(),
           email: email.trim() || null,
           handicap: handicap.trim() || null,
-          homeCourse: homeCourse.trim() || null,
+          location: location.trim() || null,
           avatar: avatar ?? null,
         },
         token,
@@ -161,6 +184,48 @@ export default function ProfileScreen() {
       setSaving(false);
     }
   }
+
+  useEffect(() => {
+    let active = true;
+    async function runLocationSearch() {
+      if (locationIsValidated) {
+        if (active) {
+          setLocationResults([]);
+          setShowLocationResults(false);
+          setLocationLoading(false);
+        }
+        return;
+      }
+      const query = debouncedLocation.trim();
+      if (query.length < 2) {
+        if (active) {
+          setLocationResults([]);
+          setShowLocationResults(false);
+        }
+        return;
+      }
+      setLocationLoading(true);
+      try {
+        const token = await getTokenRef.current();
+        const json = await apiPost<{ locations: LocationResult[] }>(
+          "/api/locations/search",
+          { query },
+          token,
+        );
+        if (!active) return;
+        setLocationResults(json.locations);
+        setShowLocationResults(true);
+      } catch {
+        if (!active) return;
+      } finally {
+        if (active) setLocationLoading(false);
+      }
+    }
+    void runLocationSearch();
+    return () => {
+      active = false;
+    };
+  }, [debouncedLocation, locationIsValidated]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -224,14 +289,37 @@ export default function ProfileScreen() {
             style={styles.input}
           />
 
-          <Text style={styles.sectionLabel}>Location / home course</Text>
+          <Text style={styles.sectionLabel}>Location</Text>
           <TextInput
-            value={homeCourse}
-            onChangeText={setHomeCourse}
-            placeholder="Austin, TX or your home course"
+            value={location}
+            onChangeText={(value) => {
+              setLocation(value);
+              setLocationIsValidated(false);
+            }}
+            onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
+            placeholder="City, State"
             placeholderTextColor={colors.muted}
             style={styles.input}
           />
+          {locationLoading ? <Text style={styles.hint}>Searching locations...</Text> : null}
+          {showLocationResults &&
+            locationResults.map((item) => (
+              <Pressable
+                key={item.label}
+                style={styles.listRow}
+                onPress={() => {
+                  setLocation(item.label);
+                  setLocationIsValidated(true);
+                  setLocationResults([]);
+                  setShowLocationResults(false);
+                }}
+              >
+                <Text style={styles.listTitle}>{item.label}</Text>
+              </Pressable>
+            ))}
+          {!locationIsValidated && location.trim().length > 0 ? (
+            <Text style={styles.hint}>Select a suggested city/state.</Text>
+          ) : null}
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           {success ? <Text style={styles.successText}>{success}</Text> : null}
@@ -319,6 +407,15 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   secondaryButtonText: { color: colors.text, fontWeight: "700" },
+  hint: { color: colors.muted, fontSize: 12 },
+  listRow: {
+    backgroundColor: "#f9f7f3",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  listTitle: { color: colors.text, fontWeight: "600" },
   errorText: { color: colors.danger },
   successText: { color: colors.fairway, fontWeight: "600" },
   button: {

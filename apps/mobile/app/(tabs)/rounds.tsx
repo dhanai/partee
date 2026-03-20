@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -7,10 +7,9 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  FlatList,
   Image,
   Pressable,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -19,9 +18,11 @@ import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { colors } from "../../lib/theme";
 import { MineRound } from "../../types/round";
 
-type MineResponse = {
-  hosting: { upcoming: MineRound[]; past: MineRound[] };
-  joined: { upcoming: MineRound[]; past: MineRound[] };
+type MineTabResponse = {
+  tab: "hosting" | "joined";
+  rounds: MineRound[];
+  nextCursor: string | null;
+  hasMore: boolean;
 };
 
 export default function MyRoundsScreen() {
@@ -31,15 +32,31 @@ export default function MyRoundsScreen() {
   const getTokenRef = useRef(getToken);
   const [hosting, setHosting] = useState<MineRound[]>([]);
   const [joined, setJoined] = useState<MineRound[]>([]);
+  const [hostingCursor, setHostingCursor] = useState<string | null>(null);
+  const [joinedCursor, setJoinedCursor] = useState<string | null>(null);
+  const [hostingHasMore, setHostingHasMore] = useState(true);
+  const [joinedHasMore, setJoinedHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [inviteNotifications, setInviteNotifications] = useState<MineRound[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"hosting" | "joined">("hosting");
+  const activeTabRef = useRef<"hosting" | "joined">("hosting");
+  const tabLoadedRef = useRef<{ hosting: boolean; joined: boolean }>({
+    hosting: false,
+    joined: false,
+  });
   const notificationsAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -66,26 +83,83 @@ export default function MyRoundsScreen() {
     });
   }, [navigation, notificationsAnim]);
 
-  const loadRounds = useCallback(async () => {
+  const loadTabRounds = useCallback(
+    async (tab: "hosting" | "joined", options?: { reset?: boolean }) => {
+      const reset = options?.reset ?? false;
+      const cursor = tab === "hosting" ? hostingCursor : joinedCursor;
+      const hasMore = tab === "hosting" ? hostingHasMore : joinedHasMore;
+      const existingCount = tab === "hosting" ? hosting.length : joined.length;
+      if (!reset && (!hasMore || loadingMore)) return;
+      try {
+        setError(null);
+        if (reset && existingCount === 0) {
+          setLoading(true);
+        } else {
+          setLoadingMore(true);
+        }
+        const authToken = await getTokenRef.current();
+        const params = new URLSearchParams();
+        params.set("tab", tab);
+        params.set("limit", "20");
+        if (!reset && cursor) params.set("cursor", cursor);
+        const data = await apiGet<MineTabResponse>(`/api/rounds/mine?${params.toString()}`, authToken);
+        if (tab === "hosting") {
+          setHosting((prev) => (reset ? data.rounds : [...prev, ...data.rounds]));
+          setHostingCursor(data.nextCursor);
+          setHostingHasMore(data.hasMore);
+          if (reset) tabLoadedRef.current.hosting = true;
+        } else {
+          setJoined((prev) => (reset ? data.rounds : [...prev, ...data.rounds]));
+          setJoinedCursor(data.nextCursor);
+          setJoinedHasMore(data.hasMore);
+          if (reset) tabLoadedRef.current.joined = true;
+        }
+      } catch (fetchError) {
+        setError(fetchError instanceof Error ? fetchError.message : "Unable to load rounds.");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+      }
+    },
+    [hostingCursor, joinedCursor, hostingHasMore, joinedHasMore, loadingMore, hosting.length, joined.length],
+  );
+
+  const loadNotifications = useCallback(async () => {
     try {
-      setError(null);
       const authToken = await getTokenRef.current();
-      const data = await apiGet<MineResponse>("/api/rounds/mine", authToken);
-      setHosting(data.hosting.upcoming);
-      setJoined(data.joined.upcoming);
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Unable to load rounds.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      const data = await apiGet<MineTabResponse>("/api/rounds/mine?tab=joined&limit=50", authToken);
+      setInviteNotifications(
+        data.rounds.filter(
+          (round) => round.spotStatus === "invited" || round.spotStatus === "requested",
+        ),
+      );
+    } catch {
+      // Notification hydration is best effort.
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      void loadRounds();
-    }, [loadRounds]),
-  );
+  const loadTabRoundsRef = useRef(loadTabRounds);
+  const loadNotificationsRef = useRef(loadNotifications);
+  useEffect(() => {
+    loadTabRoundsRef.current = loadTabRounds;
+  }, [loadTabRounds]);
+  useEffect(() => {
+    loadNotificationsRef.current = loadNotifications;
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    void loadTabRoundsRef.current("hosting", { reset: true });
+    void loadNotificationsRef.current();
+  }, []);
+
+  useEffect(() => {
+    const currentList = activeTab === "hosting" ? hosting : joined;
+    const alreadyLoaded = tabLoadedRef.current[activeTab];
+    if (!alreadyLoaded && currentList.length === 0 && !loading && !loadingMore) {
+      void loadTabRoundsRef.current(activeTab, { reset: true });
+    }
+  }, [activeTab, hosting, joined, loading, loadingMore]);
 
   function formatWhen(round: MineRound) {
     const effectiveDate = new Date(round.teeTime ?? round.targetDate);
@@ -158,114 +232,120 @@ export default function MyRoundsScreen() {
     );
   }
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.fairway} />
+  const activeRounds = activeTab === "hosting" ? hosting : joined;
+  const emptyMessage =
+    activeTab === "hosting"
+      ? "No upcoming rounds you are hosting."
+      : "No upcoming rounds you have claimed.";
+  const listHeader = (
+    <>
+      <Text style={styles.heading}>My rounds</Text>
+      <Text style={styles.subheading}>Hosting and claimed upcoming rounds.</Text>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <View style={styles.tabsRow}>
+        <Pressable
+          style={[styles.tabPill, activeTab === "hosting" && styles.tabPillActive]}
+          onPress={() => setActiveTab("hosting")}
+        >
+          <Text style={[styles.tabText, activeTab === "hosting" && styles.tabTextActive]}>
+            Hosting
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tabPill, activeTab === "joined" && styles.tabPillActive]}
+          onPress={() => setActiveTab("joined")}
+        >
+          <Text style={[styles.tabText, activeTab === "joined" && styles.tabTextActive]}>
+            Joined
+          </Text>
+        </Pressable>
       </View>
-    );
-  }
-
-  const inviteNotifications = joined.filter(
-    (round) => round.spotStatus === "invited" || round.spotStatus === "requested",
+    </>
   );
 
   return (
     <View style={styles.screen}>
-      <ScrollView
+      <FlatList
         style={styles.container}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void loadRounds();
-            }}
-          />
+        data={activeRounds}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.inlineLoadingWrap}>
+              <ActivityIndicator color={colors.fairway} />
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>{emptyMessage}</Text>
+          )
         }
-      >
-        <Text style={styles.heading}>My rounds</Text>
-        <Text style={styles.subheading}>Hosting and claimed upcoming rounds.</Text>
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        <Text style={styles.sectionTitle}>Hosting</Text>
-        {hosting.length === 0 ? (
-          <Text style={styles.emptyText}>No upcoming rounds you are hosting.</Text>
-        ) : (
-          hosting.map((round) => (
-            <Pressable
-              key={round.id}
-              style={[styles.card, round.mode === "planning" && styles.planningCard]}
-              onPress={() =>
-                router.push({
-                  pathname: "/round/[token]",
-                  params: { token: round.inviteToken },
-                })
-              }
-            >
-              <View style={styles.topRow}>
-                <Text style={round.mode === "planning" ? styles.planDate : styles.cardTitle}>
-                  {round.mode === "planning"
-                    ? new Date(round.targetDate).toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                      })
-                    : (round.courseName ?? "Course TBD")}
-                </Text>
-                <Text style={styles.badgeMuted}>
-                  {round.mode === "planning" ? "Planning round" : "Scheduled"}
-                </Text>
-              </View>
-              <Text style={styles.meta}>{formatWhen(round)}</Text>
-              <View style={styles.row}>
-                {renderSpotCircles(round)}
-              </View>
-            </Pressable>
-          ))
+        ListFooterComponent={
+          loadingMore ? <ActivityIndicator color={colors.fairway} style={styles.loadingMore} /> : null
+        }
+        initialNumToRender={8}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        removeClippedSubviews
+        refreshing={refreshing}
+        onRefresh={() => {
+          setRefreshing(true);
+          if (activeTab === "hosting") {
+            setHostingCursor(null);
+            setHostingHasMore(true);
+            tabLoadedRef.current.hosting = false;
+          } else {
+            setJoinedCursor(null);
+            setJoinedHasMore(true);
+            tabLoadedRef.current.joined = false;
+          }
+          void loadTabRounds(activeTab, { reset: true });
+          void loadNotificationsRef.current();
+        }}
+        onEndReachedThreshold={0.35}
+        onEndReached={() => {
+          if (loading || refreshing || loadingMore) return;
+          if (activeTab === "hosting" && !hostingHasMore) return;
+          if (activeTab === "joined" && !joinedHasMore) return;
+          void loadTabRounds(activeTab, { reset: false });
+        }}
+        renderItem={({ item: round }) => (
+          <Pressable
+            style={[styles.card, round.mode === "planning" && styles.planningCard]}
+            onPress={() =>
+              router.push({
+                pathname: "/round/[token]",
+                params: { token: round.inviteToken },
+              })
+            }
+          >
+            <View style={styles.topRow}>
+              <Text style={round.mode === "planning" ? styles.planDate : styles.cardTitle}>
+                {round.mode === "planning"
+                  ? new Date(round.targetDate).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })
+                  : (round.courseName ?? "Course TBD")}
+              </Text>
+              <Text style={styles.badgeMuted}>
+                {round.mode === "planning" ? "Planning round" : "Scheduled"}
+              </Text>
+            </View>
+            <Text style={styles.meta}>{formatWhen(round)}</Text>
+            {round.mode === "planning" && round.planningLocation ? (
+              <Text style={styles.meta}>{round.planningLocation}</Text>
+            ) : null}
+            <View style={styles.row}>
+              {activeTab === "hosting" ? renderSpotCircles(round) : null}
+              {activeTab === "joined" && round.spotStatus === "requested" ? (
+                <Text style={styles.badgeMutedSub}>Pending</Text>
+              ) : null}
+            </View>
+          </Pressable>
         )}
-
-        <Text style={styles.sectionTitle}>Joined</Text>
-        {joined.length === 0 ? (
-          <Text style={styles.emptyText}>No upcoming rounds you have claimed.</Text>
-        ) : (
-          joined.map((round) => (
-            <Pressable
-              key={round.id}
-              style={[styles.card, round.mode === "planning" && styles.planningCard]}
-              onPress={() =>
-                router.push({
-                  pathname: "/round/[token]",
-                  params: { token: round.inviteToken },
-                })
-              }
-            >
-              <View style={styles.topRow}>
-                <Text style={round.mode === "planning" ? styles.planDate : styles.cardTitle}>
-                  {round.mode === "planning"
-                    ? new Date(round.targetDate).toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                      })
-                    : (round.courseName ?? "Course TBD")}
-                </Text>
-                <Text style={styles.badgeMuted}>
-                  {round.mode === "planning" ? "Planning round" : "Scheduled"}
-                </Text>
-              </View>
-              <Text style={styles.meta}>{formatWhen(round)}</Text>
-              <View style={styles.row}>
-                {round.spotStatus === "requested" ? (
-                  <Text style={styles.badgeMutedSub}>Pending</Text>
-                ) : null}
-              </View>
-            </Pressable>
-          ))
-        )}
-      </ScrollView>
+      />
 
       {notificationsOpen ? (
         <View style={styles.notificationsOverlay}>
@@ -331,8 +411,19 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   heading: { fontSize: 28, fontWeight: "700", color: colors.text },
   subheading: { color: colors.muted, marginBottom: 8 },
-  sectionTitle: { fontSize: 17, color: colors.text, fontWeight: "700", marginTop: 8 },
+  tabsRow: { flexDirection: "row", gap: 8, marginBottom: 4 },
+  tabPill: {
+    flex: 1,
+    backgroundColor: "#ece8e1",
+    borderRadius: 999,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  tabPillActive: { backgroundColor: colors.fairway },
+  tabText: { color: colors.text, fontWeight: "700" },
+  tabTextActive: { color: "#fff" },
   emptyText: { color: colors.muted, marginBottom: 4 },
+  inlineLoadingWrap: { paddingVertical: 20, alignItems: "center" },
   headerBellBtn: {
     width: 30,
     height: 30,
@@ -409,6 +500,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 12,
   },
+  loadingMore: { marginVertical: 10 },
   errorText: {
     color: colors.danger,
     backgroundColor: "#fee4e2",

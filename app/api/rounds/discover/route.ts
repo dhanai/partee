@@ -1,16 +1,51 @@
 import { NextResponse } from "next/server";
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
+import { ensureDbUser } from "@/lib/auth";
+import { resolveValidatedUsLocation } from "@/lib/places";
 import { haversineMiles } from "@/lib/utils";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
+const planningLocationCoordCache = new Map<
+  string,
+  { lat: number; lng: number; expiresAt: number }
+>();
+const PLANNING_CACHE_TTL_MS = 1000 * 60 * 60 * 24;
+
+async function getPlanningLocationCoords(location: string) {
+  const cacheKey = location.trim().toLowerCase();
+  const now = Date.now();
+  const cached = planningLocationCoordCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return { lat: cached.lat, lng: cached.lng };
+  }
+  const resolved = await resolveValidatedUsLocation(location);
+  if (!resolved || resolved.lat === null || resolved.lng === null) return null;
+  planningLocationCoordCache.set(cacheKey, {
+    lat: resolved.lat,
+    lng: resolved.lng,
+    expiresAt: now + PLANNING_CACHE_TTL_MS,
+  });
+  return { lat: resolved.lat, lng: resolved.lng };
+}
+
 export async function GET(req: Request) {
+  const currentUser = await ensureDbUser(req);
   const { searchParams } = new URL(req.url);
   const date = searchParams.get("date");
   const lat = searchParams.get("lat");
   const lng = searchParams.get("lng");
-  const distanceMiles = Number(searchParams.get("distanceMiles") ?? "9999");
+  const parsedDistance = Number(searchParams.get("distanceMiles") ?? "25");
+  const distanceMiles =
+    Number.isFinite(parsedDistance) && parsedDistance > 0 ? parsedDistance : 25;
+  const hasCoords = Boolean(lat && lng);
+  const parsedLimit = Number(searchParams.get("limit") ?? "25");
+  const parsedCursor = Number(searchParams.get("cursor") ?? "0");
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.min(100, Math.trunc(parsedLimit)))
+    : 25;
+  const cursor = Number.isFinite(parsedCursor) ? Math.max(0, Math.trunc(parsedCursor)) : 0;
 
   const now = new Date();
   const dayStart = date ? new Date(`${date}T00:00:00.000Z`) : null;
@@ -22,6 +57,7 @@ export async function GET(req: Request) {
       inviteToken: rounds.inviteToken,
       mode: rounds.mode,
       preferredTimeWindow: rounds.preferredTimeWindow,
+      planningLocation: rounds.planningLocation,
       courseName: rounds.courseName,
       customImageUrl: rounds.customImageUrl,
       courseMetadata: courses.metadata,
@@ -42,7 +78,11 @@ export async function GET(req: Request) {
     .innerJoin(users, eq(users.id, rounds.hostId))
     .leftJoin(courses, eq(courses.id, rounds.courseId))
     .leftJoin(spots, eq(spots.roundId, rounds.id))
-    .where(eq(rounds.visibility, "public"))
+    .where(
+      currentUser
+        ? or(eq(rounds.visibility, "public"), eq(rounds.hostId, currentUser.id))
+        : eq(rounds.visibility, "public"),
+    )
     .groupBy(
       rounds.id,
       users.name,
@@ -53,11 +93,17 @@ export async function GET(req: Request) {
     )
     .orderBy(asc(rounds.targetDate));
 
-  const withRemaining = rows
-    .map((row) => {
+  const withRemaining = (
+    await Promise.all(
+      rows.map(async (row) => {
       const effectiveDate = row.teeTime ?? row.targetDate;
-      const rowLat = row.lat ? Number(row.lat) : null;
-      const rowLng = row.lng ? Number(row.lng) : null;
+      let rowLat = row.lat ? Number(row.lat) : null;
+      let rowLng = row.lng ? Number(row.lng) : null;
+      if ((rowLat === null || rowLng === null) && row.planningLocation) {
+        const planningCoords = await getPlanningLocationCoords(row.planningLocation);
+        rowLat = planningCoords?.lat ?? null;
+        rowLng = planningCoords?.lng ?? null;
+      }
       const distance =
         lat && lng && rowLat !== null && rowLng !== null
           ? haversineMiles(Number(lat), Number(lng), rowLat, rowLng)
@@ -71,6 +117,7 @@ export async function GET(req: Request) {
         inviteToken: row.inviteToken,
         mode: row.mode,
         preferredTimeWindow: row.preferredTimeWindow,
+        planningLocation: row.planningLocation,
         courseName: row.courseName ?? "Course TBD",
         teeTime: row.teeTime,
         targetDate: row.targetDate,
@@ -85,7 +132,9 @@ export async function GET(req: Request) {
         spotsRemaining: Math.max(0, row.totalSpots - row.confirmedCount),
         imageUrl,
       };
-    })
+      }),
+    )
+  )
     .filter((row) => {
       const when = new Date(row.effectiveDate);
       if (dayStart && dayEnd) {
@@ -94,9 +143,24 @@ export async function GET(req: Request) {
       return when >= now;
     })
     .filter((row) => row.spotsRemaining > 0)
-    .filter((row) =>
-      row.distanceMiles === null ? true : row.distanceMiles <= distanceMiles,
-    );
+    .filter((row) => {
+      if (!hasCoords) return true;
+      return row.distanceMiles !== null && row.distanceMiles <= distanceMiles;
+    })
+    .sort((a, b) => {
+      const byDate =
+        new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime();
+      if (byDate !== 0) return byDate;
+      if (hasCoords) {
+        const aDistance = a.distanceMiles ?? Number.POSITIVE_INFINITY;
+        const bDistance = b.distanceMiles ?? Number.POSITIVE_INFINITY;
+        if (aDistance !== bDistance) return aDistance - bDistance;
+      }
+      return 0;
+    });
 
-  return NextResponse.json({ rounds: withRemaining });
+  const page = withRemaining.slice(cursor, cursor + limit);
+  const nextCursor = cursor + limit < withRemaining.length ? String(cursor + limit) : null;
+
+  return NextResponse.json({ rounds: page, nextCursor, hasMore: nextCursor !== null });
 }

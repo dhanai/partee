@@ -1,10 +1,15 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import {
+  Share,
   ActivityIndicator,
-  Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,12 +17,27 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { apiBaseUrl, apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
 
 type RoundResponse = { round: RoundDetails };
 type CourseResult = { id: string; name: string; address: string };
+type UserSearchResult = {
+  id: string;
+  name: string;
+  email: string | null;
+  avatar: string | null;
+};
+
+function useDebounce(value: string, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 function formatPlanningWindow(
   window: "morning" | "afternoon" | "twilight" | null | undefined,
@@ -30,6 +50,7 @@ export default function RoundDetailsScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const router = useRouter();
   const { getToken } = useAuth();
+  const getTokenRef = useRef(getToken);
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -39,50 +60,229 @@ export default function RoundDetailsScreen() {
   const [finalizeQuery, setFinalizeQuery] = useState("");
   const [finalizeResults, setFinalizeResults] = useState<CourseResult[]>([]);
   const [finalizeCourse, setFinalizeCourse] = useState<CourseResult | null>(null);
-  const [finalizeTeeTime, setFinalizeTeeTime] = useState("");
+  const [showFinalizeResults, setShowFinalizeResults] = useState(false);
+  const [loadingFinalizeCourses, setLoadingFinalizeCourses] = useState(false);
+  const [finalizeTeeDate, setFinalizeTeeDate] = useState<Date | null>(null);
+  const [finalizeTeeTimeValue, setFinalizeTeeTimeValue] = useState<Date>(() => {
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    return now;
+  });
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const debouncedFinalizeQuery = useDebounce(finalizeQuery, 320);
+  const [friendQuery, setFriendQuery] = useState("");
+  const [friendResults, setFriendResults] = useState<UserSearchResult[]>([]);
+  const [selectedFriends, setSelectedFriends] = useState<UserSearchResult[]>([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [showFriendResults, setShowFriendResults] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const debouncedFriendQuery = useDebounce(friendQuery, 320);
 
   useEffect(() => {
-    async function loadRound() {
-      try {
-        setError(null);
-        const authToken = await getToken();
-        const data = await apiGet<RoundResponse>(`/api/rounds/${token}`, authToken);
-        setRound(data.round);
-        if (data.round.mode === "planning") {
-          setFinalizeTeeTime(new Date(data.round.targetDate).toISOString().slice(0, 16));
-        }
-      } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : "Unable to load.");
-      } finally {
-        setLoading(false);
-      }
-    }
+    getTokenRef.current = getToken;
+  }, [getToken]);
 
+  const loadRound = useCallback(async () => {
+    if (!token) return;
+    try {
+      setError(null);
+      const authToken = await getTokenRef.current();
+      const data = await apiGet<RoundResponse>(`/api/rounds/${token}`, authToken);
+      setRound(data.round);
+      if (data.round.mode === "planning") {
+        const target = new Date(data.round.targetDate);
+        target.setHours(0, 0, 0, 0);
+        setFinalizeTeeDate(target);
+      }
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Unable to load.");
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
     if (token) {
       void loadRound();
     }
-  }, [token, getToken]);
+  }, [token, loadRound]);
 
-  async function searchFinalizeCourses() {
-    if (finalizeQuery.trim().length < 2) {
-      setFinalizeResults([]);
-      return;
+  useFocusEffect(
+    useCallback(() => {
+      void loadRound();
+    }, [loadRound]),
+  );
+
+  useEffect(() => {
+    let active = true;
+    async function runFinalizeCourseSearch() {
+      const q = debouncedFinalizeQuery.trim();
+      if (q.length < 2) {
+        if (active) {
+          setFinalizeResults([]);
+          setShowFinalizeResults(false);
+        }
+        return;
+      }
+      if (finalizeCourse && q === finalizeCourse.name) {
+        if (active) {
+          setShowFinalizeResults(false);
+          setLoadingFinalizeCourses(false);
+        }
+        return;
+      }
+      setLoadingFinalizeCourses(true);
+      try {
+        const authToken = await getTokenRef.current();
+        const data = await apiPost<{ courses: CourseResult[] }>(
+          "/api/courses/search",
+          { query: q },
+          authToken,
+        );
+        if (!active) return;
+        setFinalizeResults(data.courses);
+        setShowFinalizeResults(true);
+      } catch (searchError) {
+        if (!active) return;
+        setFinalizeError(
+          searchError instanceof Error ? searchError.message : "Course search failed.",
+        );
+      } finally {
+        if (active) setLoadingFinalizeCourses(false);
+      }
     }
-    try {
-      const authToken = await getToken();
-      const data = await apiPost<{ courses: CourseResult[] }>(
-        "/api/courses/search",
-        { query: finalizeQuery },
-        authToken,
-      );
-      setFinalizeResults(data.courses);
-    } catch (searchError) {
-      setFinalizeError(
-        searchError instanceof Error ? searchError.message : "Course search failed.",
-      );
+    void runFinalizeCourseSearch();
+    return () => {
+      active = false;
+    };
+  }, [debouncedFinalizeQuery, finalizeCourse]);
+
+  useEffect(() => {
+    let active = true;
+    if (!round) return;
+    const canInviteUsers = round.isHost || round.currentUserSpotStatus === "confirmed";
+    if (!canInviteUsers) return;
+    const confirmedPlayerIds = new Set(round.confirmedPlayers.map((player) => player.id));
+
+    async function runFriendSearch() {
+      const q = debouncedFriendQuery.trim();
+      if (q.length < 2) {
+        if (active) {
+          setFriendResults([]);
+          setShowFriendResults(false);
+        }
+        return;
+      }
+      setLoadingFriends(true);
+      try {
+        const authToken = await getTokenRef.current();
+        const data = await apiGet<{ users: UserSearchResult[] }>(
+          `/api/users/search?q=${encodeURIComponent(q)}`,
+          authToken,
+        );
+        if (!active) return;
+        setFriendResults(
+          data.users.filter(
+            (user) =>
+              !selectedFriends.some((selected) => selected.id === user.id) &&
+              !confirmedPlayerIds.has(user.id),
+          ),
+        );
+        setShowFriendResults(true);
+      } catch (searchError) {
+        if (!active) return;
+        setError(searchError instanceof Error ? searchError.message : "Failed to search users.");
+      } finally {
+        if (active) setLoadingFriends(false);
+      }
     }
+
+    void runFriendSearch();
+    return () => {
+      active = false;
+    };
+  }, [debouncedFriendQuery, selectedFriends, round]);
+
+  function startOfDay(date: Date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  function isSameDay(a: Date, b: Date) {
+    return (
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
+  }
+
+  function formatDateLabel(date: Date | null) {
+    if (!date) return "Select date";
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  function formatTimeLabel(date: Date) {
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  const monthLabel = calendarMonth.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+  const firstWeekday = new Date(
+    calendarMonth.getFullYear(),
+    calendarMonth.getMonth(),
+    1,
+  ).getDay();
+  const daysInMonth = new Date(
+    calendarMonth.getFullYear(),
+    calendarMonth.getMonth() + 1,
+    0,
+  ).getDate();
+  const dayCells = [
+    ...Array.from({ length: firstWeekday }).map(() => null),
+    ...Array.from({ length: daysInMonth }).map((_, i) => i + 1),
+  ];
+  while (dayCells.length % 7 !== 0) dayCells.push(null);
+
+  function openCalendar() {
+    const base = finalizeTeeDate ?? new Date();
+    setCalendarMonth(new Date(base.getFullYear(), base.getMonth(), 1));
+    setCalendarOpen(true);
+  }
+
+  function onSelectCalendarDay(day: Date) {
+    setFinalizeTeeDate(startOfDay(day));
+    setCalendarOpen(false);
+  }
+
+  function shiftMonth(delta: number) {
+    const next = new Date(
+      calendarMonth.getFullYear(),
+      calendarMonth.getMonth() + delta,
+      1,
+    );
+    const currentMonthStart = new Date(
+      new Date().getFullYear(),
+      new Date().getMonth(),
+      1,
+    );
+    if (next < currentMonthStart) return;
+    setCalendarMonth(next);
   }
 
   async function finalizeRound() {
@@ -91,8 +291,8 @@ export default function RoundDetailsScreen() {
       setFinalizeError("Select a course.");
       return;
     }
-    if (!finalizeTeeTime) {
-      setFinalizeError("Enter tee time.");
+    if (!finalizeTeeDate) {
+      setFinalizeError("Select tee date.");
       return;
     }
     setFinalizeBusy(true);
@@ -103,7 +303,16 @@ export default function RoundDetailsScreen() {
         `/api/rounds/${token}/finalize`,
         {
           courseId: finalizeCourse.id,
-          teeTime: new Date(finalizeTeeTime).toISOString(),
+          teeTime: (() => {
+            const combined = new Date(finalizeTeeDate);
+            combined.setHours(
+              finalizeTeeTimeValue.getHours(),
+              finalizeTeeTimeValue.getMinutes(),
+              0,
+              0,
+            );
+            return combined.toISOString();
+          })(),
         },
         authToken,
       );
@@ -160,21 +369,46 @@ export default function RoundDetailsScreen() {
     }
   }
 
-  function confirmDelete() {
-    Alert.alert(
-      "Delete round?",
-      "This will permanently remove the round and all RSVP activity.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            void deleteRound();
-          },
-        },
-      ],
-    );
+  async function shareInviteLink() {
+    if (!round) return;
+    const inviteUrl = `${apiBaseUrl.replace(/\/$/, "")}/round/${round.inviteToken}`;
+    const roundLabel = round.mode === "planning" ? "planning round" : round.courseName;
+    try {
+      await Share.share({
+        message: `Join my ${roundLabel} on Partee: ${inviteUrl}`,
+        url: inviteUrl,
+      });
+    } catch {
+      setError("Unable to open share sheet.");
+    }
+  }
+
+  async function sendInvites() {
+    if (!token || selectedFriends.length === 0) return;
+    setInviteBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const authToken = await getTokenRef.current();
+      const response = await apiPost<{ invitedCount: number; skippedCount: number }>(
+        `/api/rounds/${token}/invites`,
+        { inviteeUserIds: selectedFriends.map((friend) => friend.id) },
+        authToken,
+      );
+      setMessage(
+        response.invitedCount > 0
+          ? `Invite blast sent to ${response.invitedCount} golfer${response.invitedCount === 1 ? "" : "s"}.`
+          : "No new invites were sent.",
+      );
+      setSelectedFriends([]);
+      setFriendQuery("");
+      setFriendResults([]);
+      setShowFriendResults(false);
+    } catch (inviteError) {
+      setError(inviteError instanceof Error ? inviteError.message : "Unable to send invites.");
+    } finally {
+      setInviteBusy(false);
+    }
   }
 
   if (loading) {
@@ -192,6 +426,16 @@ export default function RoundDetailsScreen() {
       </View>
     );
   }
+
+  const canInviteUsers = round.isHost || round.currentUserSpotStatus === "confirmed";
+  const showRsvpActions =
+    !round.isHost &&
+    (!round.currentUserSpotStatus ||
+      round.currentUserSpotStatus === "invited" ||
+      round.currentUserSpotStatus === "declined");
+  const claimedSlots = Array.from({ length: round.totalSpots }, (_, index) =>
+    round.confirmedPlayers[index] ?? null,
+  );
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -211,6 +455,9 @@ export default function RoundDetailsScreen() {
             })}
           </Text>
           <Text style={styles.planningTime}>{formatPlanningWindow(round.preferredTimeWindow)}</Text>
+          {round.planningLocation ? (
+            <Text style={styles.planningTime}>{round.planningLocation}</Text>
+          ) : null}
         </View>
       )}
       {round.mode === "scheduled" ? (
@@ -230,25 +477,13 @@ export default function RoundDetailsScreen() {
           </Text>
         </View>
       ) : null}
-      <View style={styles.spotStatsRow}>
-        <View style={[styles.spotStatCard, styles.spotFilledCard]}>
-          <Text style={styles.spotStatValue}>{round.confirmedCount}</Text>
-          <Text style={styles.spotStatLabel}>Filled</Text>
-        </View>
-        <View style={[styles.spotStatCard, styles.spotOpenCard]}>
-          <Text style={styles.spotStatValue}>{round.spotsRemaining}</Text>
-          <Text style={styles.spotStatLabel}>Open</Text>
-        </View>
-        <View style={[styles.spotStatCard, styles.spotTotalCard]}>
-          <Text style={styles.spotStatValue}>{round.totalSpots}</Text>
-          <Text style={styles.spotStatLabel}>Total</Text>
-        </View>
-      </View>
-      {round.confirmedPlayers.length > 0 ? (
-        <View style={styles.claimedRow}>
-          <Text style={styles.claimedLabel}>Claimed</Text>
-          <View style={styles.claimedThumbs}>
-            {round.confirmedPlayers.map((player) =>
+      <View style={styles.claimedRow}>
+        <Text style={styles.claimedLabel}>
+          Claimed {round.confirmedPlayers.length}/{round.totalSpots}
+        </Text>
+        <View style={styles.claimedThumbs}>
+          {claimedSlots.map((player, idx) =>
+            player ? (
               player.avatar ? (
                 <Image
                   key={player.id}
@@ -256,13 +491,36 @@ export default function RoundDetailsScreen() {
                   style={styles.claimedThumb}
                 />
               ) : (
-                <View key={player.id} style={[styles.claimedThumb, styles.hostAvatarFallback]}>
-                  <Text style={styles.hostInitial}>
+                <View key={player.id} style={[styles.claimedThumb, styles.claimedThumbFallback]}>
+                  <Text style={styles.claimedThumbInitial}>
                     {player.name.trim().charAt(0).toUpperCase() || "?"}
                   </Text>
                 </View>
-              ),
-            )}
+              )
+            ) : (
+              <View key={`empty-${idx}`} style={[styles.claimedThumb, styles.emptyThumb]} />
+            ),
+          )}
+        </View>
+      </View>
+      {round.declinedPlayers.length > 0 ? (
+        <View style={styles.declinedRow}>
+          <Text style={styles.claimedLabel}>Declined</Text>
+          <View style={styles.declinedList}>
+            {round.declinedPlayers.map((player) => (
+              <View key={player.id} style={styles.declinedChip}>
+                {player.avatar ? (
+                  <Image source={{ uri: toAbsoluteUrl(player.avatar) }} style={styles.declinedAvatar} />
+                ) : (
+                  <View style={[styles.declinedAvatar, styles.claimedThumbFallback]}>
+                    <Text style={styles.claimedThumbInitial}>
+                      {player.name.trim().charAt(0).toUpperCase() || "?"}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.declinedName}>{player.name}</Text>
+              </View>
+            ))}
           </View>
         </View>
       ) : null}
@@ -275,19 +533,37 @@ export default function RoundDetailsScreen() {
           <Text style={styles.finalizeTitle}>Finalize details</Text>
           <Text style={styles.meta}>Pick course and tee time for your group.</Text>
 
-          <View style={styles.inlineRow}>
+          <Text style={styles.sectionLabel}>Course</Text>
+          <View style={styles.inputRow}>
             <TextInput
               value={finalizeQuery}
-              onChangeText={setFinalizeQuery}
-              placeholder="Search golf course..."
+              onChangeText={(value) => {
+                setFinalizeQuery(value);
+                if (finalizeCourse && value !== finalizeCourse.name) {
+                  setFinalizeCourse(null);
+                }
+              }}
+              onFocus={() => finalizeResults.length > 0 && setShowFinalizeResults(true)}
+              placeholder="Search golf courses..."
               placeholderTextColor={colors.muted}
-              style={[styles.input, styles.flex1]}
+              style={[styles.input, styles.inputWithClear]}
             />
-            <Pressable style={styles.searchBtn} onPress={() => void searchFinalizeCourses()}>
-              <Text style={styles.searchBtnText}>Search</Text>
-            </Pressable>
+            {finalizeQuery.trim().length > 0 ? (
+              <Pressable
+                style={styles.inputClearBtn}
+                onPress={() => {
+                  setFinalizeCourse(null);
+                  setFinalizeQuery("");
+                  setFinalizeResults([]);
+                  setShowFinalizeResults(false);
+                }}
+              >
+                <Ionicons name="close" size={15} color={colors.muted} />
+              </Pressable>
+            ) : null}
           </View>
-          {finalizeResults.map((course) => (
+          {loadingFinalizeCourses ? <Text style={styles.listMeta}>Searching...</Text> : null}
+          {showFinalizeResults && finalizeResults.map((course) => (
             <Pressable
               key={course.id}
               style={styles.listRow}
@@ -302,13 +578,29 @@ export default function RoundDetailsScreen() {
             </Pressable>
           ))}
 
-          <TextInput
-            value={finalizeTeeTime}
-            onChangeText={setFinalizeTeeTime}
-            placeholder="YYYY-MM-DDTHH:mm"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
+          <Text style={styles.sectionLabel}>Tee time</Text>
+          <View style={styles.inlineRow}>
+            <Pressable style={[styles.datePickerBtn, styles.flex1]} onPress={openCalendar}>
+              <Text
+                style={[
+                  styles.datePickerText,
+                  !finalizeTeeDate && styles.datePickerPlaceholder,
+                ]}
+              >
+                {formatDateLabel(finalizeTeeDate)}
+              </Text>
+              <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
+            </Pressable>
+            <Pressable
+              style={[styles.datePickerBtn, styles.flex1]}
+              onPress={() => setTimePickerOpen(true)}
+            >
+              <Text style={styles.datePickerText}>
+                {formatTimeLabel(finalizeTeeTimeValue)}
+              </Text>
+              <Ionicons name="time-outline" size={18} color={colors.fairway} />
+            </Pressable>
+          </View>
           {finalizeError ? <Text style={styles.errorText}>{finalizeError}</Text> : null}
           <Pressable
             style={[styles.button, styles.primaryButton, finalizeBusy && styles.disabledButton]}
@@ -322,7 +614,71 @@ export default function RoundDetailsScreen() {
         </View>
       ) : null}
 
-      {!round.isHost ? (
+      {canInviteUsers ? (
+        <View style={styles.inviteCard}>
+          <Text style={styles.sectionLabel}>Invite players</Text>
+          <TextInput
+            value={friendQuery}
+            onChangeText={setFriendQuery}
+            onFocus={() => friendResults.length > 0 && setShowFriendResults(true)}
+            placeholder="Search by name or email..."
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
+          {loadingFriends ? <Text style={styles.listMeta}>Searching...</Text> : null}
+          {showFriendResults &&
+            friendResults.map((friend) => (
+              <Pressable
+                key={friend.id}
+                style={styles.listRow}
+                onPress={() => {
+                  setSelectedFriends((prev) =>
+                    prev.some((existing) => existing.id === friend.id) ? prev : [...prev, friend],
+                  );
+                  setFriendResults((prev) => prev.filter((u) => u.id !== friend.id));
+                }}
+              >
+                <Text style={styles.listTitle}>{friend.name}</Text>
+                {friend.email ? <Text style={styles.listMeta}>{friend.email}</Text> : null}
+              </Pressable>
+            ))}
+          {selectedFriends.map((friend) => (
+            <View key={friend.id} style={styles.selectedRow}>
+              <Text style={styles.selectedText}>{friend.name}</Text>
+              <Pressable
+                onPress={() =>
+                  setSelectedFriends((prev) => prev.filter((user) => user.id !== friend.id))
+                }
+              >
+                <Text style={styles.removeText}>Remove</Text>
+              </Pressable>
+            </View>
+          ))}
+          <View style={styles.actions}>
+            <Pressable
+              style={[
+                styles.button,
+                styles.primaryButton,
+                (inviteBusy || selectedFriends.length === 0) && styles.disabledButton,
+              ]}
+              onPress={() => void sendInvites()}
+              disabled={inviteBusy || selectedFriends.length === 0}
+            >
+              <Text style={styles.primaryText}>
+                {inviteBusy ? "Sending..." : "Send invites"}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.button, styles.secondaryButton]}
+              onPress={() => void shareInviteLink()}
+            >
+              <Text style={styles.secondaryText}>Share link</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {showRsvpActions ? (
         <View style={styles.actions}>
           <Pressable
             style={[styles.button, styles.primaryButton, busy && styles.disabledButton]}
@@ -343,29 +699,142 @@ export default function RoundDetailsScreen() {
         </View>
       ) : null}
       {round.isHost ? (
-        <Pressable
-          style={styles.editButton}
-          onPress={() =>
-            router.push({
-              pathname: "/round/[token]/edit",
-              params: { token: round.inviteToken },
-            })
-          }
-        >
-          <Text style={styles.editText}>Edit round</Text>
-        </Pressable>
+        <View style={styles.hostActionsRow}>
+          <Pressable
+            style={[styles.button, styles.hostEditButton]}
+            onPress={() =>
+              router.push({
+                pathname: "/round/[token]/edit",
+                params: { token: round.inviteToken },
+              })
+            }
+          >
+            <Text style={styles.hostEditText}>Edit round</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.button, styles.hostDeleteButton, deleteBusy && styles.disabledButton]}
+            onPress={() => setDeleteConfirmOpen(true)}
+            disabled={deleteBusy}
+          >
+            <Text style={styles.hostDeleteText}>
+              {deleteBusy ? "Deleting..." : "Delete round"}
+            </Text>
+          </Pressable>
+        </View>
       ) : null}
-      {round.isHost ? (
-        <Pressable
-          style={[styles.deleteButton, deleteBusy && styles.disabledButton]}
-          onPress={confirmDelete}
-          disabled={deleteBusy}
-        >
-          <Text style={styles.deleteText}>
-            {deleteBusy ? "Deleting..." : "Delete round"}
-          </Text>
+
+      <Modal visible={calendarOpen} transparent animationType="fade">
+        <Pressable style={styles.modalBackdrop} onPress={() => setCalendarOpen(false)}>
+          <Pressable
+            style={styles.modalCard}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <Text style={styles.modalTitle}>Select tee date</Text>
+            <View style={styles.monthNavRow}>
+              <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(-1)}>
+                <Ionicons name="chevron-back" size={16} color={colors.fairway} />
+              </Pressable>
+              <Text style={styles.monthLabel}>{monthLabel}</Text>
+              <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(1)}>
+                <Ionicons name="chevron-forward" size={16} color={colors.fairway} />
+              </Pressable>
+            </View>
+            <View style={styles.weekHeader}>
+              {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
+                <Text key={`${d}-${idx}`} style={styles.weekHeaderText}>
+                  {d}
+                </Text>
+              ))}
+            </View>
+            <View style={styles.calendarGrid}>
+              {dayCells.map((dayNum, idx) => {
+                if (dayNum === null) return <View key={`empty-${idx}`} style={styles.dayCell} />;
+                const dayDate = new Date(
+                  calendarMonth.getFullYear(),
+                  calendarMonth.getMonth(),
+                  dayNum,
+                );
+                const isPast =
+                  startOfDay(dayDate).getTime() < startOfDay(new Date()).getTime();
+                const selected = finalizeTeeDate ? isSameDay(dayDate, finalizeTeeDate) : false;
+                return (
+                  <Pressable
+                    key={`day-${dayNum}`}
+                    style={[
+                      styles.dayCell,
+                      selected && styles.daySelected,
+                      isPast && styles.dayDisabled,
+                    ]}
+                    onPress={() => {
+                      if (isPast) return;
+                      onSelectCalendarDay(dayDate);
+                    }}
+                    disabled={isPast}
+                  >
+                    <Text
+                      style={[
+                        styles.dayText,
+                        selected && styles.dayTextSelected,
+                        isPast && styles.dayTextDisabled,
+                      ]}
+                    >
+                      {dayNum}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Pressable style={styles.modalDoneBtn} onPress={() => setCalendarOpen(false)}>
+              <Text style={styles.modalDoneText}>Done</Text>
+            </Pressable>
+          </Pressable>
         </Pressable>
-      ) : null}
+      </Modal>
+
+      <Modal visible={deleteConfirmOpen} transparent animationType="fade">
+        <Pressable style={styles.modalBackdrop} onPress={() => setDeleteConfirmOpen(false)}>
+          <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
+            <Text style={styles.modalTitle}>Delete round?</Text>
+            <Text style={styles.listMeta}>
+              This will permanently remove the round and all RSVP activity.
+            </Text>
+            <View style={styles.inlineRow}>
+              <Pressable
+                style={[styles.button, styles.secondaryButton]}
+                onPress={() => setDeleteConfirmOpen(false)}
+              >
+                <Text style={styles.secondaryText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.button, styles.hostDeleteButton, deleteBusy && styles.disabledButton]}
+                onPress={() => {
+                  setDeleteConfirmOpen(false);
+                  void deleteRound();
+                }}
+                disabled={deleteBusy}
+              >
+                <Text style={styles.hostDeleteText}>
+                  {deleteBusy ? "Deleting..." : "Delete"}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {timePickerOpen && (
+        <DateTimePicker
+          value={finalizeTeeTimeValue}
+          mode="time"
+          display="default"
+          onChange={(event: DateTimePickerEvent, selected?: Date) => {
+            setTimePickerOpen(false);
+            if (event.type === "set" && selected) {
+              setFinalizeTeeTimeValue(selected);
+            }
+          }}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -397,26 +866,7 @@ const styles = StyleSheet.create({
   whenDate: { color: colors.text, fontWeight: "700", fontSize: 18 },
   whenTime: { color: colors.muted, fontWeight: "600" },
   meta: { color: colors.muted },
-  spotStatsRow: { flexDirection: "row", gap: 8, marginTop: 6 },
-  spotStatCard: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderWidth: 1,
-  },
-  spotFilledCard: { backgroundColor: colors.fairwaySoft, borderColor: "#cfe4d4" },
-  spotOpenCard: { backgroundColor: "#f2f6fb", borderColor: "#d8e4f1" },
-  spotTotalCard: { backgroundColor: "#f7f1e8", borderColor: "#eadfcd" },
-  spotStatValue: { color: colors.text, fontSize: 24, fontWeight: "800" },
-  spotStatLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  claimedRow: { marginTop: 6, gap: 6 },
+  claimedRow: { marginTop: 10, gap: 6 },
   claimedLabel: {
     color: colors.muted,
     fontSize: 12,
@@ -426,24 +876,69 @@ const styles = StyleSheet.create({
   },
   claimedThumbs: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   claimedThumb: { width: 32, height: 32, borderRadius: 999 },
-  actions: { flexDirection: "row", gap: 10, marginTop: 16 },
-  button: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
-  primaryButton: { backgroundColor: colors.fairway },
-  secondaryButton: { backgroundColor: "#ece8e1" },
-  editButton: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginTop: 16,
+  emptyThumb: {
     backgroundColor: "#ece8e1",
     borderWidth: 1,
     borderColor: colors.border,
   },
-  deleteButton: {
-    borderRadius: 12,
-    paddingVertical: 12,
+  claimedThumbFallback: {
+    backgroundColor: "#f1efea",
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
-    marginTop: 10,
+    justifyContent: "center",
+  },
+  claimedThumbInitial: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+  declinedRow: { marginTop: 8, gap: 6 },
+  declinedList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  declinedChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#f5f3ef",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  declinedAvatar: { width: 22, height: 22, borderRadius: 999 },
+  declinedName: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  actions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  button: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
+  inviteCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 12,
+    gap: 8,
+    marginTop: 8,
+  },
+  selectedRow: {
+    backgroundColor: colors.fairwaySoft,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  selectedText: { color: colors.text },
+  removeText: { color: colors.danger, fontWeight: "600" },
+  primaryButton: { backgroundColor: colors.fairway },
+  secondaryButton: { backgroundColor: "#ece8e1" },
+  hostActionsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+  },
+  hostEditButton: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  hostDeleteButton: {
     backgroundColor: "#fee4e2",
     borderWidth: 1,
     borderColor: "#fbc6c2",
@@ -451,8 +946,8 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.5 },
   primaryText: { color: "#fff", fontWeight: "700" },
   secondaryText: { color: colors.text, fontWeight: "700" },
-  editText: { color: colors.text, fontWeight: "700" },
-  deleteText: { color: colors.danger, fontWeight: "700" },
+  hostEditText: { color: colors.text, fontWeight: "700" },
+  hostDeleteText: { color: colors.danger, fontWeight: "700" },
   errorText: {
     color: colors.danger,
     backgroundColor: "#fee4e2",
@@ -477,6 +972,14 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   finalizeTitle: { fontWeight: "700", color: colors.text, fontSize: 16 },
+  sectionLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    fontWeight: "700",
+    marginTop: 2,
+  },
   inlineRow: { flexDirection: "row", gap: 8, alignItems: "center" },
   input: {
     backgroundColor: "#f1efea",
@@ -485,7 +988,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     color: colors.text,
   },
+  inputRow: {
+    position: "relative",
+  },
+  inputWithClear: {
+    paddingRight: 36,
+  },
+  inputClearBtn: {
+    position: "absolute",
+    right: 10,
+    top: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ece8e1",
+  },
   flex1: { flex: 1 },
+  datePickerBtn: {
+    backgroundColor: "#f1efea",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  datePickerText: { color: colors.text, fontWeight: "600" },
+  datePickerPlaceholder: { color: colors.muted, fontWeight: "500" },
   searchBtn: {
     backgroundColor: colors.fairway,
     borderRadius: 10,
@@ -503,4 +1035,65 @@ const styles = StyleSheet.create({
   },
   listTitle: { color: colors.text, fontWeight: "600" },
   listMeta: { color: colors.muted, fontSize: 12 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+  },
+  modalTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+  monthNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  monthNavBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 12,
+    backgroundColor: "#f3f1ed",
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  monthLabel: { color: colors.text, fontSize: 15, fontWeight: "700" },
+  weekHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+  },
+  weekHeaderText: {
+    width: `${100 / 7}%`,
+    textAlign: "center",
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
+  dayCell: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
+  daySelected: { backgroundColor: colors.fairway },
+  dayDisabled: { opacity: 0.35 },
+  dayText: { color: colors.text, fontWeight: "600" },
+  dayTextSelected: { color: "#fff" },
+  dayTextDisabled: { color: colors.muted },
+  modalDoneBtn: {
+    backgroundColor: colors.fairway,
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  modalDoneText: { color: "#fff", fontWeight: "700" },
 });

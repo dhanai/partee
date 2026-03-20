@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
@@ -40,6 +40,14 @@ type CreateRoundResponse = {
   invitePath: string;
   invitedCount: number;
 };
+type MeResponse = {
+  user: {
+    location: string | null;
+    homeCourse: string | null;
+  };
+};
+type LocationResult = { label: string; city: string; state: string };
+type CreateType = "planning" | "scheduled" | "tournament" | "event";
 
 function useDebounce(value: string, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
@@ -51,10 +59,25 @@ function useDebounce(value: string, delayMs: number) {
 }
 
 export default function CreateScreen() {
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
-  const [planningMode, setPlanningMode] = useState(true);
+  const createType: CreateType = useMemo(() => {
+    if (mode === "planning") return "planning";
+    if (mode === "scheduled") return "scheduled";
+    if (mode === "tournament") return "tournament";
+    if (mode === "event") return "event";
+    return "scheduled";
+  }, [mode]);
+  const isPlanningRound = createType === "planning";
+  const isScheduledRound = createType === "scheduled";
+  const isRoundType = isPlanningRound || isScheduledRound;
   const [targetDate, setTargetDate] = useState<Date | null>(null);
+  const [planningLocation, setPlanningLocation] = useState("");
+  const [planningLocationIsValidated, setPlanningLocationIsValidated] = useState(true);
+  const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [showLocationResults, setShowLocationResults] = useState(false);
   const [preferredTimeWindow, setPreferredTimeWindow] = useState<
     "morning" | "afternoon" | "twilight"
   >("morning");
@@ -91,25 +114,86 @@ export default function CreateScreen() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showCourseResults, setShowCourseResults] = useState(false);
   const [showFriendResults, setShowFriendResults] = useState(false);
+  const [eventImageUri, setEventImageUri] = useState<string | null>(null);
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDetails, setEventDetails] = useState("");
+  const [eventLocation, setEventLocation] = useState("");
+  const [eventDate, setEventDate] = useState<Date | null>(null);
+  const [eventTime, setEventTime] = useState<Date>(() => {
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    return now;
+  });
+  const [eventCost, setEventCost] = useState("");
+  const [eventRsvpDeadlineDate, setEventRsvpDeadlineDate] = useState<Date | null>(null);
+  const [eventRsvpDeadlineTime, setEventRsvpDeadlineTime] = useState<Date>(() => {
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    return now;
+  });
+  const [eventDatePickerOpen, setEventDatePickerOpen] = useState(false);
+  const [eventTimePickerOpen, setEventTimePickerOpen] = useState(false);
+  const [eventDeadlineDatePickerOpen, setEventDeadlineDatePickerOpen] = useState(false);
+  const [eventDeadlineTimePickerOpen, setEventDeadlineTimePickerOpen] = useState(false);
   const debouncedCourseQuery = useDebounce(query, 320);
   const debouncedFriendQuery = useDebounce(friendQuery, 320);
+  const debouncedPlanningLocation = useDebounce(planningLocation, 320);
 
   useEffect(() => {
-    if (planningMode) {
+    if (!isScheduledRound) {
       setCustomImageUrl(null);
       setTeeDate(null);
     }
-  }, [planningMode]);
+  }, [isScheduledRound]);
 
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
 
+  useEffect(() => {
+    let active = true;
+    async function loadDefaultPlanningLocation() {
+      if (!isPlanningRound) return;
+      try {
+        const token = await getTokenRef.current();
+        const json = await apiGet<MeResponse>("/api/users/me", token);
+        const fallbackLocation =
+          json.user.location?.trim() ?? json.user.homeCourse?.trim() ?? "";
+        if (!active || !fallbackLocation) return;
+        setPlanningLocation((prev) => (prev.trim().length > 0 ? prev : fallbackLocation));
+        setPlanningLocationIsValidated((prev) => (prev ? prev : true));
+      } catch {
+        // Ignore profile preload failures on create page.
+      }
+    }
+    void loadDefaultPlanningLocation();
+    return () => {
+      active = false;
+    };
+  }, [isPlanningRound]);
+
   const canSubmit = useMemo(() => {
     if (uploadingImage || submitting) return false;
-    if (planningMode) return Boolean(targetDate);
-    return Boolean(selectedCourse && teeDate);
-  }, [planningMode, targetDate, selectedCourse, teeDate, submitting, uploadingImage]);
+    if (isPlanningRound) {
+      return Boolean(
+        targetDate &&
+          planningLocation.trim().length >= 2 &&
+          planningLocationIsValidated,
+      );
+    }
+    if (isScheduledRound) return Boolean(selectedCourse && teeDate);
+    return false;
+  }, [
+    isPlanningRound,
+    isScheduledRound,
+    targetDate,
+    planningLocation,
+    planningLocationIsValidated,
+    selectedCourse,
+    teeDate,
+    submitting,
+    uploadingImage,
+  ]);
 
   function startOfDay(date: Date) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -193,7 +277,7 @@ export default function CreateScreen() {
   }
 
   useEffect(() => {
-    if (planningMode) return;
+    if (!isScheduledRound) return;
     if (selectedCourse && debouncedCourseQuery.trim() === selectedCourse.name) return;
     let active = true;
 
@@ -230,7 +314,7 @@ export default function CreateScreen() {
     return () => {
       active = false;
     };
-  }, [debouncedCourseQuery, planningMode, selectedCourse]);
+  }, [debouncedCourseQuery, isScheduledRound, selectedCourse]);
 
   useEffect(() => {
     let active = true;
@@ -272,6 +356,50 @@ export default function CreateScreen() {
       active = false;
     };
   }, [debouncedFriendQuery, selectedFriends]);
+
+  useEffect(() => {
+    let active = true;
+    async function runLocationSearch() {
+      if (!isPlanningRound) return;
+      if (planningLocationIsValidated) {
+        if (active) {
+          setLocationResults([]);
+          setShowLocationResults(false);
+          setLoadingLocations(false);
+        }
+        return;
+      }
+      const q = debouncedPlanningLocation.trim();
+      if (q.length < 2) {
+        if (active) {
+          setLocationResults([]);
+          setShowLocationResults(false);
+        }
+        return;
+      }
+
+      setLoadingLocations(true);
+      try {
+        const token = await getTokenRef.current();
+        const json = await apiPost<{ locations: LocationResult[] }>(
+          "/api/locations/search",
+          { query: q },
+          token,
+        );
+        if (!active) return;
+        setLocationResults(json.locations);
+        setShowLocationResults(true);
+      } catch {
+        if (!active) return;
+      } finally {
+        if (active) setLoadingLocations(false);
+      }
+    }
+    void runLocationSearch();
+    return () => {
+      active = false;
+    };
+  }, [debouncedPlanningLocation, isPlanningRound, planningLocationIsValidated]);
 
   async function pickAndUploadImage() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -315,6 +443,21 @@ export default function CreateScreen() {
     }
   }
 
+  async function pickEventImage() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError("Photo permission is required to upload an event image.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      allowsEditing: true,
+    });
+    if (result.canceled || !result.assets[0]?.uri) return;
+    setEventImageUri(result.assets[0].uri);
+  }
+
   async function submit() {
     if (!canSubmit) return;
     setSubmitting(true);
@@ -323,7 +466,7 @@ export default function CreateScreen() {
     try {
       const token = await getToken();
       let teeTimeIso: string | undefined;
-      if (!planningMode && teeDate) {
+      if (isScheduledRound && teeDate) {
         const combined = new Date(teeDate);
         combined.setHours(
           teeTimeValue.getHours(),
@@ -335,7 +478,7 @@ export default function CreateScreen() {
       }
 
       const planningTargetDateIso =
-        planningMode && targetDate
+        isPlanningRound && targetDate
           ? (() => {
               const noon = new Date(targetDate);
               noon.setHours(12, 0, 0, 0);
@@ -346,9 +489,10 @@ export default function CreateScreen() {
       const json = await apiPost<CreateRoundResponse>(
         "/api/rounds",
         {
-          planningMode,
-          preferredTimeWindow: planningMode ? preferredTimeWindow : undefined,
-          courseId: planningMode ? undefined : selectedCourse?.id,
+          planningMode: isPlanningRound,
+          preferredTimeWindow: isPlanningRound ? preferredTimeWindow : undefined,
+          planningLocation: isPlanningRound ? planningLocation.trim() : undefined,
+          courseId: isPlanningRound ? undefined : selectedCourse?.id,
           teeTime: teeTimeIso,
           targetDate: planningTargetDateIso,
           totalSpots,
@@ -377,31 +521,27 @@ export default function CreateScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Create</Text>
-      <Text style={styles.copy}>Set it up. Blast invites. Tee off.</Text>
+      <Text style={styles.title}>
+        {createType === "planning"
+          ? "Planning Round"
+          : createType === "scheduled"
+            ? "Scheduled Tee Time"
+            : createType === "tournament"
+              ? "Tournament"
+              : "Event"}
+      </Text>
+      <Text style={styles.copy}>
+        {createType === "planning"
+          ? "Find players first. Lock details later."
+          : createType === "scheduled"
+            ? "Set it up. Blast invites. Tee off."
+            : createType === "tournament"
+              ? "Tournament details UI is ready. Persistence is next."
+              : "Broad event flow for meetups, markets, and more."}
+      </Text>
 
       <View style={styles.card}>
-        <Text style={styles.label}>Flow</Text>
-        <View style={styles.row}>
-          <Pressable
-            style={[styles.pill, planningMode && styles.pillActive]}
-            onPress={() => setPlanningMode(true)}
-          >
-            <Text style={[styles.pillText, planningMode && styles.pillTextActive]}>
-              Plan first
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.pill, !planningMode && styles.pillActive]}
-            onPress={() => setPlanningMode(false)}
-          >
-            <Text style={[styles.pillText, !planningMode && styles.pillTextActive]}>
-              Set details now
-            </Text>
-          </Pressable>
-        </View>
-
-        {!planningMode ? (
+        {isScheduledRound ? (
           <>
             <Text style={styles.label}>Event image</Text>
             {customImageUrl ? (
@@ -423,7 +563,7 @@ export default function CreateScreen() {
           </>
         ) : null}
 
-        {planningMode ? (
+        {isPlanningRound ? (
           <>
             <Text style={styles.label}>Target date</Text>
             <Pressable style={styles.datePickerBtn} onPress={() => openCalendar("targetDate")}>
@@ -462,11 +602,42 @@ export default function CreateScreen() {
                 </Pressable>
               ))}
             </View>
+            <Text style={styles.label}>Location</Text>
+            <TextInput
+              value={planningLocation}
+              onChangeText={(value) => {
+                setPlanningLocation(value);
+                setPlanningLocationIsValidated(false);
+              }}
+              onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
+              placeholder="City, State"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
+            {loadingLocations ? <Text style={styles.loadingHint}>Searching...</Text> : null}
+            {showLocationResults &&
+              locationResults.map((item) => (
+                <Pressable
+                  key={item.label}
+                  style={styles.listRow}
+                  onPress={() => {
+                    setPlanningLocation(item.label);
+                    setPlanningLocationIsValidated(true);
+                    setLocationResults([]);
+                    setShowLocationResults(false);
+                  }}
+                >
+                  <Text style={styles.listTitle}>{item.label}</Text>
+                </Pressable>
+              ))}
+            {!planningLocationIsValidated && planningLocation.trim().length > 0 ? (
+              <Text style={styles.loadingHint}>Select a suggested city/state.</Text>
+            ) : null}
           </>
-        ) : (
+        ) : isScheduledRound ? (
           <>
             <Text style={styles.label}>Course search</Text>
-            <View>
+            <View style={styles.inputRow}>
               <TextInput
                 value={query}
                 onChangeText={(value) => {
@@ -480,6 +651,19 @@ export default function CreateScreen() {
                 placeholderTextColor={colors.muted}
                 style={styles.input}
               />
+              {query.trim().length > 0 ? (
+                <Pressable
+                  style={styles.inputClearBtn}
+                  onPress={() => {
+                    setSelectedCourse(null);
+                    setQuery("");
+                    setResults([]);
+                    setShowCourseResults(false);
+                  }}
+                >
+                  <Ionicons name="close" size={15} color={colors.muted} />
+                </Pressable>
+              ) : null}
               {loadingCourses ? <Text style={styles.loadingHint}>Searching...</Text> : null}
             </View>
             {showCourseResults && results.map((course) => (
@@ -497,21 +681,6 @@ export default function CreateScreen() {
                 <Text style={styles.listMeta}>{course.address}</Text>
               </Pressable>
             ))}
-            {selectedCourse ? (
-              <View style={styles.selectedRow}>
-                <Text style={styles.selectedText}>{selectedCourse.name}</Text>
-                <Pressable
-                  onPress={() => {
-                    setSelectedCourse(null);
-                    setQuery("");
-                    setResults([]);
-                  }}
-                >
-                  <Text style={styles.removeText}>Change</Text>
-                </Pressable>
-              </View>
-            ) : null}
-
             <Text style={styles.label}>Tee time</Text>
             <View style={styles.row}>
               <Pressable
@@ -532,119 +701,232 @@ export default function CreateScreen() {
               </Pressable>
             </View>
           </>
-        )}
-
-        <Text style={styles.label}>Invite friends</Text>
-        <View>
-          <TextInput
-            value={friendQuery}
-            onChangeText={setFriendQuery}
-            onFocus={() => friendResults.length > 0 && setShowFriendResults(true)}
-            placeholder="Name or email..."
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
-          {loadingFriends ? <Text style={styles.loadingHint}>Searching...</Text> : null}
-        </View>
-        {showFriendResults && friendResults.map((friend) => (
-          <Pressable
-            key={friend.id}
-            style={styles.listRow}
-            onPress={() => {
-              setSelectedFriends((prev) => [...prev, friend]);
-              setFriendResults((prev) => prev.filter((u) => u.id !== friend.id));
-              setShowFriendResults(true);
-            }}
-          >
-            <Text style={styles.listTitle}>{friend.name}</Text>
-            {friend.email ? <Text style={styles.listMeta}>{friend.email}</Text> : null}
-          </Pressable>
-        ))}
-        {selectedFriends.map((friend) => (
-          <View key={friend.id} style={styles.selectedRow}>
-            <Text style={styles.selectedText}>{friend.name}</Text>
-            <Pressable
-              onPress={() =>
-                setSelectedFriends((prev) => prev.filter((u) => u.id !== friend.id))
-              }
-            >
-              <Text style={styles.removeText}>Remove</Text>
-            </Pressable>
-          </View>
-        ))}
-
-        <Text style={styles.label}>Spots</Text>
-        <View style={styles.row}>
-          {[2, 3, 4].map((n) => (
-            <Pressable
-              key={n}
-              style={[styles.pill, totalSpots === n && styles.pillActive]}
-              onPress={() => setTotalSpots(n)}
-            >
-              <Text style={[styles.pillText, totalSpots === n && styles.pillTextActive]}>
-                {n}
+        ) : (
+          <>
+            <Text style={styles.label}>Image</Text>
+            {eventImageUri ? <Image source={{ uri: eventImageUri }} style={styles.cover} /> : null}
+            <Pressable style={styles.secondaryButton} onPress={() => void pickEventImage()}>
+              <Text style={styles.secondaryButtonText}>
+                {eventImageUri ? "Change image" : "Add image"}
               </Text>
             </Pressable>
-          ))}
-        </View>
 
-        <Text style={styles.label}>Visibility</Text>
-        <View style={styles.row}>
-          <Pressable
-            style={[styles.pill, visibility === "private" && styles.pillActive]}
-            onPress={() => setVisibility("private")}
-          >
-            <Text style={[styles.pillText, visibility === "private" && styles.pillTextActive]}>
-              Private
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.pill, visibility === "public" && styles.pillActive]}
-            onPress={() => setVisibility("public")}
-          >
-            <Text style={[styles.pillText, visibility === "public" && styles.pillTextActive]}>
-              Public
-            </Text>
-          </Pressable>
-        </View>
+            <Text style={styles.label}>Title</Text>
+            <TextInput
+              value={eventTitle}
+              onChangeText={setEventTitle}
+              placeholder={createType === "tournament" ? "Tournament title" : "Event title"}
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
 
-        <Text style={styles.label}>Join policy</Text>
-        <View style={styles.row}>
-          <Pressable
-            style={[styles.pill, joinPolicy === "instant" && styles.pillActive]}
-            onPress={() => setJoinPolicy("instant")}
-          >
-            <Text style={[styles.pillText, joinPolicy === "instant" && styles.pillTextActive]}>
-              Instant
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.pill, joinPolicy === "approval" && styles.pillActive]}
-            onPress={() => setJoinPolicy("approval")}
-          >
-            <Text style={[styles.pillText, joinPolicy === "approval" && styles.pillTextActive]}>
-              Approval
-            </Text>
-          </Pressable>
-        </View>
+            <Text style={styles.label}>Details</Text>
+            <TextInput
+              value={eventDetails}
+              onChangeText={setEventDetails}
+              placeholder="What this is about..."
+              placeholderTextColor={colors.muted}
+              style={[styles.input, styles.multilineInput]}
+              multiline
+            />
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {success ? <Text style={styles.success}>{success}</Text> : null}
+            <Text style={styles.label}>Location</Text>
+            <TextInput
+              value={eventLocation}
+              onChangeText={setEventLocation}
+              placeholder="City, venue, or address"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
 
+            <Text style={styles.label}>Date & time</Text>
+            <View style={styles.row}>
+              <Pressable
+                style={[styles.datePickerBtn, styles.flex1]}
+                onPress={() => setEventDatePickerOpen(true)}
+              >
+                <Text style={[styles.datePickerText, !eventDate && styles.datePickerPlaceholder]}>
+                  {formatDateLabel(eventDate)}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
+              </Pressable>
+              <Pressable
+                style={[styles.datePickerBtn, styles.flex1]}
+                onPress={() => setEventTimePickerOpen(true)}
+              >
+                <Text style={styles.datePickerText}>{formatTimeLabel(eventTime)}</Text>
+                <Ionicons name="time-outline" size={18} color={colors.fairway} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.label}>Cost (optional)</Text>
+            <TextInput
+              value={eventCost}
+              onChangeText={setEventCost}
+              placeholder="$0 or $25"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>RSVP deadline (optional)</Text>
+            <View style={styles.row}>
+              <Pressable
+                style={[styles.datePickerBtn, styles.flex1]}
+                onPress={() => setEventDeadlineDatePickerOpen(true)}
+              >
+                <Text
+                  style={[
+                    styles.datePickerText,
+                    !eventRsvpDeadlineDate && styles.datePickerPlaceholder,
+                  ]}
+                >
+                  {formatDateLabel(eventRsvpDeadlineDate)}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
+              </Pressable>
+              <Pressable
+                style={[styles.datePickerBtn, styles.flex1]}
+                onPress={() => setEventDeadlineTimePickerOpen(true)}
+              >
+                <Text style={styles.datePickerText}>{formatTimeLabel(eventRsvpDeadlineTime)}</Text>
+                <Ionicons name="time-outline" size={18} color={colors.fairway} />
+              </Pressable>
+            </View>
+            <Text style={styles.loadingHint}>
+              RSVP defaults: Yes/No for most types, Yes/No/Maybe for events.
+            </Text>
+
+            <Text style={styles.loadingHint}>
+              Save/publish for {createType} will be wired next.
+            </Text>
+          </>
+        )}
+
+        {isRoundType ? (
+          <>
+            <Text style={styles.label}>Visibility</Text>
+            <View style={styles.row}>
+              <Pressable
+                style={[styles.pill, visibility === "private" && styles.pillActive]}
+                onPress={() => setVisibility("private")}
+              >
+                <Text style={[styles.pillText, visibility === "private" && styles.pillTextActive]}>
+                  Invite only
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.pill, visibility === "public" && styles.pillActive]}
+                onPress={() => setVisibility("public")}
+              >
+                <Text style={[styles.pillText, visibility === "public" && styles.pillTextActive]}>
+                  Public
+                </Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.label}>Spots</Text>
+            <View style={styles.row}>
+              {[2, 3, 4].map((n) => (
+                <Pressable
+                  key={n}
+                  style={[styles.pill, totalSpots === n && styles.pillActive]}
+                  onPress={() => setTotalSpots(n)}
+                >
+                  <Text style={[styles.pillText, totalSpots === n && styles.pillTextActive]}>
+                    {n}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Join policy</Text>
+            <View style={styles.row}>
+              <Pressable
+                style={[styles.pill, joinPolicy === "instant" && styles.pillActive]}
+                onPress={() => setJoinPolicy("instant")}
+              >
+                <Text style={[styles.pillText, joinPolicy === "instant" && styles.pillTextActive]}>
+                  Instant
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.pill, joinPolicy === "approval" && styles.pillActive]}
+                onPress={() => setJoinPolicy("approval")}
+              >
+                <Text style={[styles.pillText, joinPolicy === "approval" && styles.pillTextActive]}>
+                  Approval
+                </Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.label}>Invite friends</Text>
+            <View>
+              <TextInput
+                value={friendQuery}
+                onChangeText={setFriendQuery}
+                onFocus={() => friendResults.length > 0 && setShowFriendResults(true)}
+                placeholder="Name or email..."
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+              {loadingFriends ? <Text style={styles.loadingHint}>Searching...</Text> : null}
+            </View>
+            {showFriendResults && friendResults.map((friend) => (
+              <Pressable
+                key={friend.id}
+                style={styles.listRow}
+                onPress={() => {
+                  setSelectedFriends((prev) => [...prev, friend]);
+                  setFriendResults((prev) => prev.filter((u) => u.id !== friend.id));
+                  setShowFriendResults(true);
+                }}
+              >
+                <Text style={styles.listTitle}>{friend.name}</Text>
+                {friend.email ? <Text style={styles.listMeta}>{friend.email}</Text> : null}
+              </Pressable>
+            ))}
+            {selectedFriends.map((friend) => (
+              <View key={friend.id} style={styles.selectedRow}>
+                <Text style={styles.selectedText}>{friend.name}</Text>
+                <Pressable
+                  onPress={() =>
+                    setSelectedFriends((prev) => prev.filter((u) => u.id !== friend.id))
+                  }
+                >
+                  <Text style={styles.removeText}>Remove</Text>
+                </Pressable>
+              </View>
+            ))}
+          </>
+        ) : null}
+
+      </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {success ? <Text style={styles.success}>{success}</Text> : null}
+      <View style={styles.actionWrap}>
         <Pressable
           style={[styles.primaryButton, !canSubmit && styles.disabled]}
           onPress={() => void submit()}
           disabled={!canSubmit}
         >
           <Text style={styles.primaryButtonText}>
-            {submitting ? "Creating..." : "Create round"}
+            {isRoundType
+              ? submitting
+                ? "Creating..."
+                : "Create round"
+              : createType === "tournament"
+                ? "Create tournament (coming soon)"
+                : "Create event (coming soon)"}
           </Text>
         </Pressable>
       </View>
 
       <Modal visible={calendarOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setCalendarOpen(false)}>
+          <Pressable
+            style={styles.modalCard}
+            onPress={(event) => event.stopPropagation()}
+          >
             <Text style={styles.modalTitle}>
               {calendarTarget === "targetDate" ? "Select target date" : "Select tee date"}
             </Text>
@@ -712,8 +994,8 @@ export default function CreateScreen() {
             <Pressable style={styles.modalDoneBtn} onPress={() => setCalendarOpen(false)}>
               <Text style={styles.modalDoneText}>Done</Text>
             </Pressable>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {timePickerOpen && (
@@ -725,6 +1007,58 @@ export default function CreateScreen() {
             setTimePickerOpen(false);
             if (event.type === "set" && selected) {
               setTeeTimeValue(selected);
+            }
+          }}
+        />
+      )}
+      {eventDatePickerOpen && (
+        <DateTimePicker
+          value={eventDate ?? new Date()}
+          mode="date"
+          display="default"
+          onChange={(event: DateTimePickerEvent, selected?: Date) => {
+            setEventDatePickerOpen(false);
+            if (event.type === "set" && selected) {
+              setEventDate(selected);
+            }
+          }}
+        />
+      )}
+      {eventTimePickerOpen && (
+        <DateTimePicker
+          value={eventTime}
+          mode="time"
+          display="default"
+          onChange={(event: DateTimePickerEvent, selected?: Date) => {
+            setEventTimePickerOpen(false);
+            if (event.type === "set" && selected) {
+              setEventTime(selected);
+            }
+          }}
+        />
+      )}
+      {eventDeadlineDatePickerOpen && (
+        <DateTimePicker
+          value={eventRsvpDeadlineDate ?? new Date()}
+          mode="date"
+          display="default"
+          onChange={(event: DateTimePickerEvent, selected?: Date) => {
+            setEventDeadlineDatePickerOpen(false);
+            if (event.type === "set" && selected) {
+              setEventRsvpDeadlineDate(selected);
+            }
+          }}
+        />
+      )}
+      {eventDeadlineTimePickerOpen && (
+        <DateTimePicker
+          value={eventRsvpDeadlineTime}
+          mode="time"
+          display="default"
+          onChange={(event: DateTimePickerEvent, selected?: Date) => {
+            setEventDeadlineTimePickerOpen(false);
+            if (event.type === "set" && selected) {
+              setEventRsvpDeadlineTime(selected);
             }
           }}
         />
@@ -760,6 +1094,24 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     color: colors.text,
+  },
+  inputRow: {
+    position: "relative",
+  },
+  inputClearBtn: {
+    position: "absolute",
+    right: 10,
+    top: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ece8e1",
+  },
+  multilineInput: {
+    minHeight: 90,
+    textAlignVertical: "top",
   },
   datePickerBtn: {
     backgroundColor: "#f1efea",
@@ -825,6 +1177,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryButtonText: { color: colors.text, fontWeight: "700" },
+  actionWrap: { marginTop: 2, gap: 6 },
   primaryButton: {
     backgroundColor: colors.fairway,
     borderRadius: 12,
