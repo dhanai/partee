@@ -501,18 +501,39 @@ export default function CreateScreen() {
               onChange={setPreferredTimeWindow}
             />
             <Text style={styles.label}>Location</Text>
-            <TextInput
-              value={planningLocation}
-              onChangeText={(value) => {
-                setPlanningLocation(value);
-                setPlanningLocationIsValidated(false);
-              }}
-              onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
-              placeholder="City, State"
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-            />
-            {loadingLocations ? <Text style={styles.loadingHint}>Searching...</Text> : null}
+            <View style={styles.inputRow}>
+              <TextInput
+                value={planningLocation}
+                onChangeText={(value) => {
+                  setPlanningLocation(value);
+                  setPlanningLocationIsValidated(false);
+                }}
+                onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
+                placeholder="City, State"
+                placeholderTextColor={colors.muted}
+                style={[styles.input, styles.inputWithAccessory]}
+              />
+              {loadingLocations &&
+              !planningLocationIsValidated &&
+              planningLocation.trim().length >= 2 ? (
+                <View style={styles.inputAccessory}>
+                  <ActivityIndicator size="small" color={colors.muted} />
+                </View>
+              ) : null}
+              {planningLocationIsValidated && planningLocation.trim().length > 0 ? (
+                <Pressable
+                  style={styles.inputAccessory}
+                  onPress={() => {
+                    setPlanningLocation("");
+                    setPlanningLocationIsValidated(false);
+                    setLocationResults([]);
+                    setShowLocationResults(false);
+                  }}
+                >
+                  <Ionicons name="close" size={15} color={colors.muted} />
+                </Pressable>
+              ) : null}
+            </View>
             {showLocationResults &&
               locationResults.map((item) => (
                 <Pressable
