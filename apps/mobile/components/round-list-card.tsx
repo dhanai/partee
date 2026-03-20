@@ -75,12 +75,17 @@ export function RoundListCard({
       style={[styles.card, mode === "planning" && styles.planningCard, planningTheme?.card]}
     >
       {/*
-        Spots row lives outside the card Pressable so avatar Pressables receive taps.
-        (Nested pressables often collapse to the parent on iOS.)
+        Full cardBody is tappable via a rear Pressable. Foreground uses pointerEvents so
+        taps pass through image/text/empty spots to open the round; avatar Pressables stay interactive.
       */}
       <View style={styles.cardBody}>
-        <Pressable onPressIn={onCardPressIn} onPress={onPress} style={styles.cardPress}>
-          <View style={styles.cardPressInner}>
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPressIn={onCardPressIn}
+          onPress={onPress}
+        />
+        <View style={styles.cardForeground} pointerEvents="box-none">
+          <View style={styles.cardPressInner} pointerEvents="none">
             {mode === "scheduled" ? (
               <>
                 <RoundCoverImage
@@ -114,22 +119,24 @@ export function RoundListCard({
               </>
             )}
           </View>
-        </Pressable>
-        <View style={styles.spotsRow}>
-          <View style={styles.spotsRowMain}>
-            <ConfirmedSpotsRow
-              roundId={roundId}
-              totalSpots={totalSpots}
-              players={confirmedPlayers}
-              size="sm"
-              initialTone="fairway"
-              onPlayerPress={onPlayerPress}
-              onPlayerPressIn={onPlayerPressIn}
-            />
+          <View style={styles.spotsRow} pointerEvents="box-none">
+            <View style={styles.spotsRowMain} pointerEvents="box-none">
+              <ConfirmedSpotsRow
+                roundId={roundId}
+                totalSpots={totalSpots}
+                players={confirmedPlayers}
+                size="sm"
+                initialTone="fairway"
+                onPlayerPress={onPlayerPress}
+                onPlayerPressIn={onPlayerPressIn}
+              />
+            </View>
+            {trailingAfterSpots ? (
+              <View style={styles.trailingWrap} pointerEvents="none">
+                {trailingAfterSpots}
+              </View>
+            ) : null}
           </View>
-          {trailingAfterSpots ? (
-            <View style={styles.trailingWrap}>{trailingAfterSpots}</View>
-          ) : null}
         </View>
       </View>
       {footer}
@@ -150,9 +157,11 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
   },
   cardBody: {
+    position: "relative",
+  },
+  cardForeground: {
     gap: 8,
   },
-  cardPress: {},
   cardPressInner: {
     gap: 8,
   },

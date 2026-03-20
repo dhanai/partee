@@ -37,13 +37,15 @@ export function ConfirmedSpotsRow({
   const dimStyle = { width: s.dim, height: s.dim, borderRadius: s.dim / 2 };
 
   return (
-    <View style={[styles.row, { gap: s.gap }]}>
+    <View style={[styles.row, { gap: s.gap }]} pointerEvents="box-none">
       {Array.from({ length: Math.max(0, totalSpots) }).map((_, idx) => {
         const player = players[idx] ?? null;
         const key = `${roundId}-spot-${idx}`;
 
         if (!player) {
-          return <View key={key} style={[styles.empty, dimStyle]} />;
+          return (
+            <View key={key} style={[styles.empty, dimStyle]} pointerEvents="none" />
+          );
         }
 
         const avatarInner =
