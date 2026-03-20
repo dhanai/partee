@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyRoundInvites } from "@/lib/notify-user";
+import { buildRoundInvitePushBody } from "@/lib/round-invite-push-message";
 
 const inviteSchema = z.object({
   inviteeUserIds: z.array(z.string().uuid()).min(1).max(30),
@@ -26,6 +27,8 @@ export async function POST(req: Request, { params }: RouteContext) {
         courseName: rounds.courseName,
         planningLocation: rounds.planningLocation,
         mode: rounds.mode,
+        teeTime: rounds.teeTime,
+        targetDate: rounds.targetDate,
       })
       .from(rounds)
       .where(eq(rounds.inviteToken, params.token));
@@ -83,13 +86,14 @@ export async function POST(req: Request, { params }: RouteContext) {
       await db.insert(spots).values(inviteRows).onConflictDoNothing({
         target: [spots.roundId, spots.userId],
       });
-      const label =
-        round.courseName?.trim() ||
-        round.planningLocation?.trim() ||
-        (round.mode === "planning" ? "a planning round" : "a round");
       void notifyRoundInvites({
         inviteeUserIds: inviteRows.map((r) => r.userId),
-        body: `You're invited to ${label} on Partee.`,
+        body: buildRoundInvitePushBody({
+          inviterDisplayName: currentUser.name,
+          teeTime: round.teeTime,
+          targetDate: round.targetDate,
+          mode: round.mode,
+        }),
       });
     }
 

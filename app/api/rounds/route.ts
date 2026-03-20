@@ -7,6 +7,7 @@ import { courses, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { notifyRoundInvites } from "@/lib/notify-user";
+import { buildRoundInvitePushBody } from "@/lib/round-invite-push-message";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
 const createRoundSchema = z
@@ -207,13 +208,14 @@ export async function POST(req: Request) {
         .select({ userId: spots.userId })
         .from(spots)
         .where(and(eq(spots.roundId, createdRound.id), eq(spots.status, "invited")));
-      const label =
-        createdRound.courseName?.trim() ||
-        createdRound.planningLocation?.trim() ||
-        (createdRound.mode === "planning" ? "a planning round" : "a round");
       void notifyRoundInvites({
         inviteeUserIds: invitedRows.map((r) => r.userId),
-        body: `You're invited to ${label} on Partee.`,
+        body: buildRoundInvitePushBody({
+          inviterDisplayName: user.name,
+          teeTime: createdRound.teeTime,
+          targetDate: createdRound.targetDate,
+          mode: createdRound.mode,
+        }),
       });
     }
 
