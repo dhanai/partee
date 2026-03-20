@@ -8,7 +8,6 @@ import * as SecureStore from "expo-secure-store";
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -16,7 +15,18 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { RoundListCard } from "../../components/round-list-card";
+import { apiGet, apiPost } from "../../lib/api";
+import {
+  formatPlanningHeaderDate,
+  formatPlanningWindow,
+  formatScheduledCardMeta,
+} from "../../lib/round-card-meta";
+import { prefetchPublicProfile } from "../../lib/public-profile-cache";
+import {
+  applyOptimisticToDiscoverRound,
+  subscribeRoundListsRefresh,
+} from "../../lib/round-lists-refresh";
 import { colors } from "../../lib/theme";
 import { DiscoverRound } from "../../types/round";
 
@@ -70,6 +80,9 @@ export default function DiscoverScreen() {
   const [error, setError] = useState<string | null>(null);
   const roundsRef = useRef<DiscoverRound[]>([]);
   const hasManualLocationRef = useRef(false);
+  const loadRoundsRef = useRef<
+    ((options?: { reset?: boolean }) => Promise<void>) | null
+  >(null);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -243,11 +256,26 @@ export default function DiscoverScreen() {
     }
   }, [coords, radiusMiles, discoverCursor, hasMoreDiscover, loadingMore]);
 
+  useEffect(() => {
+    loadRoundsRef.current = loadRounds;
+  }, [loadRounds]);
+
+  useEffect(() => {
+    return subscribeRoundListsRefresh((payload) => {
+      if (payload.optimistic) {
+        const p = payload.optimistic;
+        setRounds((prev) => prev.map((r) => applyOptimisticToDiscoverRound(r, p)));
+      }
+      if (!locationHydrated) return;
+      void loadRoundsRef.current?.({ reset: true });
+    });
+  }, [locationHydrated]);
+
   useFocusEffect(
     useCallback(() => {
       if (!locationHydrated) return;
-      void loadRounds({ reset: true });
-    }, [loadRounds, locationHydrated]),
+      void loadRoundsRef.current?.({ reset: true });
+    }, [locationHydrated]),
   );
 
   useEffect(() => {
@@ -325,13 +353,6 @@ export default function DiscoverScreen() {
 
   function formatDateShort(date: Date | null) {
     return date ? date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Any";
-  }
-
-  function formatPlanningWindow(
-    window: "morning" | "afternoon" | "twilight" | null | undefined,
-  ) {
-    if (!window) return "Time TBD";
-    return window.charAt(0).toUpperCase() + window.slice(1);
   }
 
   function isSameDay(a: Date, b: Date) {
@@ -522,75 +543,42 @@ export default function DiscoverScreen() {
           void loadRounds({ reset: false });
         }}
         renderItem={({ item: round }) => (
-          <Pressable
-            style={[styles.card, round.mode === "planning" && styles.planningCard]}
+          <RoundListCard
+            roundId={round.id}
+            mode={round.mode === "scheduled" ? "scheduled" : "planning"}
+            courseName={round.courseName}
+            imageUrl={round.imageUrl}
+            joinPolicy={round.joinPolicy}
+            totalSpots={round.totalSpots}
+            confirmedPlayers={round.confirmedPlayers}
             onPress={() =>
               router.push({
                 pathname: "/round/[token]",
                 params: { token: round.inviteToken },
               })
             }
-          >
-            {round.mode === "scheduled" ? (
-              <>
-                <Image source={{ uri: toAbsoluteUrl(round.imageUrl) }} style={styles.cardImage} />
-                <View style={styles.topRow}>
-                  <Text style={styles.cardTitle}>{round.courseName}</Text>
-                  <Text style={styles.badgeMuted}>
-                    {round.joinPolicy === "instant" ? "Instant" : "Approval"}
-                  </Text>
-                </View>
-                <Text style={styles.cardMeta}>
-                  {new Date(round.effectiveDate).toLocaleDateString()}{" "}
-                  {round.teeTime
-                    ? `at ${new Date(round.teeTime).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}`
-                    : "• time TBD"}
-                </Text>
-                <View style={styles.badgeRow}>
-                  <Text style={styles.badge}>
-                    {round.totalSpots} spots • {round.spotsRemaining} left
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={styles.topRow}>
-                  <Text style={styles.planDate}>
-                    {new Date(round.effectiveDate).toLocaleDateString("en-US", {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </Text>
-                  <Text style={styles.badgeMuted}>Planning round</Text>
-                </View>
-                <Text style={styles.cardMeta}>{formatPlanningWindow(round.preferredTimeWindow)}</Text>
-                {round.planningLocation ? (
-                  <Text style={styles.cardMeta}>{round.planningLocation}</Text>
-                ) : null}
-                <View style={styles.badgeRow}>
-                  <Text style={styles.badge}>
-                    {round.totalSpots} spots • {round.spotsRemaining} left
-                  </Text>
-                </View>
-              </>
-            )}
-            <View style={styles.hostRow}>
-              {round.hostAvatar ? (
-                <Image source={{ uri: toAbsoluteUrl(round.hostAvatar) }} style={styles.hostAvatar} />
-              ) : (
-                <View style={[styles.hostAvatar, styles.hostAvatarFallback]}>
-                  <Text style={styles.hostInitial}>
-                    {round.hostName.trim().charAt(0).toUpperCase() || "?"}
-                  </Text>
-                </View>
-              )}
-              <Text style={styles.hostLabel}>Hosted by {round.hostName}</Text>
-            </View>
-          </Pressable>
+            primaryMeta={
+              round.mode === "scheduled"
+                ? formatScheduledCardMeta(round.effectiveDate, round.teeTime)
+                : formatPlanningWindow(round.preferredTimeWindow)
+            }
+            planningLocation={round.planningLocation}
+            planningHeaderDate={formatPlanningHeaderDate(round.effectiveDate)}
+            preferredTimeWindow={round.preferredTimeWindow}
+            onPlayerPress={(player) =>
+              router.push({
+                pathname: "/profile/[userId]",
+                params: {
+                  userId: player.id,
+                  userName: player.name,
+                  userAvatar: player.avatar ?? "",
+                },
+              })
+            }
+            onPlayerPressIn={(player) =>
+              prefetchPublicProfile(player.id, () => getTokenRef.current())
+            }
+          />
         )}
       />
 
@@ -863,53 +851,6 @@ const styles = StyleSheet.create({
   },
   emptySecondaryBtnText: { color: colors.text, fontWeight: "700", fontSize: 12 },
   loadingMore: { marginVertical: 10 },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 11,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 8,
-  },
-  planningCard: {
-    borderColor: "#a8d4b2",
-    borderStyle: "dashed",
-    backgroundColor: "#fbfffc",
-  },
-  cardImage: { width: "100%", height: 132, borderRadius: 12, backgroundColor: "#dfe6df" },
-  topRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
-  cardTitle: { fontSize: 20, fontWeight: "700", color: colors.text },
-  planDate: { fontSize: 20, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
-  cardMeta: { color: colors.muted },
-  badgeRow: { flexDirection: "row", justifyContent: "space-between" },
-  badge: {
-    backgroundColor: colors.fairwaySoft,
-    color: colors.fairway,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    fontWeight: "600",
-    overflow: "hidden",
-  },
-  hostRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  hostAvatar: { width: 28, height: 28, borderRadius: 999 },
-  hostAvatarFallback: {
-    backgroundColor: "#f1efea",
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hostInitial: { color: colors.muted, fontSize: 12, fontWeight: "700" },
-  hostLabel: { color: colors.text, fontWeight: "600", fontSize: 13 },
-  badgeMuted: {
-    backgroundColor: "#f1efea",
-    color: colors.muted,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
   rangeRow: {
     backgroundColor: "#f1efea",
     borderRadius: 12,

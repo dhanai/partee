@@ -1,17 +1,21 @@
+import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAuth, useClerk } from "@clerk/clerk-expo";
-import * as ImagePicker from "expo-image-picker";
+import { useAuth } from "@clerk/clerk-expo";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import {
   ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
-import { apiBaseUrl, apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { apiGet, toAbsoluteUrl } from "../../lib/api";
+import { setCachedMeProfile } from "../../lib/me-profile-cache";
+import { prefetchPublicProfile } from "../../lib/public-profile-cache";
 import { colors } from "../../lib/theme";
 
 type MeResponse = {
@@ -25,38 +29,78 @@ type MeResponse = {
     homeCourse: string | null;
   };
 };
-type LocationResult = { label: string; city: string; state: string };
 
-function useDebounce(value: string, delayMs: number) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
-}
+type ProfileNetworkResponse = {
+  friends: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+    count: number;
+  }>;
+};
 
 export default function ProfileScreen() {
-  const { signOut } = useClerk();
+  const navigation = useNavigation();
+  const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
-  const hasLoadedOnceRef = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [friendsLoading, setFriendsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [handicap, setHandicap] = useState("");
   const [location, setLocation] = useState("");
-  const [locationIsValidated, setLocationIsValidated] = useState(true);
-  const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
-  const [locationLoading, setLocationLoading] = useState(false);
-  const [showLocationResults, setShowLocationResults] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
-  const debouncedLocation = useDebounce(location, 320);
+  const [friends, setFriends] = useState<ProfileNetworkResponse["friends"]>([]);
+
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRightContainerStyle: {
+        paddingRight: 12,
+      },
+      headerRight: () => (
+        <Pressable
+          style={styles.headerSettingsBtn}
+          onPress={() => router.push("/settings")}
+          accessibilityLabel="Open settings"
+        >
+          <Ionicons name="options-outline" size={18} color={colors.fairway} />
+        </Pressable>
+      ),
+    });
+  }, [navigation, router]);
+
+  async function loadProfile() {
+    setLoading(true);
+    setFriendsLoading(true);
+    setError(null);
+    try {
+      const token = await getTokenRef.current();
+      const [json, network] = await Promise.all([
+        apiGet<MeResponse>("/api/users/me", token),
+        apiGet<ProfileNetworkResponse>("/api/users/me/network", token),
+      ]);
+      setCachedMeProfile(json.user);
+      setName(json.user.name ?? "");
+      setHandicap(json.user.handicap ?? "");
+      setLocation(json.user.location ?? json.user.homeCourse ?? "");
+      setAvatar(json.user.avatar ?? null);
+      setFriends(network.friends ?? []);
+    } catch (profileError) {
+      setError(profileError instanceof Error ? profileError.message : "Unable to load profile.");
+    } finally {
+      setLoading(false);
+      setFriendsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadProfile();
+  }, []);
 
   const initials = useMemo(() => {
     if (!name.trim()) return "P";
@@ -69,175 +113,31 @@ export default function ProfileScreen() {
       .toUpperCase();
   }, [name]);
 
-  useEffect(() => {
-    getTokenRef.current = getToken;
-  }, [getToken]);
+  const handicapDisplay = handicap.trim();
+  const locationDisplay = location.trim();
+  const profileMetaLine =
+    handicapDisplay && locationDisplay
+      ? `Handicap ${handicapDisplay} • ${locationDisplay}`
+      : handicapDisplay
+        ? `Handicap ${handicapDisplay}`
+        : locationDisplay;
 
-  async function loadProfile() {
-    setLoading(true);
-    setError(null);
-    try {
-      const token = await getTokenRef.current();
-      const json = await apiGet<MeResponse>("/api/users/me", token);
-      setName(json.user.name ?? "");
-      setEmail(json.user.email ?? "");
-      setHandicap(json.user.handicap ?? "");
-      const existingLocation = json.user.location ?? json.user.homeCourse ?? "";
-      setLocation(existingLocation);
-      setLocationIsValidated(existingLocation.trim().length > 0);
-      setAvatar(json.user.avatar ?? null);
-    } catch (profileError) {
-      setError(
-        profileError instanceof Error ? profileError.message : "Unable to load profile.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (hasLoadedOnceRef.current) return;
-    hasLoadedOnceRef.current = true;
-    void loadProfile();
-  }, []);
-
-  async function handleSignOut() {
-    setBusy(true);
-    try {
-      await signOut();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleUploadAvatar() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError("Photo permission is required to upload your profile image.");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [1, 1],
+  async function handleShareProfile() {
+    const profileLabel = name.trim() || "Partee golfer";
+    await Share.share({
+      message: `Check out ${profileLabel}'s profile on Partee.`,
     });
-
-    if (result.canceled || !result.assets[0]?.uri) return;
-
-    setUploading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const token = await getToken();
-      const asset = result.assets[0];
-      const imageResponse = await fetch(asset.uri);
-      const imageBlob = await imageResponse.blob();
-      const formData = new FormData();
-      formData.append("file", imageBlob, "profile-image.jpg");
-
-      const response = await fetch(`${apiBaseUrl}/api/uploads/event-image`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData,
-      });
-
-      const json = (await response.json()) as { url?: string; error?: string };
-      if (!response.ok || !json.url) {
-        throw new Error(json.error ?? "Image upload failed.");
-      }
-      setAvatar(json.url);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Image upload failed.");
-    } finally {
-      setUploading(false);
-    }
   }
-
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    if (location.trim().length > 0 && !locationIsValidated) {
-      setSaving(false);
-      setError("Choose a location from suggestions.");
-      return;
-    }
-    try {
-      const token = await getToken();
-      await apiPatch<MeResponse>(
-        "/api/users/me",
-        {
-          name: name.trim(),
-          email: email.trim() || null,
-          handicap: handicap.trim() || null,
-          location: location.trim() || null,
-          avatar: avatar ?? null,
-        },
-        token,
-      );
-      setSuccess("Profile updated.");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to update profile.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  useEffect(() => {
-    let active = true;
-    async function runLocationSearch() {
-      if (locationIsValidated) {
-        if (active) {
-          setLocationResults([]);
-          setShowLocationResults(false);
-          setLocationLoading(false);
-        }
-        return;
-      }
-      const query = debouncedLocation.trim();
-      if (query.length < 2) {
-        if (active) {
-          setLocationResults([]);
-          setShowLocationResults(false);
-        }
-        return;
-      }
-      setLocationLoading(true);
-      try {
-        const token = await getTokenRef.current();
-        const json = await apiPost<{ locations: LocationResult[] }>(
-          "/api/locations/search",
-          { query },
-          token,
-        );
-        if (!active) return;
-        setLocationResults(json.locations);
-        setShowLocationResults(true);
-      } catch {
-        if (!active) return;
-      } finally {
-        if (active) setLocationLoading(false);
-      }
-    }
-    void runLocationSearch();
-    return () => {
-      active = false;
-    };
-  }, [debouncedLocation, locationIsValidated]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Profile</Text>
-
       {loading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={colors.fairway} />
         </View>
       ) : (
-        <View style={styles.card}>
-          <View style={styles.avatarRow}>
+        <View style={styles.profileLayout}>
+          <View style={styles.profileHeader}>
             {avatar ? (
               <Image source={{ uri: toAbsoluteUrl(avatar) }} style={styles.avatar} />
             ) : (
@@ -245,102 +145,67 @@ export default function ProfileScreen() {
                 <Text style={styles.avatarInitials}>{initials}</Text>
               </View>
             )}
-            <View style={styles.avatarActions}>
-              <Text style={styles.sectionLabel}>Photo</Text>
-              <Pressable
-                style={[styles.secondaryButton, uploading && styles.buttonDisabled]}
-                onPress={() => void handleUploadAvatar()}
-                disabled={uploading}
-              >
-                <Text style={styles.secondaryButtonText}>
-                  {uploading ? "Uploading..." : avatar ? "Change photo" : "Upload photo"}
-                </Text>
-              </Pressable>
-            </View>
+            <Text style={styles.profileName}>{name || "Your profile"}</Text>
+            {profileMetaLine ? <Text style={styles.profileInfoLine}>{profileMetaLine}</Text> : null}
           </View>
 
-          <Text style={styles.sectionLabel}>Name</Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Your name"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
+          <View style={styles.actionRow}>
+            <Pressable style={styles.actionPill} onPress={() => router.push("/profile/edit")}>
+              <Text style={styles.actionPillText}>Edit profile</Text>
+            </Pressable>
+            <Pressable style={styles.actionPill} onPress={() => void handleShareProfile()}>
+              <Text style={styles.actionPillText}>Share profile</Text>
+            </Pressable>
+          </View>
 
-          <Text style={styles.sectionLabel}>Email</Text>
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholder="you@example.com"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
-
-          <Text style={styles.sectionLabel}>Handicap index</Text>
-          <TextInput
-            value={handicap}
-            onChangeText={setHandicap}
-            keyboardType="decimal-pad"
-            placeholder="8.4"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
-
-          <Text style={styles.sectionLabel}>Location</Text>
-          <TextInput
-            value={location}
-            onChangeText={(value) => {
-              setLocation(value);
-              setLocationIsValidated(false);
-            }}
-            onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
-            placeholder="City, State"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
-          {locationLoading ? <Text style={styles.hint}>Searching locations...</Text> : null}
-          {showLocationResults &&
-            locationResults.map((item) => (
-              <Pressable
-                key={item.label}
-                style={styles.listRow}
-                onPress={() => {
-                  setLocation(item.label);
-                  setLocationIsValidated(true);
-                  setLocationResults([]);
-                  setShowLocationResults(false);
-                }}
-              >
-                <Text style={styles.listTitle}>{item.label}</Text>
-              </Pressable>
-            ))}
-          {!locationIsValidated && location.trim().length > 0 ? (
-            <Text style={styles.hint}>Select a suggested city/state.</Text>
-          ) : null}
+          <View style={styles.friendsSection}>
+            <Text style={styles.sectionTitle}>Friends</Text>
+            {friendsLoading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={colors.fairway} />
+              </View>
+            ) : friends.length === 0 ? (
+              <Text style={styles.hint}>No friends yet. Join rounds to build your network.</Text>
+            ) : (
+              friends.map((friend) => (
+                <Pressable
+                  key={friend.id}
+                  style={styles.friendRow}
+                  onPressIn={() => prefetchPublicProfile(friend.id, () => getTokenRef.current())}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/profile/[userId]",
+                      params: {
+                        userId: friend.id,
+                        userName: friend.name,
+                        userAvatar: friend.avatar ?? "",
+                      },
+                    })
+                  }
+                >
+                  {friend.avatar ? (
+                    <Image source={{ uri: toAbsoluteUrl(friend.avatar) }} style={styles.friendAvatar} />
+                  ) : (
+                    <View style={[styles.friendAvatar, styles.avatarPlaceholder]}>
+                      <Text style={styles.friendInitial}>
+                        {friend.name.trim().charAt(0).toUpperCase() || "?"}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.friendMeta}>
+                    <Text style={styles.friendName}>{friend.name}</Text>
+                    <Text style={styles.friendSub}>
+                      Paired {friend.count} time{friend.count === 1 ? "" : "s"}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))
+            )}
+          </View>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          {success ? <Text style={styles.successText}>{success}</Text> : null}
-
-          <Pressable
-            style={[styles.button, saving && styles.buttonDisabled]}
-            disabled={saving}
-            onPress={() => void handleSave()}
-          >
-            <Text style={styles.buttonText}>{saving ? "Saving..." : "Save profile"}</Text>
-          </Pressable>
         </View>
       )}
-
-      <Pressable
-        style={[styles.signOutButton, busy && styles.buttonDisabled]}
-        disabled={busy}
-        onPress={() => void handleSignOut()}
-      >
-        <Text style={styles.signOutText}>{busy ? "Signing out..." : "Sign out"}</Text>
-      </Pressable>
     </ScrollView>
   );
 }
@@ -348,28 +213,20 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, gap: 12, paddingBottom: 40 },
-  title: { fontSize: 28, fontWeight: "700", color: colors.text },
   loadingRow: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 32,
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    gap: 10,
-  },
-  avatarRow: {
-    flexDirection: "row",
+  profileLayout: { gap: 10 },
+  profileHeader: {
     alignItems: "center",
-    gap: 12,
+    gap: 6,
+    marginBottom: 2,
   },
   avatar: {
-    width: 74,
-    height: 74,
+    width: 84,
+    height: 84,
     borderRadius: 999,
     backgroundColor: "#dfe6df",
   },
@@ -383,56 +240,62 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 20,
   },
-  avatarActions: { flex: 1, gap: 6 },
-  sectionLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    fontWeight: "700",
-  },
-  input: {
-    backgroundColor: "#f1efea",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+  profileName: {
     color: colors.text,
+    fontWeight: "700",
+    fontSize: 22,
   },
-  secondaryButton: {
+  profileInfoLine: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+    marginTop: 4,
+    justifyContent: "center",
+    alignSelf: "center",
+  },
+  actionPill: {
     backgroundColor: "#ece8e1",
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: 999,
     paddingHorizontal: 12,
-    alignItems: "center",
-    alignSelf: "flex-start",
+    paddingVertical: 8,
   },
-  secondaryButtonText: { color: colors.text, fontWeight: "700" },
+  actionPillText: { color: colors.text, fontWeight: "700", fontSize: 12 },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
   hint: { color: colors.muted, fontSize: 12 },
-  listRow: {
-    backgroundColor: "#f9f7f3",
+  friendsSection: {
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  listTitle: { color: colors.text, fontWeight: "600" },
-  errorText: { color: colors.danger },
-  successText: { color: colors.fairway, fontWeight: "600" },
-  button: {
-    backgroundColor: colors.fairway,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  signOutButton: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
+    gap: 8,
     backgroundColor: colors.surface,
   },
-  signOutText: { color: colors.text, fontWeight: "700" },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: "#fff", fontWeight: "700" },
+  friendRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  friendAvatar: { width: 34, height: 34, borderRadius: 999 },
+  friendInitial: { color: colors.fairway, fontWeight: "700", fontSize: 13 },
+  friendMeta: { flex: 1 },
+  friendName: { color: colors.text, fontWeight: "700" },
+  friendSub: { color: colors.muted, fontSize: 12 },
+  errorText: { color: colors.danger },
+  headerSettingsBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

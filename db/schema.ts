@@ -35,6 +35,8 @@ export const planningTimeWindowEnum = pgEnum("planning_time_window", [
   "afternoon",
   "twilight",
 ]);
+export const followVisibilityEnum = pgEnum("follow_visibility", ["public", "private"]);
+export const followStatusEnum = pgEnum("follow_status", ["requested", "accepted"]);
 
 export const users = pgTable(
   "users",
@@ -46,6 +48,12 @@ export const users = pgTable(
     avatar: text("avatar"),
     handicap: numeric("handicap", { precision: 5, scale: 2 }),
     homeCourse: text("home_course"),
+    followVisibility: followVisibilityEnum("follow_visibility")
+      .notNull()
+      .default("public"),
+    notificationsLastViewedAt: timestamp("notifications_last_viewed_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -142,7 +150,38 @@ export const spots = pgTable(
   }),
 );
 
+export const userFollows = pgTable(
+  "user_follows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    followerId: uuid("follower_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    followedId: uuid("followed_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: followStatusEnum("status").notNull().default("accepted"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    followerIdx: index("user_follows_follower_idx").on(table.followerId),
+    followedIdx: index("user_follows_followed_idx").on(table.followedId),
+    statusIdx: index("user_follows_status_idx").on(table.status),
+    followerFollowedUnique: uniqueIndex("user_follows_follower_followed_unique").on(
+      table.followerId,
+      table.followedId,
+    ),
+    noSelfFollow: check("user_follows_no_self_follow", sql`${table.followerId} <> ${table.followedId}`),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Round = typeof rounds.$inferSelect;
 export type Spot = typeof spots.$inferSelect;
 export type Course = typeof courses.$inferSelect;
+export type UserFollow = typeof userFollows.$inferSelect;

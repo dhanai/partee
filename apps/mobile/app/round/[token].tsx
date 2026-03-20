@@ -15,20 +15,25 @@ import {
   View,
 } from "react-native";
 import { apiBaseUrl, apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
+import {
+  getInviteSelection,
+  InviteSelectionUser,
+  setInviteSelection,
+} from "../../lib/invite-selection-store";
+import { prefetchPublicProfile } from "../../lib/public-profile-cache";
+import {
+  applyOptimisticToRoundDetails,
+  subscribeRoundListsRefresh,
+} from "../../lib/round-lists-refresh";
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
+import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
+import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
 
 type RoundResponse = { round: RoundDetails };
 type CourseResult = { id: string; name: string; address: string };
-type UserSearchResult = {
-  id: string;
-  name: string;
-  email: string | null;
-  avatar: string | null;
-};
-
 function useDebounce(value: string, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -73,17 +78,24 @@ export default function RoundDetailsScreen() {
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const debouncedFinalizeQuery = useDebounce(finalizeQuery, 320);
-  const [friendQuery, setFriendQuery] = useState("");
-  const [friendResults, setFriendResults] = useState<UserSearchResult[]>([]);
-  const [selectedFriends, setSelectedFriends] = useState<UserSearchResult[]>([]);
-  const [loadingFriends, setLoadingFriends] = useState(false);
-  const [showFriendResults, setShowFriendResults] = useState(false);
+  const [selectedFriends, setSelectedFriends] = useState<InviteSelectionUser[]>([]);
   const [inviteBusy, setInviteBusy] = useState(false);
-  const debouncedFriendQuery = useDebounce(friendQuery, 320);
+  const inviteFlowKeyRef = useRef(`round-${Math.random().toString(36).slice(2, 10)}`);
 
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
+
+  useEffect(() => {
+    return subscribeRoundListsRefresh((payload) => {
+      if (!payload.optimistic || payload.optimistic.inviteToken !== token) return;
+      const p = payload.optimistic;
+      setRound((prev) => {
+        if (!prev) return prev;
+        return applyOptimisticToRoundDetails(prev, p);
+      });
+    });
+  }, [token]);
 
   const loadRound = useCallback(async () => {
     if (!token) return;
@@ -160,51 +172,18 @@ export default function RoundDetailsScreen() {
     };
   }, [debouncedFinalizeQuery, finalizeCourse]);
 
-  useEffect(() => {
-    let active = true;
-    if (!round) return;
-    const canInviteUsers = round.isHost || round.currentUserSpotStatus === "confirmed";
-    if (!canInviteUsers) return;
-    const confirmedPlayerIds = new Set(round.confirmedPlayers.map((player) => player.id));
-
-    async function runFriendSearch() {
-      const q = debouncedFriendQuery.trim();
-      if (q.length < 2) {
-        if (active) {
-          setFriendResults([]);
-          setShowFriendResults(false);
-        }
+  useFocusEffect(
+    useCallback(() => {
+      const flowKey = inviteFlowKeyRef.current;
+      const raw = getInviteSelection(flowKey);
+      if (!round) {
+        setSelectedFriends(raw);
         return;
       }
-      setLoadingFriends(true);
-      try {
-        const authToken = await getTokenRef.current();
-        const data = await apiGet<{ users: UserSearchResult[] }>(
-          `/api/users/search?q=${encodeURIComponent(q)}`,
-          authToken,
-        );
-        if (!active) return;
-        setFriendResults(
-          data.users.filter(
-            (user) =>
-              !selectedFriends.some((selected) => selected.id === user.id) &&
-              !confirmedPlayerIds.has(user.id),
-          ),
-        );
-        setShowFriendResults(true);
-      } catch (searchError) {
-        if (!active) return;
-        setError(searchError instanceof Error ? searchError.message : "Failed to search users.");
-      } finally {
-        if (active) setLoadingFriends(false);
-      }
-    }
-
-    void runFriendSearch();
-    return () => {
-      active = false;
-    };
-  }, [debouncedFriendQuery, selectedFriends, round]);
+      const confirmedIds = new Set(round.confirmedPlayers.map((player) => player.id));
+      setSelectedFriends(raw.filter((user) => !confirmedIds.has(user.id)));
+    }, [round]),
+  );
 
   function startOfDay(date: Date) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -361,9 +340,7 @@ export default function RoundDetailsScreen() {
           : "No new invites were sent.",
       );
       setSelectedFriends([]);
-      setFriendQuery("");
-      setFriendResults([]);
-      setShowFriendResults(false);
+      setInviteSelection(inviteFlowKeyRef.current, []);
     } catch (inviteError) {
       setError(inviteError instanceof Error ? inviteError.message : "Unable to send invites.");
     } finally {
@@ -394,9 +371,17 @@ export default function RoundDetailsScreen() {
       round.currentUserSpotStatus === "invited" ||
       round.currentUserSpotStatus === "declined");
   const showUnclaimAction = !round.isHost && round.currentUserSpotStatus === "confirmed";
-  const claimedSlots = Array.from({ length: round.totalSpots }, (_, index) =>
-    round.confirmedPlayers[index] ?? null,
-  );
+  function openInviteFriends() {
+    if (!round) return;
+    const flowKey = inviteFlowKeyRef.current;
+    const confirmedIds = new Set(round.confirmedPlayers.map((player) => player.id));
+    const filtered = selectedFriends.filter((user) => !confirmedIds.has(user.id));
+    setInviteSelection(flowKey, filtered);
+    router.push({
+      pathname: "/invite-friends",
+      params: { flowKey, excludeIds: JSON.stringify(Array.from(confirmedIds)) },
+    });
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -406,20 +391,25 @@ export default function RoundDetailsScreen() {
           <Text style={styles.title}>{round.courseName}</Text>
         </>
       ) : (
-        <View style={styles.planningHeaderCard}>
-          <Text style={styles.planningLabel}>Planning round</Text>
-          <Text style={styles.planningDate}>
+        <>
+          <PlanningRoundBadge
+            preferredTimeWindow={round.preferredTimeWindow}
+            compact
+          />
+          <Text style={styles.title}>
             {new Date(round.targetDate).toLocaleDateString("en-US", {
               weekday: "long",
               month: "long",
               day: "numeric",
             })}
           </Text>
-          <Text style={styles.planningTime}>{formatPlanningWindow(round.preferredTimeWindow)}</Text>
-          {round.planningLocation ? (
-            <Text style={styles.planningTime}>{round.planningLocation}</Text>
-          ) : null}
-        </View>
+          <View style={styles.whenBlock}>
+            <Text style={styles.whenDate}>{formatPlanningWindow(round.preferredTimeWindow)}</Text>
+            {round.planningLocation?.trim() ? (
+              <Text style={styles.whenTime}>{round.planningLocation.trim()}</Text>
+            ) : null}
+          </View>
+        </>
       )}
       {round.mode === "scheduled" ? (
         <View style={styles.whenBlock}>
@@ -442,34 +432,47 @@ export default function RoundDetailsScreen() {
         <Text style={styles.claimedLabel}>
           Claimed {round.confirmedPlayers.length}/{round.totalSpots}
         </Text>
-        <View style={styles.claimedThumbs}>
-          {claimedSlots.map((player, idx) =>
-            player ? (
-              player.avatar ? (
-                <Image
-                  key={player.id}
-                  source={{ uri: toAbsoluteUrl(player.avatar) }}
-                  style={styles.claimedThumb}
-                />
-              ) : (
-                <View key={player.id} style={[styles.claimedThumb, styles.claimedThumbFallback]}>
-                  <Text style={styles.claimedThumbInitial}>
-                    {player.name.trim().charAt(0).toUpperCase() || "?"}
-                  </Text>
-                </View>
-              )
-            ) : (
-              <View key={`empty-${idx}`} style={[styles.claimedThumb, styles.emptyThumb]} />
-            ),
-          )}
-        </View>
+        <ConfirmedSpotsRow
+          roundId={round.id}
+          totalSpots={round.totalSpots}
+          players={round.confirmedPlayers}
+          size="md"
+          initialTone="muted"
+          onPlayerPress={(player) =>
+            router.push({
+              pathname: "/profile/[userId]",
+              params: {
+                userId: player.id,
+                userName: player.name,
+                userAvatar: player.avatar ?? "",
+              },
+            })
+          }
+          onPlayerPressIn={(player) =>
+            prefetchPublicProfile(player.id, () => getTokenRef.current())
+          }
+        />
       </View>
       {round.declinedPlayers.length > 0 ? (
         <View style={styles.declinedRow}>
           <Text style={styles.claimedLabel}>Declined</Text>
           <View style={styles.declinedList}>
             {round.declinedPlayers.map((player) => (
-              <View key={player.id} style={styles.declinedChip}>
+              <Pressable
+                key={player.id}
+                style={styles.declinedChip}
+                onPressIn={() => prefetchPublicProfile(player.id, () => getTokenRef.current())}
+                onPress={() =>
+                  router.push({
+                    pathname: "/profile/[userId]",
+                    params: {
+                      userId: player.id,
+                      userName: player.name,
+                      userAvatar: player.avatar ?? "",
+                    },
+                  })
+                }
+              >
                 {player.avatar ? (
                   <Image source={{ uri: toAbsoluteUrl(player.avatar) }} style={styles.declinedAvatar} />
                 ) : (
@@ -480,7 +483,7 @@ export default function RoundDetailsScreen() {
                   </View>
                 )}
                 <Text style={styles.declinedName}>{player.name}</Text>
-              </View>
+              </Pressable>
             ))}
           </View>
         </View>
@@ -509,9 +512,16 @@ export default function RoundDetailsScreen() {
               placeholderTextColor={colors.muted}
               style={[styles.input, styles.inputWithClear]}
             />
-            {finalizeQuery.trim().length > 0 ? (
+            {loadingFinalizeCourses &&
+            !finalizeCourse &&
+            finalizeQuery.trim().length >= 2 ? (
+              <View style={styles.inputAccessory}>
+                <ActivityIndicator size="small" color={colors.muted} />
+              </View>
+            ) : null}
+            {finalizeCourse ? (
               <Pressable
-                style={styles.inputClearBtn}
+                style={styles.inputAccessory}
                 onPress={() => {
                   setFinalizeCourse(null);
                   setFinalizeQuery("");
@@ -523,7 +533,6 @@ export default function RoundDetailsScreen() {
               </Pressable>
             ) : null}
           </View>
-          {loadingFinalizeCourses ? <Text style={styles.listMeta}>Searching...</Text> : null}
           {showFinalizeResults && finalizeResults.map((course) => (
             <Pressable
               key={course.id}
@@ -578,40 +587,35 @@ export default function RoundDetailsScreen() {
       {canInviteUsers ? (
         <View style={styles.inviteCard}>
           <Text style={styles.sectionLabel}>Invite players</Text>
-          <TextInput
-            value={friendQuery}
-            onChangeText={setFriendQuery}
-            onFocus={() => friendResults.length > 0 && setShowFriendResults(true)}
-            placeholder="Search by name or email..."
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
-          {loadingFriends ? <Text style={styles.listMeta}>Searching...</Text> : null}
-          {showFriendResults &&
-            friendResults.map((friend) => (
-              <Pressable
-                key={friend.id}
-                style={styles.listRow}
-                onPress={() => {
-                  setSelectedFriends((prev) =>
-                    prev.some((existing) => existing.id === friend.id) ? prev : [...prev, friend],
-                  );
-                  setFriendResults((prev) => prev.filter((u) => u.id !== friend.id));
-                }}
-              >
-                <Text style={styles.listTitle}>{friend.name}</Text>
-                {friend.email ? <Text style={styles.listMeta}>{friend.email}</Text> : null}
-              </Pressable>
-            ))}
+          <Pressable style={[styles.button, styles.secondaryButton]} onPress={openInviteFriends}>
+            <Text style={styles.secondaryText}>Select friends</Text>
+          </Pressable>
           {selectedFriends.map((friend) => (
             <View key={friend.id} style={styles.selectedRow}>
-              <Text style={styles.selectedText}>{friend.name}</Text>
+              <View style={styles.selectedInfo}>
+                {friend.avatar ? (
+                  <Image
+                    source={{ uri: toAbsoluteUrl(friend.avatar) }}
+                    style={styles.selectedAvatar}
+                  />
+                ) : (
+                  <View style={[styles.selectedAvatar, styles.selectedAvatarFallback]}>
+                    <Text style={styles.selectedAvatarInitial}>
+                      {friend.name.trim().charAt(0).toUpperCase() || "?"}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.selectedText} numberOfLines={1}>
+                  {friend.name}
+                </Text>
+              </View>
               <Pressable
+                style={styles.selectedRemoveBtn}
                 onPress={() =>
                   setSelectedFriends((prev) => prev.filter((user) => user.id !== friend.id))
                 }
               >
-                <Text style={styles.removeText}>Remove</Text>
+                <Ionicons name="trash-outline" size={16} color={colors.danger} />
               </Pressable>
             </View>
           ))}
@@ -752,26 +756,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   hero: { width: "100%", height: 180, borderRadius: 16, backgroundColor: "#dfe6df" },
   title: { fontSize: 28, fontWeight: "700", color: colors.text, marginTop: 8 },
-  planningHeaderCard: {
-    borderRadius: 16,
-    backgroundColor: "#f5faf6",
-    borderWidth: 1,
-    borderColor: "#d4e8d8",
-    padding: 14,
-    gap: 2,
-  },
-  planningLabel: {
-    color: colors.fairway,
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
-  },
-  planningDate: { color: colors.text, fontSize: 30, fontWeight: "800", lineHeight: 36 },
-  planningTime: { color: colors.muted, fontSize: 15, fontWeight: "600" },
   whenBlock: { gap: 2, marginTop: 2 },
   whenDate: { color: colors.text, fontWeight: "700", fontSize: 18 },
-  whenTime: { color: colors.muted, fontWeight: "600" },
+  whenTime: { color: colors.muted, fontWeight: "600", fontSize: 16 },
   meta: { color: colors.muted },
   claimedRow: { marginTop: 10, gap: 6 },
   claimedLabel: {
@@ -780,13 +767,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.6,
-  },
-  claimedThumbs: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  claimedThumb: { width: 32, height: 32, borderRadius: 999 },
-  emptyThumb: {
-    backgroundColor: "#ece8e1",
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   claimedThumbFallback: {
     backgroundColor: "#f1efea",
@@ -830,9 +810,40 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 8,
   },
-  selectedText: { color: colors.text },
-  removeText: { color: colors.danger, fontWeight: "600" },
+  selectedInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  selectedAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+  },
+  selectedAvatarFallback: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectedAvatarInitial: {
+    color: colors.fairway,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  selectedText: { color: colors.text, fontWeight: "600", flexShrink: 1 },
+  selectedRemoveBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   primaryButton: { backgroundColor: colors.fairway },
   secondaryButton: { backgroundColor: "#ece8e1" },
   hostActionsRow: {
@@ -901,7 +912,7 @@ const styles = StyleSheet.create({
   inputWithClear: {
     paddingRight: 36,
   },
-  inputClearBtn: {
+  inputAccessory: {
     position: "absolute",
     right: 10,
     top: 10,

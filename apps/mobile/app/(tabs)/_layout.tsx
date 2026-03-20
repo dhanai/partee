@@ -12,11 +12,14 @@ import {
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
+import { NotificationMustardDot } from "../../components/notification-mustard-dot";
 import { ParteeLogo } from "../../components/partee-logo";
+import { useNotificationBadge } from "../../lib/notification-badge-context";
 import { colors } from "../../lib/theme";
 
 export default function TabsLayout() {
   const { isLoaded, isSignedIn } = useAuth();
+  const { showBadge: showNotificationBadge } = useNotificationBadge();
   const [createSheetMounted, setCreateSheetMounted] = useState(false);
   const showAdvancedCreateTypes = false;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -80,7 +83,7 @@ export default function TabsLayout() {
     setTimeout(() => {
       router.push({
         pathname: "/create",
-        params: { mode: option },
+        params: { mode: option, session: String(Date.now()) },
       });
     }, 0);
   }
@@ -135,7 +138,12 @@ export default function TabsLayout() {
           options={{
             title: "My Rounds",
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons name={focused ? "list" : "list-outline"} size={22} color={color} />
+              <View style={styles.tabIconWrap}>
+                <Ionicons name={focused ? "list" : "list-outline"} size={22} color={color} />
+                {showNotificationBadge ? (
+                  <NotificationMustardDot style={styles.tabBarNotificationDot} />
+                ) : null}
+              </View>
             ),
           }}
         />
@@ -253,6 +261,17 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  tabIconWrap: {
+    position: "relative",
+    width: 32,
+    height: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabBarNotificationDot: {
+    top: -1,
+    right: 2,
+  },
   sheetRoot: {
     ...StyleSheet.absoluteFillObject,
   },

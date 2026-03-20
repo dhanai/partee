@@ -31,6 +31,7 @@ const updateSchema = z.object({
     .optional(),
   location: z.string().trim().max(120).nullable().optional(),
   homeCourse: z.string().trim().max(120).nullable().optional(),
+  followVisibility: z.enum(["public", "private"]).optional(),
 });
 
 export async function GET(req: Request) {
@@ -45,6 +46,7 @@ export async function GET(req: Request) {
         handicap: user.handicap,
         location: user.homeCourse,
         homeCourse: user.homeCourse,
+        followVisibility: user.followVisibility,
       },
     });
   } catch (error) {
@@ -66,6 +68,7 @@ export async function PATCH(req: Request) {
       avatar: string | null;
       handicap: string | null;
       homeCourse: string | null;
+      followVisibility: "public" | "private";
     }> = {};
 
     if (parsed.name !== undefined) updates.name = parsed.name;
@@ -108,6 +111,9 @@ export async function PATCH(req: Request) {
         updates.homeCourse = null;
       }
     }
+    if (parsed.followVisibility !== undefined) {
+      updates.followVisibility = parsed.followVisibility;
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No profile changes submitted." }, { status: 400 });
@@ -125,6 +131,7 @@ export async function PATCH(req: Request) {
         handicap: users.handicap,
         location: users.homeCourse,
         homeCourse: users.homeCourse,
+        followVisibility: users.followVisibility,
       });
 
     return NextResponse.json({ user: updated });

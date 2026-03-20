@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, {
@@ -7,6 +7,7 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -15,22 +16,22 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { apiBaseUrl, apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
+import {
+  clearInviteSelection,
+  getInviteSelection,
+  setInviteSelection,
+  InviteSelectionUser,
+} from "../../lib/invite-selection-store";
 import { colors } from "../../lib/theme";
 import { DatePickerModal } from "../../components/date-picker-modal";
+import { PlanningTimeWindowChips } from "../../components/planning-time-window-chips";
 import { TimePickerModal } from "../../components/time-picker-modal";
 
 type CourseResult = {
   id: string;
   name: string;
   address: string;
-};
-
-type UserSearchResult = {
-  id: string;
-  name: string;
-  email: string | null;
-  avatar: string | null;
 };
 
 type CreateRoundResponse = {
@@ -50,6 +51,12 @@ type MeResponse = {
 type LocationResult = { label: string; city: string; state: string };
 type CreateType = "planning" | "scheduled" | "tournament" | "event";
 
+function defaultTopOfHourDate() {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  return d;
+}
+
 function useDebounce(value: string, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -60,7 +67,14 @@ function useDebounce(value: string, delayMs: number) {
 }
 
 export default function CreateScreen() {
-  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const { mode, session: sessionParam } = useLocalSearchParams<{
+    mode?: string;
+    session?: string;
+  }>();
+  const session = useMemo(() => {
+    const raw = Array.isArray(sessionParam) ? sessionParam[0] : sessionParam;
+    return typeof raw === "string" ? raw : "";
+  }, [sessionParam]);
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const createType: CreateType = useMemo(() => {
@@ -83,11 +97,7 @@ export default function CreateScreen() {
     "morning" | "afternoon" | "twilight"
   >("morning");
   const [teeDate, setTeeDate] = useState<Date | null>(null);
-  const [teeTimeValue, setTeeTimeValue] = useState<Date>(() => {
-    const now = new Date();
-    now.setMinutes(0, 0, 0);
-    return now;
-  });
+  const [teeTimeValue, setTeeTimeValue] = useState<Date>(() => defaultTopOfHourDate());
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarTarget, setCalendarTarget] = useState<"targetDate" | "teeDate">(
@@ -97,48 +107,92 @@ export default function CreateScreen() {
   const [results, setResults] = useState<CourseResult[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<CourseResult | null>(null);
-  const [friendQuery, setFriendQuery] = useState("");
-  const [friendResults, setFriendResults] = useState<UserSearchResult[]>([]);
-  const [loadingFriends, setLoadingFriends] = useState(false);
-  const [selectedFriends, setSelectedFriends] = useState<UserSearchResult[]>([]);
+  const [selectedFriends, setSelectedFriends] = useState<InviteSelectionUser[]>([]);
   const [totalSpots, setTotalSpots] = useState(4);
   const [visibility, setVisibility] = useState<"private" | "public">("private");
   const [joinPolicy, setJoinPolicy] = useState<"instant" | "approval">("instant");
-  const [customImageUrl, setCustomImageUrl] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showCourseResults, setShowCourseResults] = useState(false);
-  const [showFriendResults, setShowFriendResults] = useState(false);
   const [eventImageUri, setEventImageUri] = useState<string | null>(null);
   const [eventTitle, setEventTitle] = useState("");
   const [eventDetails, setEventDetails] = useState("");
   const [eventLocation, setEventLocation] = useState("");
   const [eventDate, setEventDate] = useState<Date | null>(null);
-  const [eventTime, setEventTime] = useState<Date>(() => {
-    const now = new Date();
-    now.setMinutes(0, 0, 0);
-    return now;
-  });
+  const [eventTime, setEventTime] = useState<Date>(() => defaultTopOfHourDate());
   const [eventCost, setEventCost] = useState("");
   const [eventRsvpDeadlineDate, setEventRsvpDeadlineDate] = useState<Date | null>(null);
-  const [eventRsvpDeadlineTime, setEventRsvpDeadlineTime] = useState<Date>(() => {
-    const now = new Date();
-    now.setMinutes(0, 0, 0);
-    return now;
-  });
+  const [eventRsvpDeadlineTime, setEventRsvpDeadlineTime] = useState<Date>(() =>
+    defaultTopOfHourDate(),
+  );
   const [eventDatePickerOpen, setEventDatePickerOpen] = useState(false);
   const [eventTimePickerOpen, setEventTimePickerOpen] = useState(false);
   const [eventDeadlineDatePickerOpen, setEventDeadlineDatePickerOpen] = useState(false);
   const [eventDeadlineTimePickerOpen, setEventDeadlineTimePickerOpen] = useState(false);
   const debouncedCourseQuery = useDebounce(query, 320);
-  const debouncedFriendQuery = useDebounce(friendQuery, 320);
   const debouncedPlanningLocation = useDebounce(planningLocation, 320);
+  const inviteFlowKeyRef = useRef(`create-${Math.random().toString(36).slice(2, 10)}`);
+  const prevSessionRef = useRef<string | null>(null);
+
+  /**
+   * Each pick from the create sheet sends a new `session` id (same or different mode).
+   * Reset the full draft + invite key so every entry from the sheet is a fresh form.
+   * Returning from Invite Friends does not change `session`, so the draft stays intact.
+   */
+  useEffect(() => {
+    const prev = prevSessionRef.current;
+    if (prev === null) {
+      prevSessionRef.current = session;
+      return;
+    }
+    if (prev === session) return;
+    prevSessionRef.current = session;
+
+    clearInviteSelection(inviteFlowKeyRef.current);
+    inviteFlowKeyRef.current = `create-${Math.random().toString(36).slice(2, 10)}`;
+    setSelectedFriends([]);
+
+    setTargetDate(null);
+    setPlanningLocation("");
+    setPlanningLocationIsValidated(true);
+    setLocationResults([]);
+    setShowLocationResults(false);
+    setLoadingLocations(false);
+    setPreferredTimeWindow("morning");
+    setTeeDate(null);
+    setTeeTimeValue(defaultTopOfHourDate());
+    setTimePickerOpen(false);
+    setCalendarOpen(false);
+    setCalendarTarget("targetDate");
+    setQuery("");
+    setResults([]);
+    setLoadingCourses(false);
+    setSelectedCourse(null);
+    setTotalSpots(4);
+    setVisibility("private");
+    setJoinPolicy("instant");
+    setSubmitting(false);
+    setError(null);
+    setSuccess(null);
+    setShowCourseResults(false);
+    setEventImageUri(null);
+    setEventTitle("");
+    setEventDetails("");
+    setEventLocation("");
+    setEventDate(null);
+    setEventTime(defaultTopOfHourDate());
+    setEventCost("");
+    setEventRsvpDeadlineDate(null);
+    setEventRsvpDeadlineTime(defaultTopOfHourDate());
+    setEventDatePickerOpen(false);
+    setEventTimePickerOpen(false);
+    setEventDeadlineDatePickerOpen(false);
+    setEventDeadlineTimePickerOpen(false);
+  }, [session]);
 
   useEffect(() => {
     if (!isScheduledRound) {
-      setCustomImageUrl(null);
       setTeeDate(null);
     }
   }, [isScheduledRound]);
@@ -170,7 +224,7 @@ export default function CreateScreen() {
   }, [isPlanningRound]);
 
   const canSubmit = useMemo(() => {
-    if (uploadingImage || submitting) return false;
+    if (submitting) return false;
     if (isPlanningRound) {
       return Boolean(
         targetDate &&
@@ -189,7 +243,6 @@ export default function CreateScreen() {
     selectedCourse,
     teeDate,
     submitting,
-    uploadingImage,
   ]);
 
   function startOfDay(date: Date) {
@@ -272,46 +325,12 @@ export default function CreateScreen() {
     };
   }, [debouncedCourseQuery, isScheduledRound, selectedCourse]);
 
-  useEffect(() => {
-    let active = true;
-
-    async function runFriendSearch() {
-      const q = debouncedFriendQuery.trim();
-      if (q.length < 2) {
-        if (active) {
-          setFriendResults([]);
-          setShowFriendResults(false);
-        }
-        return;
-      }
-
-      setLoadingFriends(true);
-      try {
-        const token = await getTokenRef.current();
-        const json = await apiGet<{ users: UserSearchResult[] }>(
-          `/api/users/search?q=${encodeURIComponent(q)}`,
-          token,
-        );
-        if (!active) return;
-        setFriendResults(
-          json.users.filter(
-            (user) => !selectedFriends.some((selected) => selected.id === user.id),
-          ),
-        );
-        setShowFriendResults(true);
-      } catch (searchError) {
-        if (!active) return;
-        setError(searchError instanceof Error ? searchError.message : "Search failed.");
-      } finally {
-        if (active) setLoadingFriends(false);
-      }
-    }
-
-    void runFriendSearch();
-    return () => {
-      active = false;
-    };
-  }, [debouncedFriendQuery, selectedFriends]);
+  useFocusEffect(
+    useCallback(() => {
+      const flowKey = inviteFlowKeyRef.current;
+      setSelectedFriends(getInviteSelection(flowKey));
+    }, []),
+  );
 
   useEffect(() => {
     let active = true;
@@ -356,48 +375,6 @@ export default function CreateScreen() {
       active = false;
     };
   }, [debouncedPlanningLocation, isPlanningRound, planningLocationIsValidated]);
-
-  async function pickAndUploadImage() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError("Photo permission is required to upload an event image.");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      allowsEditing: true,
-    });
-    if (result.canceled || !result.assets[0]?.uri) return;
-
-    setUploadingImage(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      const asset = result.assets[0];
-      const imageResponse = await fetch(asset.uri);
-      const imageBlob = await imageResponse.blob();
-      const formData = new FormData();
-      formData.append("file", imageBlob, "event-image.jpg");
-
-      const response = await fetch(`${apiBaseUrl}/api/uploads/event-image`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData,
-      });
-
-      const json = (await response.json()) as { url?: string; error?: string };
-      if (!response.ok || !json.url) {
-        throw new Error(json.error ?? "Image upload failed.");
-      }
-      setCustomImageUrl(json.url);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Image upload failed.");
-    } finally {
-      setUploadingImage(false);
-    }
-  }
 
   async function pickEventImage() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -454,7 +431,6 @@ export default function CreateScreen() {
           totalSpots,
           visibility,
           joinPolicy,
-          customImageUrl,
           inviteeUserIds: selectedFriends.map((friend) => friend.id),
         },
         token,
@@ -479,6 +455,15 @@ export default function CreateScreen() {
     }
   }
 
+  function openInviteFriends() {
+    const flowKey = inviteFlowKeyRef.current;
+    setInviteSelection(flowKey, selectedFriends);
+    router.push({
+      pathname: "/invite-friends",
+      params: { flowKey },
+    });
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>
@@ -501,28 +486,6 @@ export default function CreateScreen() {
       </Text>
 
       <View style={styles.card}>
-        {isScheduledRound ? (
-          <>
-            <Text style={styles.label}>Event image</Text>
-            {customImageUrl ? (
-              <Image source={{ uri: toAbsoluteUrl(customImageUrl) }} style={styles.cover} />
-            ) : null}
-            <Pressable
-              style={[styles.secondaryButton, uploadingImage && styles.disabled]}
-              onPress={() => void pickAndUploadImage()}
-              disabled={uploadingImage}
-            >
-              <Text style={styles.secondaryButtonText}>
-                {uploadingImage
-                  ? "Uploading..."
-                  : customImageUrl
-                    ? "Change image"
-                    : "Upload image"}
-              </Text>
-            </Pressable>
-          </>
-        ) : null}
-
         {isPlanningRound ? (
           <>
             <Text style={styles.label}>Target date</Text>
@@ -533,35 +496,10 @@ export default function CreateScreen() {
               <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
             </Pressable>
             <Text style={styles.label}>Preferred time</Text>
-            <View style={styles.row}>
-              {[
-                { value: "morning", label: "Morning" },
-                { value: "afternoon", label: "Afternoon" },
-                { value: "twilight", label: "Twilight" },
-              ].map((slot) => (
-                <Pressable
-                  key={slot.value}
-                  style={[
-                    styles.pill,
-                    preferredTimeWindow === slot.value && styles.pillActive,
-                  ]}
-                  onPress={() =>
-                    setPreferredTimeWindow(
-                      slot.value as "morning" | "afternoon" | "twilight",
-                    )
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.pillText,
-                      preferredTimeWindow === slot.value && styles.pillTextActive,
-                    ]}
-                  >
-                    {slot.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <PlanningTimeWindowChips
+              value={preferredTimeWindow}
+              onChange={setPreferredTimeWindow}
+            />
             <Text style={styles.label}>Location</Text>
             <TextInput
               value={planningLocation}
@@ -609,11 +547,16 @@ export default function CreateScreen() {
                 onFocus={() => results.length > 0 && setShowCourseResults(true)}
                 placeholder="Search golf courses..."
                 placeholderTextColor={colors.muted}
-                style={styles.input}
+                style={[styles.input, styles.inputWithAccessory]}
               />
-              {query.trim().length > 0 ? (
+              {loadingCourses && !selectedCourse && query.trim().length >= 2 ? (
+                <View style={styles.inputAccessory}>
+                  <ActivityIndicator size="small" color={colors.muted} />
+                </View>
+              ) : null}
+              {selectedCourse ? (
                 <Pressable
-                  style={styles.inputClearBtn}
+                  style={styles.inputAccessory}
                   onPress={() => {
                     setSelectedCourse(null);
                     setQuery("");
@@ -624,7 +567,6 @@ export default function CreateScreen() {
                   <Ionicons name="close" size={15} color={colors.muted} />
                 </Pressable>
               ) : null}
-              {loadingCourses ? <Text style={styles.loadingHint}>Searching...</Text> : null}
             </View>
             {showCourseResults && results.map((course) => (
               <Pressable
@@ -820,40 +762,35 @@ export default function CreateScreen() {
             </View>
 
             <Text style={styles.label}>Invite friends</Text>
-            <View>
-              <TextInput
-                value={friendQuery}
-                onChangeText={setFriendQuery}
-                onFocus={() => friendResults.length > 0 && setShowFriendResults(true)}
-                placeholder="Name or email..."
-                placeholderTextColor={colors.muted}
-                style={styles.input}
-              />
-              {loadingFriends ? <Text style={styles.loadingHint}>Searching...</Text> : null}
-            </View>
-            {showFriendResults && friendResults.map((friend) => (
-              <Pressable
-                key={friend.id}
-                style={styles.listRow}
-                onPress={() => {
-                  setSelectedFriends((prev) => [...prev, friend]);
-                  setFriendResults((prev) => prev.filter((u) => u.id !== friend.id));
-                  setShowFriendResults(true);
-                }}
-              >
-                <Text style={styles.listTitle}>{friend.name}</Text>
-                {friend.email ? <Text style={styles.listMeta}>{friend.email}</Text> : null}
-              </Pressable>
-            ))}
+            <Pressable style={styles.secondaryButton} onPress={openInviteFriends}>
+              <Text style={styles.secondaryButtonText}>Select friends</Text>
+            </Pressable>
             {selectedFriends.map((friend) => (
               <View key={friend.id} style={styles.selectedRow}>
-                <Text style={styles.selectedText}>{friend.name}</Text>
+                <View style={styles.selectedInfo}>
+                  {friend.avatar ? (
+                    <Image
+                      source={{ uri: toAbsoluteUrl(friend.avatar) }}
+                      style={styles.selectedAvatar}
+                    />
+                  ) : (
+                    <View style={[styles.selectedAvatar, styles.selectedAvatarFallback]}>
+                      <Text style={styles.selectedAvatarInitial}>
+                        {friend.name.trim().charAt(0).toUpperCase() || "?"}
+                      </Text>
+                    </View>
+                  )}
+                  <Text style={styles.selectedText} numberOfLines={1}>
+                    {friend.name}
+                  </Text>
+                </View>
                 <Pressable
+                  style={styles.selectedRemoveBtn}
                   onPress={() =>
-                    setSelectedFriends((prev) => prev.filter((u) => u.id !== friend.id))
+                    setSelectedFriends((prev) => prev.filter((user) => user.id !== friend.id))
                   }
                 >
-                  <Text style={styles.removeText}>Remove</Text>
+                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
                 </Pressable>
               </View>
             ))}
@@ -984,7 +921,10 @@ const styles = StyleSheet.create({
   inputRow: {
     position: "relative",
   },
-  inputClearBtn: {
+  inputWithAccessory: {
+    paddingRight: 38,
+  },
+  inputAccessory: {
     position: "absolute",
     right: 10,
     top: 10,
@@ -1040,9 +980,40 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 8,
   },
-  selectedText: { color: colors.text },
-  removeText: { color: colors.danger, fontWeight: "600" },
+  selectedInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  selectedAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+  },
+  selectedAvatarFallback: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectedAvatarInitial: {
+    color: colors.fairway,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  selectedText: { color: colors.text, fontWeight: "600", flexShrink: 1 },
+  selectedRemoveBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   row: { flexDirection: "row", gap: 8 },
   flex1: { flex: 1 },
   pill: {

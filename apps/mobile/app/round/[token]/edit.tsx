@@ -1,11 +1,11 @@
 import { useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigation } from "@react-navigation/native";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import {
   ActivityIndicator,
-  Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,15 +14,15 @@ import {
   View,
 } from "react-native";
 import {
-  apiBaseUrl,
   apiGet,
   apiPatch,
   apiPost,
-  toAbsoluteUrl,
 } from "../../../lib/api";
+import { emitRoundListsShouldRefresh } from "../../../lib/round-lists-refresh";
 import { colors } from "../../../lib/theme";
 import { RoundDetails } from "../../../types/round";
 import { DatePickerModal } from "../../../components/date-picker-modal";
+import { PlanningTimeWindowChips } from "../../../components/planning-time-window-chips";
 import { TimePickerModal } from "../../../components/time-picker-modal";
 
 type RoundResponse = { round: RoundDetails };
@@ -40,10 +40,14 @@ function useDebounce(value: string, delayMs: number) {
 
 export default function EditRoundScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
+  const navigation = useNavigation();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const initialSnapshotRef = useRef<string | null>(null);
+  const baselineCapturedRef = useRef(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentSnapshotRef = useRef("");
+  const loadedRoundMetaRef = useRef<{ id: string } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,26 +89,19 @@ export default function EditRoundScreen() {
   const [visibility, setVisibility] = useState<"private" | "public">("private");
   const [joinPolicy, setJoinPolicy] = useState<"instant" | "approval">("instant");
   const [customImageUrl, setCustomImageUrl] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
 
   useEffect(() => {
-    if (planningMode) {
-      setTeeDate(null);
-      setQuery("");
-      setResults([]);
-      setShowCourseResults(false);
-      setSelectedCourse(null);
-    }
-  }, [planningMode]);
-
-  useEffect(() => {
     async function loadRound() {
       if (!token) return;
+      baselineCapturedRef.current = false;
+      setSnapshotReady(false);
+      loadedRoundMetaRef.current = null;
       try {
+        setSaveNote(null);
         setError(null);
         const authToken = await getTokenRef.current();
         const data = await apiGet<RoundResponse>(`/api/rounds/${token}`, authToken);
@@ -114,6 +111,7 @@ export default function EditRoundScreen() {
           return;
         }
 
+        loadedRoundMetaRef.current = { id: round.id };
         setPlanningMode(round.mode === "planning");
         setPreferredTimeWindow(round.preferredTimeWindow ?? "morning");
         setTotalSpots(round.totalSpots);
@@ -144,24 +142,6 @@ export default function EditRoundScreen() {
             setTeeTimeValue(tee);
           }
         }
-        const roundTargetDate = new Date(round.targetDate);
-        roundTargetDate.setHours(0, 0, 0, 0);
-        const roundTeeDate = round.teeTime ? new Date(round.teeTime) : null;
-        if (roundTeeDate) roundTeeDate.setHours(0, 0, 0, 0);
-        const roundTeeTime = round.teeTime ? new Date(round.teeTime) : new Date();
-        initialSnapshotRef.current = JSON.stringify({
-          planningMode: round.mode === "planning",
-          preferredTimeWindow: round.preferredTimeWindow ?? "morning",
-          planningLocation: round.planningLocation?.trim() ?? "",
-          targetDate: round.mode === "planning" ? roundTargetDate.toISOString() : null,
-          teeDate: round.mode === "scheduled" && roundTeeDate ? roundTeeDate.toISOString() : null,
-          teeTime: `${roundTeeTime.getHours()}:${roundTeeTime.getMinutes()}`,
-          selectedCourseId: round.mode === "scheduled" ? (round.courseId ?? null) : null,
-          totalSpots: round.totalSpots,
-          visibility: round.visibility,
-          joinPolicy: round.joinPolicy,
-          customImageUrl: round.customImageUrl ?? null,
-        });
         setSnapshotReady(true);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Unable to load round.");
@@ -257,7 +237,7 @@ export default function EditRoundScreen() {
   }, [debouncedPlanningLocation, planningMode, planningLocationIsValidated]);
 
   const canSubmit = useMemo(() => {
-    if (uploadingImage || submitting) return false;
+    if (submitting) return false;
     if (planningMode) {
       return Boolean(
         targetDate &&
@@ -274,7 +254,6 @@ export default function EditRoundScreen() {
     selectedCourse,
     teeDate,
     submitting,
-    uploadingImage,
   ]);
 
   const currentSnapshot = useMemo(
@@ -284,8 +263,11 @@ export default function EditRoundScreen() {
         preferredTimeWindow,
         planningLocation: planningLocation.trim(),
         targetDate: targetDate ? startOfDay(targetDate).toISOString() : null,
-        teeDate: teeDate ? startOfDay(teeDate).toISOString() : null,
-        teeTime: `${teeTimeValue.getHours()}:${teeTimeValue.getMinutes()}`,
+        teeDate:
+          !planningMode && teeDate ? startOfDay(teeDate).toISOString() : null,
+        ...(!planningMode
+          ? { teeTime: `${teeTimeValue.getHours()}:${teeTimeValue.getMinutes()}` }
+          : {}),
         selectedCourseId: selectedCourse?.id ?? null,
         totalSpots,
         visibility,
@@ -306,6 +288,8 @@ export default function EditRoundScreen() {
       customImageUrl,
     ],
   );
+  currentSnapshotRef.current = currentSnapshot;
+
   function startOfDay(date: Date) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
   }
@@ -320,7 +304,10 @@ export default function EditRoundScreen() {
   }
 
   function formatTimeLabel(date: Date) {
-    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
   }
 
   function openCalendar(target: "targetDate" | "teeDate") {
@@ -330,56 +317,17 @@ export default function EditRoundScreen() {
 
   function onSelectCalendarDay(day: Date) {
     const picked = startOfDay(day);
-    if (calendarTarget === "targetDate") setTargetDate(picked);
-    else setTeeDate(picked);
+    if (calendarTarget === "targetDate") {
+      setTargetDate(picked);
+    } else {
+      setTeeDate(picked);
+    }
   }
 
   function minimumDate() {
     const min = new Date();
     min.setHours(0, 0, 0, 0);
     return min;
-  }
-
-  async function pickAndUploadImage() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError("Photo permission is required to upload an event image.");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      allowsEditing: true,
-    });
-    if (result.canceled || !result.assets[0]?.uri) return;
-
-    setUploadingImage(true);
-    setError(null);
-    try {
-      const authToken = await getTokenRef.current();
-      const asset = result.assets[0];
-      const imageResponse = await fetch(asset.uri);
-      const imageBlob = await imageResponse.blob();
-      const formData = new FormData();
-      formData.append("file", imageBlob, "event-image.jpg");
-
-      const response = await fetch(`${apiBaseUrl}/api/uploads/event-image`, {
-        method: "POST",
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
-        body: formData,
-      });
-
-      const json = (await response.json()) as { url?: string; error?: string };
-      if (!response.ok || !json.url) {
-        throw new Error(json.error ?? "Image upload failed.");
-      }
-      setCustomImageUrl(json.url);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Image upload failed.");
-    } finally {
-      setUploadingImage(false);
-    }
   }
 
   const submit = useCallback(async () => {
@@ -424,6 +372,53 @@ export default function EditRoundScreen() {
 
       initialSnapshotRef.current = currentSnapshot;
       setSaveNote("Saved");
+
+      const meta = loadedRoundMetaRef.current;
+      if (meta && token) {
+        const teeTimeIso =
+          !planningMode && teeDate
+            ? (() => {
+                const c = new Date(teeDate);
+                c.setHours(teeTimeValue.getHours(), teeTimeValue.getMinutes(), 0, 0);
+                return c.toISOString();
+              })()
+            : null;
+        const targetDateIso =
+          planningMode && targetDate
+            ? (() => {
+                const n = new Date(targetDate);
+                n.setHours(12, 0, 0, 0);
+                return n.toISOString();
+              })()
+            : teeDate
+              ? new Date(
+                  teeDate.getFullYear(),
+                  teeDate.getMonth(),
+                  teeDate.getDate(),
+                ).toISOString()
+              : "";
+        const effectiveDate = teeTimeIso ?? targetDateIso;
+        emitRoundListsShouldRefresh({
+          optimistic: {
+            roundId: meta.id,
+            inviteToken: token,
+            mode: planningMode ? "planning" : "scheduled",
+            preferredTimeWindow: planningMode ? preferredTimeWindow : null,
+            planningLocation: planningMode ? planningLocation.trim() : null,
+            courseName: planningMode ? "" : (selectedCourse?.name ?? ""),
+            courseId: planningMode ? null : (selectedCourse?.id ?? null),
+            teeTime: teeTimeIso,
+            targetDate: targetDateIso,
+            effectiveDate,
+            totalSpots,
+            visibility,
+            joinPolicy,
+            customImageUrl: customImageUrl ?? null,
+          },
+        });
+      } else {
+        emitRoundListsShouldRefresh();
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Update failed.");
     } finally {
@@ -446,9 +441,58 @@ export default function EditRoundScreen() {
     currentSnapshot,
   ]);
 
+  /**
+   * Capture baseline after hydrate: defer one macrotask so other effects
+   * (e.g. planning mode clearing course fields) have applied first.
+   */
   useEffect(() => {
-    if (!snapshotReady) return;
-    if (!canSubmit || submitting || uploadingImage) return;
+    if (!snapshotReady || loading) return;
+    if (baselineCapturedRef.current) return;
+    const id = setTimeout(() => {
+      baselineCapturedRef.current = true;
+      initialSnapshotRef.current = currentSnapshotRef.current;
+    }, 0);
+    return () => clearTimeout(id);
+  }, [snapshotReady, loading]);
+
+  useLayoutEffect(() => {
+    const show = submitting || saveNote != null;
+    const label = submitting ? "Saving…" : (saveNote ?? "");
+    const pill = (
+      <View style={styles.headerSavePill}>
+        <Text style={styles.headerSavePillText} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    );
+
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        headerRight: undefined,
+        headerRightContainerStyle: { paddingRight: 6 },
+        unstable_headerRightItems: show
+          ? () => [
+              {
+                type: "custom" as const,
+                element: pill,
+                hidesSharedBackground: true,
+              },
+            ]
+          : () => [],
+      });
+    } else {
+      navigation.setOptions({
+        unstable_headerRightItems: undefined,
+        headerRightContainerStyle: { paddingRight: 10, justifyContent: "center" },
+        headerRight: () => (show ? pill : null),
+      });
+    }
+  }, [navigation, submitting, saveNote]);
+
+  useEffect(() => {
+    if (!snapshotReady || loading) return;
+    if (!baselineCapturedRef.current) return;
+    if (!canSubmit || submitting) return;
     if (initialSnapshotRef.current === currentSnapshot) return;
     setSaveNote(null);
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
@@ -458,7 +502,7 @@ export default function EditRoundScreen() {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [snapshotReady, canSubmit, submitting, uploadingImage, currentSnapshot, submit]);
+  }, [snapshotReady, loading, canSubmit, submitting, currentSnapshot, submit]);
 
   if (loading) {
     return (
@@ -468,55 +512,21 @@ export default function EditRoundScreen() {
     );
   }
 
+  const isPlanningRound = planningMode;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Edit round</Text>
-      <Text style={styles.copy}>Update details. Changes save automatically.</Text>
+      <Text style={styles.title}>
+        {isPlanningRound ? "Planning Round" : "Scheduled Tee Time"}
+      </Text>
+      <Text style={styles.copy}>
+        {isPlanningRound
+          ? "Find players first. Lock details later. Changes save automatically."
+          : "Set it up. Blast invites. Tee off. Changes save automatically."}
+      </Text>
 
       <View style={styles.card}>
-        <Text style={styles.label}>Flow</Text>
-        <View style={styles.row}>
-          <Pressable
-            style={[styles.pill, planningMode && styles.pillActive]}
-            onPress={() => setPlanningMode(true)}
-          >
-            <Text style={[styles.pillText, planningMode && styles.pillTextActive]}>
-              Plan first
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.pill, !planningMode && styles.pillActive]}
-            onPress={() => setPlanningMode(false)}
-          >
-            <Text style={[styles.pillText, !planningMode && styles.pillTextActive]}>
-              Set details now
-            </Text>
-          </Pressable>
-        </View>
-
-        {!planningMode ? (
-          <>
-            <Text style={styles.label}>Event image</Text>
-            {customImageUrl ? (
-              <Image source={{ uri: toAbsoluteUrl(customImageUrl) }} style={styles.cover} />
-            ) : null}
-            <Pressable
-              style={[styles.secondaryButton, uploadingImage && styles.disabled]}
-              onPress={() => void pickAndUploadImage()}
-              disabled={uploadingImage}
-            >
-              <Text style={styles.secondaryButtonText}>
-                {uploadingImage
-                  ? "Uploading..."
-                  : customImageUrl
-                    ? "Change image"
-                    : "Upload image"}
-              </Text>
-            </Pressable>
-          </>
-        ) : null}
-
-        {planningMode ? (
+        {isPlanningRound ? (
           <>
             <Text style={styles.label}>Target date</Text>
             <Pressable style={styles.datePickerBtn} onPress={() => openCalendar("targetDate")}>
@@ -526,32 +536,10 @@ export default function EditRoundScreen() {
               <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
             </Pressable>
             <Text style={styles.label}>Preferred time</Text>
-            <View style={styles.row}>
-              {[
-                { value: "morning", label: "Morning" },
-                { value: "afternoon", label: "Afternoon" },
-                { value: "twilight", label: "Twilight" },
-              ].map((slot) => (
-                <Pressable
-                  key={slot.value}
-                  style={[styles.pill, preferredTimeWindow === slot.value && styles.pillActive]}
-                  onPress={() =>
-                    setPreferredTimeWindow(
-                      slot.value as "morning" | "afternoon" | "twilight",
-                    )
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.pillText,
-                      preferredTimeWindow === slot.value && styles.pillTextActive,
-                    ]}
-                  >
-                    {slot.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <PlanningTimeWindowChips
+              value={preferredTimeWindow}
+              onChange={setPreferredTimeWindow}
+            />
             <Text style={styles.label}>Location</Text>
             <TextInput
               value={planningLocation}
@@ -599,11 +587,16 @@ export default function EditRoundScreen() {
                 onFocus={() => results.length > 0 && setShowCourseResults(true)}
                 placeholder="Search golf courses..."
                 placeholderTextColor={colors.muted}
-                style={styles.input}
+                style={[styles.input, styles.inputWithAccessory]}
               />
-              {query.trim().length > 0 ? (
+              {loadingCourses && !selectedCourse && query.trim().length >= 2 ? (
+                <View style={styles.inputAccessory}>
+                  <ActivityIndicator size="small" color={colors.muted} />
+                </View>
+              ) : null}
+              {selectedCourse ? (
                 <Pressable
-                  style={styles.inputClearBtn}
+                  style={styles.inputAccessory}
                   onPress={() => {
                     setSelectedCourse(null);
                     setQuery("");
@@ -614,7 +607,6 @@ export default function EditRoundScreen() {
                   <Ionicons name="close" size={15} color={colors.muted} />
                 </Pressable>
               ) : null}
-              {loadingCourses ? <Text style={styles.loadingHint}>Searching...</Text> : null}
             </View>
             {showCourseResults &&
               results.map((course) => (
@@ -654,21 +646,6 @@ export default function EditRoundScreen() {
           </>
         )}
 
-        <Text style={styles.label}>Spots</Text>
-        <View style={styles.row}>
-          {[2, 3, 4].map((n) => (
-            <Pressable
-              key={n}
-              style={[styles.pill, totalSpots === n && styles.pillActive]}
-              onPress={() => setTotalSpots(n)}
-            >
-              <Text style={[styles.pillText, totalSpots === n && styles.pillTextActive]}>
-                {n}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
         <Text style={styles.label}>Visibility</Text>
         <View style={styles.row}>
           <Pressable
@@ -687,6 +664,21 @@ export default function EditRoundScreen() {
               Public
             </Text>
           </Pressable>
+        </View>
+
+        <Text style={styles.label}>Spots</Text>
+        <View style={styles.row}>
+          {[2, 3, 4].map((n) => (
+            <Pressable
+              key={n}
+              style={[styles.pill, totalSpots === n && styles.pillActive]}
+              onPress={() => setTotalSpots(n)}
+            >
+              <Text style={[styles.pillText, totalSpots === n && styles.pillTextActive]}>
+                {n}
+              </Text>
+            </Pressable>
+          ))}
         </View>
 
         <Text style={styles.label}>Join policy</Text>
@@ -711,8 +703,6 @@ export default function EditRoundScreen() {
 
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {submitting ? <Text style={styles.success}>Saving...</Text> : null}
-      {!submitting && saveNote ? <Text style={styles.success}>{saveNote}</Text> : null}
 
       <DatePickerModal
         visible={calendarOpen}
@@ -735,6 +725,21 @@ export default function EditRoundScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerSavePill: {
+    alignSelf: "center",
+    backgroundColor: colors.fairwaySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    maxWidth: 120,
+  },
+  headerSavePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.fairway,
+  },
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 40, gap: 12 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
@@ -766,7 +771,10 @@ const styles = StyleSheet.create({
   inputRow: {
     position: "relative",
   },
-  inputClearBtn: {
+  inputWithAccessory: {
+    paddingRight: 38,
+  },
+  inputAccessory: {
     position: "absolute",
     right: 10,
     top: 10,
@@ -787,8 +795,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  datePickerText: { color: colors.text, fontWeight: "600" },
-  datePickerPlaceholder: { color: colors.muted, fontWeight: "500" },
+  datePickerText: {
+    color: colors.text,
+    fontWeight: "600",
+  },
+  datePickerPlaceholder: {
+    color: colors.muted,
+    fontWeight: "500",
+  },
   loadingHint: { color: colors.muted, fontSize: 12, marginTop: 6 },
   listRow: {
     backgroundColor: "#f9f7f3",
@@ -833,7 +847,6 @@ const styles = StyleSheet.create({
   secondaryButtonText: { color: colors.text, fontWeight: "700" },
   disabled: { opacity: 0.5 },
   error: { color: colors.danger },
-  success: { color: colors.fairway, fontWeight: "600" },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.2)",

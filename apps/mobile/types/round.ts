@@ -8,6 +8,7 @@ export type DiscoverRound = {
   teeTime: string | null;
   targetDate: string;
   effectiveDate: string;
+  hostId: string;
   hostName: string;
   hostAvatar: string | null;
   totalSpots: number;
@@ -15,6 +16,11 @@ export type DiscoverRound = {
   distanceMiles: number | null;
   joinPolicy: "instant" | "approval";
   imageUrl: string;
+  confirmedPlayers: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+  }>;
 };
 
 export type RoundDetails = {
@@ -31,6 +37,7 @@ export type RoundDetails = {
   totalSpots: number;
   status: "forming" | "confirmed" | "completed";
   joinPolicy: "instant" | "approval";
+  hostId: string;
   hostName: string;
   hostAvatar: string | null;
   customImageUrl?: string | null;
@@ -61,6 +68,8 @@ export type MineRound = {
   preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
   planningLocation: string | null;
   status: "forming" | "confirmed" | "completed";
+  joinPolicy: "instant" | "approval";
+  imageUrl: string;
   totalSpots?: number;
   confirmedCount?: number;
   confirmedPlayers?: Array<{

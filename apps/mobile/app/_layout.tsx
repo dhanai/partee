@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { ClerkProvider } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
+import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { colors } from "../lib/theme";
 
 export default function RootLayout() {
@@ -13,6 +14,7 @@ export default function RootLayout() {
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <NotificationBadgeProvider>
       <StatusBar style="dark" />
       <Stack
         screenOptions={{
@@ -38,7 +40,43 @@ export default function RootLayout() {
             headerBackTitle: "Round",
           }}
         />
+        <Stack.Screen
+          name="profile/[userId]"
+          options={{
+            title: "Profile",
+            headerBackTitle: "Back",
+          }}
+        />
+        <Stack.Screen
+          name="profile/edit"
+          options={{
+            title: "Edit profile",
+            headerBackTitle: "Back",
+          }}
+        />
+        <Stack.Screen
+          name="notifications"
+          options={{
+            title: "Notifications",
+            headerBackTitle: "Back",
+          }}
+        />
+        <Stack.Screen
+          name="settings"
+          options={{
+            title: "Settings",
+            headerBackTitle: "Back",
+          }}
+        />
+        <Stack.Screen
+          name="invite-friends"
+          options={{
+            title: "Invite Friends",
+            headerBackTitle: "Back",
+          }}
+        />
       </Stack>
+      </NotificationBadgeProvider>
     </ClerkProvider>
   );
 }

@@ -8,7 +8,10 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:fix-notifications-column": "tsx db/ensure-notifications-column.ts",
+    "seed:dev-users": "tsx db/seed-dev-users.ts",
+    "seed:dev-users:clear": "tsx db/seed-dev-users.ts --clear"
   },
   "keywords": [],
   "author": "",

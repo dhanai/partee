@@ -28,9 +28,20 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     ...(options.body ? { body: JSON.stringify(options.body) } : {}),
   });
 
-  const json = (await res.json()) as T & ApiError;
+  const raw = await res.text();
+  let json: (T & ApiError) | null = null;
+  if (raw.length > 0) {
+    try {
+      json = JSON.parse(raw) as T & ApiError;
+    } catch {
+      throw new Error(`Unexpected response from server (${res.status}).`);
+    }
+  }
   if (!res.ok) {
-    throw new Error(json.error ?? `Request failed (${res.status})`);
+    throw new Error(json?.error ?? `Request failed (${res.status})`);
+  }
+  if (!json) {
+    throw new Error(`Empty response from server (${res.status}).`);
   }
   return json;
 }

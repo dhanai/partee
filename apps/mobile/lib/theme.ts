@@ -7,4 +7,6 @@ export const colors = {
   fairway: "#1a3c2a",
   fairwaySoft: "#edf4ef",
   danger: "#b42318",
+  /** Accent for notification / attention dots */
+  mustard: "#c9a227",
 };

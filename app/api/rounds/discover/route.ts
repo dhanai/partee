@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { asc, eq, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { ensureDbUser } from "@/lib/auth";
@@ -65,6 +65,7 @@ export async function GET(req: Request) {
       targetDate: rounds.targetDate,
       totalSpots: rounds.totalSpots,
       joinPolicy: rounds.joinPolicy,
+      hostId: users.id,
       hostName: users.name,
       hostAvatar: users.avatar,
       lat: courses.lat,
@@ -85,6 +86,7 @@ export async function GET(req: Request) {
     )
     .groupBy(
       rounds.id,
+      users.id,
       users.name,
       users.avatar,
       courses.lat,
@@ -124,6 +126,7 @@ export async function GET(req: Request) {
         effectiveDate,
         totalSpots: row.totalSpots,
         joinPolicy: row.joinPolicy,
+        hostId: row.hostId,
         hostName: row.hostName,
         hostAvatar: row.hostAvatar,
         lat: rowLat,
@@ -162,5 +165,37 @@ export async function GET(req: Request) {
   const page = withRemaining.slice(cursor, cursor + limit);
   const nextCursor = cursor + limit < withRemaining.length ? String(cursor + limit) : null;
 
-  return NextResponse.json({ rounds: page, nextCursor, hasMore: nextCursor !== null });
+  const pageIds = page.map((r) => r.id);
+  const confirmedByRound = new Map<
+    string,
+    Array<{ id: string; name: string; avatar: string | null }>
+  >();
+
+  if (pageIds.length > 0) {
+    const confirmedRows = await db
+      .select({
+        roundId: spots.roundId,
+        userId: users.id,
+        name: users.name,
+        avatar: users.avatar,
+        createdAt: spots.createdAt,
+      })
+      .from(spots)
+      .innerJoin(users, eq(users.id, spots.userId))
+      .where(and(inArray(spots.roundId, pageIds), eq(spots.status, "confirmed")))
+      .orderBy(asc(spots.roundId), asc(spots.createdAt));
+
+    for (const row of confirmedRows) {
+      const list = confirmedByRound.get(row.roundId) ?? [];
+      list.push({ id: row.userId, name: row.name, avatar: row.avatar });
+      confirmedByRound.set(row.roundId, list);
+    }
+  }
+
+  const roundsOut = page.map((r) => ({
+    ...r,
+    confirmedPlayers: confirmedByRound.get(r.id) ?? [],
+  }));
+
+  return NextResponse.json({ rounds: roundsOut, nextCursor, hasMore: nextCursor !== null });
 }
