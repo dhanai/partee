@@ -31,7 +31,7 @@ export default function TabsLayout() {
   }
 
   if (!isSignedIn) {
-    return <Redirect href="/sign-in" />;
+    return <Redirect href="/(auth)" />;
   }
 
   function openCreateSheet() {
@@ -110,6 +110,10 @@ export default function TabsLayout() {
             borderTopColor: colors.border,
             height: 66,
             paddingTop: 6,
+            paddingHorizontal: 10,
+          },
+          tabBarItemStyle: {
+            borderRadius: 10,
           },
         }}
       >

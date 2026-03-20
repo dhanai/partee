@@ -115,13 +115,11 @@ export default function SignInScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Pressable
-          style={[styles.buttonSecondary, googleSubmitting && styles.buttonDisabled]}
-          onPress={() => void onGoogleSignIn()}
-          disabled={googleSubmitting || submitting}
+          style={[styles.button, submitting && styles.buttonDisabled]}
+          onPress={() => void onSignIn()}
+          disabled={submitting || googleSubmitting}
         >
-          <Text style={styles.buttonSecondaryText}>
-            {googleSubmitting ? "Opening Google..." : "Continue with Google"}
-          </Text>
+          <Text style={styles.buttonText}>{submitting ? "Signing in..." : "Sign in"}</Text>
         </Pressable>
 
         <View style={styles.dividerRow}>
@@ -131,11 +129,17 @@ export default function SignInScreen() {
         </View>
 
         <Pressable
-          style={[styles.button, submitting && styles.buttonDisabled]}
-          onPress={() => void onSignIn()}
-          disabled={submitting || googleSubmitting}
+          style={[styles.buttonSecondary, googleSubmitting && styles.buttonDisabled]}
+          onPress={() => void onGoogleSignIn()}
+          disabled={googleSubmitting || submitting}
         >
-          <Text style={styles.buttonText}>{submitting ? "Signing in..." : "Sign in"}</Text>
+          <Text style={styles.buttonSecondaryText}>
+            {googleSubmitting ? "Opening Google..." : "Continue with Google"}
+          </Text>
+        </Pressable>
+
+        <Pressable style={styles.switchRow} onPress={() => router.replace("/(auth)/sign-up")}>
+          <Text style={styles.switchText}>Need an account? Sign up</Text>
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -215,5 +219,13 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontWeight: "700",
+  },
+  switchRow: {
+    paddingTop: 6,
+    alignItems: "center",
+  },
+  switchText: {
+    color: colors.fairway,
+    fontWeight: "600",
   },
 });

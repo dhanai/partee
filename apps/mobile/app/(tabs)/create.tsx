@@ -464,9 +464,13 @@ export default function CreateScreen() {
           ? `Round created. Invite blast sent to ${json.invitedCount} golfers.`
           : "Round created.",
       );
-      router.push({
-        pathname: "/round/[token]",
-        params: { token: json.round.inviteToken },
+      router.replace({
+        pathname: "/(tabs)/rounds",
+        params: {
+          tab: "hosting",
+          refresh: String(Date.now()),
+          createdToken: json.round.inviteToken,
+        },
       });
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Create failed.");

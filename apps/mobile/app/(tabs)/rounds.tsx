@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -29,6 +29,11 @@ export default function MyRoundsScreen() {
   const navigation = useNavigation();
   const router = useRouter();
   const { getToken } = useAuth();
+  const params = useLocalSearchParams<{
+    tab?: string | string[];
+    refresh?: string | string[];
+    createdToken?: string | string[];
+  }>();
   const getTokenRef = useRef(getToken);
   const [hosting, setHosting] = useState<MineRound[]>([]);
   const [joined, setJoined] = useState<MineRound[]>([]);
@@ -44,6 +49,7 @@ export default function MyRoundsScreen() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"hosting" | "joined">("hosting");
   const activeTabRef = useRef<"hosting" | "joined">("hosting");
+  const lastHandledRefreshRef = useRef<string | null>(null);
   const tabLoadedRef = useRef<{ hosting: boolean; joined: boolean }>({
     hosting: false,
     joined: false,
@@ -57,6 +63,31 @@ export default function MyRoundsScreen() {
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const refreshParam = Array.isArray(params.refresh) ? params.refresh[0] : params.refresh;
+      const tabParam = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+      if (!refreshParam || lastHandledRefreshRef.current === refreshParam) return;
+
+      lastHandledRefreshRef.current = refreshParam;
+      const requestedTab: "hosting" | "joined" = tabParam === "joined" ? "joined" : "hosting";
+      setActiveTab(requestedTab);
+
+      if (requestedTab === "hosting") {
+        setHostingCursor(null);
+        setHostingHasMore(true);
+        tabLoadedRef.current.hosting = false;
+      } else {
+        setJoinedCursor(null);
+        setJoinedHasMore(true);
+        tabLoadedRef.current.joined = false;
+      }
+
+      void loadTabRoundsRef.current(requestedTab, { reset: true });
+      void loadNotificationsRef.current();
+    }, [params.refresh, params.tab]),
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({

@@ -282,18 +282,28 @@ export default function RoundDetailsScreen() {
 
   async function rsvp(action: "claim" | "decline") {
     if (!token || !round) return;
+    const wasConfirmed = round.currentUserSpotStatus === "confirmed";
     setBusy(true);
     setError(null);
     setMessage(null);
 
     try {
       const authToken = await getToken();
-      await apiPost<{ status?: string }>(
+      const result = await apiPost<{ status?: "confirmed" | "requested" | "declined" }>(
         `/api/rounds/${token}/join`,
         { action },
         authToken,
       );
-      setMessage(action === "claim" ? "RSVP submitted." : "Declined.");
+      const refreshed = await apiGet<RoundResponse>(`/api/rounds/${token}`, authToken);
+      setRound(refreshed.round);
+
+      if (result.status === "requested") {
+        setMessage("Join request submitted.");
+      } else if (result.status === "declined" || action === "decline") {
+        setMessage(wasConfirmed ? "Spot released." : "Declined.");
+      } else {
+        setMessage("Spot claimed.");
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Unable to RSVP.");
     } finally {
@@ -383,6 +393,7 @@ export default function RoundDetailsScreen() {
     (!round.currentUserSpotStatus ||
       round.currentUserSpotStatus === "invited" ||
       round.currentUserSpotStatus === "declined");
+  const showUnclaimAction = !round.isHost && round.currentUserSpotStatus === "confirmed";
   const claimedSlots = Array.from({ length: round.totalSpots }, (_, index) =>
     round.confirmedPlayers[index] ?? null,
   );
@@ -645,6 +656,17 @@ export default function RoundDetailsScreen() {
             disabled={busy}
           >
             <Text style={styles.secondaryText}>Decline</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {showUnclaimAction ? (
+        <View style={styles.actions}>
+          <Pressable
+            style={[styles.button, styles.secondaryButton, busy && styles.disabledButton]}
+            onPress={() => void rsvp("decline")}
+            disabled={busy}
+          >
+            <Text style={styles.secondaryText}>{busy ? "Updating..." : "Unclaim spot"}</Text>
           </Pressable>
         </View>
       ) : null}
