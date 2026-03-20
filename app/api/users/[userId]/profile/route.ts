@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { rounds, spots, userFollows, users } from "@/db/schema";
+import { userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 
 type RouteContext = {
@@ -74,68 +74,34 @@ export async function GET(req: Request, { params }: RouteContext) {
         .where(and(eq(userFollows.followerId, target.id), eq(userFollows.status, "accepted"))),
     ]);
 
-    const [hostedRoundRows, joinedRoundRows] = await Promise.all([
-      db.select({ id: rounds.id }).from(rounds).where(eq(rounds.hostId, target.id)),
-      db
-        .select({ roundId: spots.roundId })
-        .from(spots)
-        .where(and(eq(spots.userId, target.id), eq(spots.status, "confirmed"))),
-    ]);
-    const roundIds = Array.from(
-      new Set([
-        ...hostedRoundRows.map((row) => row.id),
-        ...joinedRoundRows.map((row) => row.roundId),
-      ]),
-    );
+    /** Same semantics as GET /api/users/me/network: people this user follows (accepted outgoing only). */
+    const followRows = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        avatar: users.avatar,
+        handicap: users.handicap,
+      })
+      .from(userFollows)
+      .innerJoin(users, eq(users.id, userFollows.followedId))
+      .where(and(eq(userFollows.followerId, target.id), eq(userFollows.status, "accepted")));
 
-    let friends: Array<{ id: string; name: string; avatar: string | null; handicap: string | null }> =
-      [];
-    if (roundIds.length > 0) {
-      const [peerSpotRows, hostRows] = await Promise.all([
-        db
-          .select({
-            id: users.id,
-            name: users.name,
-            avatar: users.avatar,
-            handicap: users.handicap,
-          })
-          .from(spots)
-          .innerJoin(users, eq(users.id, spots.userId))
-          .where(
-            and(
-              inArray(spots.roundId, roundIds),
-              eq(spots.status, "confirmed"),
-            ),
-          ),
-        db
-          .select({
-            id: users.id,
-            name: users.name,
-            avatar: users.avatar,
-            handicap: users.handicap,
-          })
-          .from(rounds)
-          .innerJoin(users, eq(users.id, rounds.hostId))
-          .where(inArray(rounds.id, roundIds)),
-      ]);
-
-      const byUser = new Map<
-        string,
-        { id: string; name: string; avatar: string | null; handicap: string | null }
-      >();
-      for (const row of [...peerSpotRows, ...hostRows]) {
-        if (row.id === target.id) continue;
-        if (byUser.has(row.id)) continue;
-        const h = row.handicap != null && row.handicap !== "" ? String(row.handicap) : null;
-        byUser.set(row.id, {
-          id: row.id,
-          name: row.name,
-          avatar: row.avatar,
-          handicap: h,
-        });
-      }
-      friends = Array.from(byUser.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const byFollowing = new Map<
+      string,
+      { id: string; name: string; avatar: string | null; handicap: string | null }
+    >();
+    for (const row of followRows) {
+      if (row.id === target.id) continue;
+      if (byFollowing.has(row.id)) continue;
+      const h = row.handicap != null && row.handicap !== "" ? String(row.handicap) : null;
+      byFollowing.set(row.id, {
+        id: row.id,
+        name: row.name,
+        avatar: row.avatar,
+        handicap: h,
+      });
     }
+    const friends = Array.from(byFollowing.values()).sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json({
       user: {

@@ -253,9 +253,9 @@ export default function PublicProfileScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Friends</Text>
+        <Text style={styles.cardTitle}>Following</Text>
         {profile.friends.length === 0 ? (
-          <Text style={styles.cardHint}>No golf friends yet.</Text>
+          <Text style={styles.cardHint}>Not following anyone yet.</Text>
         ) : (
           profile.friends.map((friend) => (
             <View key={friend.id} style={styles.friendRow}>
