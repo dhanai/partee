@@ -178,13 +178,13 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.friendsSection}>
-            <Text style={styles.sectionTitle}>Friends</Text>
+            <Text style={styles.sectionTitle}>Following</Text>
             {friendsLoading ? (
               <View style={styles.loadingRow}>
                 <ActivityIndicator color={colors.fairway} />
               </View>
             ) : friends.length === 0 ? (
-              <Text style={styles.hint}>No friends yet. Join rounds to build your network.</Text>
+              <Text style={styles.hint}>People you follow show up here — use Discover to find golfers.</Text>
             ) : (
               friends.map((friend) => (
                 <Pressable

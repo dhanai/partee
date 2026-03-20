@@ -168,7 +168,7 @@ export default function InviteFriendsScreen() {
 
   const isSearching = query.trim().length >= 2;
 
-  /** Friends (minus excluded), then anyone already selected who isn’t in that list (e.g. picked via search). */
+  /** People you follow (minus excluded), then anyone already selected who isn’t in that list (e.g. search). */
   const friendsRows = useMemo(() => {
     const inFriends = new Set(friendsList.map((f) => f.id));
     const extra = selected.filter(
@@ -235,7 +235,7 @@ export default function InviteFriendsScreen() {
         <Text style={styles.emptyText}>
           {isSearching
             ? "No users found."
-            : "No friends yet. Search by name to invite someone."}
+            : "No one you follow yet. Search by name to invite anyone."}
         </Text>
       ) : (
         rows.map((user) => (
