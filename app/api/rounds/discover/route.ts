@@ -5,6 +5,7 @@ import { courses, rounds, spots, users } from "@/db/schema";
 import { ensureDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocation } from "@/lib/places";
 import { haversineMiles } from "@/lib/utils";
+import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
 const planningLocationCoordCache = new Map<
@@ -168,7 +169,7 @@ export async function GET(req: Request) {
   const pageIds = page.map((r) => r.id);
   const confirmedByRound = new Map<
     string,
-    Array<{ id: string; name: string; avatar: string | null }>
+    Array<{ id: string; name: string; avatar: string | null; claimedAt: Date }>
   >();
 
   if (pageIds.length > 0) {
@@ -178,7 +179,7 @@ export async function GET(req: Request) {
         userId: users.id,
         name: users.name,
         avatar: users.avatar,
-        createdAt: spots.createdAt,
+        claimedAt: spots.createdAt,
       })
       .from(spots)
       .innerJoin(users, eq(users.id, spots.userId))
@@ -187,14 +188,22 @@ export async function GET(req: Request) {
 
     for (const row of confirmedRows) {
       const list = confirmedByRound.get(row.roundId) ?? [];
-      list.push({ id: row.userId, name: row.name, avatar: row.avatar });
+      list.push({
+        id: row.userId,
+        name: row.name,
+        avatar: row.avatar,
+        claimedAt: row.claimedAt,
+      });
       confirmedByRound.set(row.roundId, list);
     }
   }
 
   const roundsOut = page.map((r) => ({
     ...r,
-    confirmedPlayers: confirmedByRound.get(r.id) ?? [],
+    confirmedPlayers: orderConfirmedPlayersHostFirstByClaimOrder(
+      confirmedByRound.get(r.id) ?? [],
+      r.hostId,
+    ),
   }));
 
   return NextResponse.json({ rounds: roundsOut, nextCursor, hasMore: nextCursor !== null });

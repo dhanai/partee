@@ -3,6 +3,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
+import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { ensureDbUser, requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveRoundImageUrl } from "@/lib/round-images";
@@ -131,16 +132,21 @@ export async function GET(req: Request, { params }: RouteContext) {
     currentUserSpotStatus = existingSpot?.status ?? null;
   }
 
-  const confirmedPlayers = await db
+  const confirmedRows = await db
     .select({
       id: users.id,
       name: users.name,
       avatar: users.avatar,
+      claimedAt: spots.createdAt,
     })
     .from(spots)
     .innerJoin(users, eq(users.id, spots.userId))
     .where(and(eq(spots.roundId, round.id), eq(spots.status, "confirmed")))
     .orderBy(asc(spots.createdAt));
+  const confirmedPlayers = orderConfirmedPlayersHostFirstByClaimOrder(
+    confirmedRows,
+    round.hostId,
+  );
 
   const declinedPlayers = await db
     .select({

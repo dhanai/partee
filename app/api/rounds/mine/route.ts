@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
+import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { requireDbUser } from "@/lib/auth";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
@@ -97,6 +98,7 @@ export async function GET(req: Request) {
         joinPolicy: rounds.joinPolicy,
         customImageUrl: rounds.customImageUrl,
         courseId: rounds.courseId,
+        hostId: rounds.hostId,
         spotStatus: spots.status,
       })
       .from(spots)
@@ -125,6 +127,7 @@ export async function GET(req: Request) {
         joinPolicy: rounds.joinPolicy,
         customImageUrl: rounds.customImageUrl,
         courseId: rounds.courseId,
+        hostId: rounds.hostId,
         spotStatus: spots.status,
       })
       .from(spots)
@@ -160,6 +163,7 @@ export async function GET(req: Request) {
               userId: users.id,
               name: users.name,
               avatar: users.avatar,
+              claimedAt: spots.createdAt,
             })
             .from(spots)
             .innerJoin(users, eq(users.id, spots.userId))
@@ -169,11 +173,11 @@ export async function GET(req: Request) {
                 eq(spots.status, "confirmed"),
               ),
             )
-            .orderBy(asc(spots.createdAt));
+            .orderBy(asc(spots.roundId), asc(spots.createdAt));
 
     const confirmedByRound = new Map<
       string,
-      Array<{ id: string; name: string; avatar: string | null }>
+      Array<{ id: string; name: string; avatar: string | null; claimedAt: Date }>
     >();
     for (const row of confirmedRows) {
       const existing = confirmedByRound.get(row.roundId) ?? [];
@@ -181,6 +185,7 @@ export async function GET(req: Request) {
         id: row.userId,
         name: row.name,
         avatar: row.avatar,
+        claimedAt: row.claimedAt,
       });
       confirmedByRound.set(row.roundId, existing);
     }
@@ -188,7 +193,10 @@ export async function GET(req: Request) {
     const hostingPayload = await enrichMineRoundsWithImageUrl(
       hostingUpcoming.map((round) => ({
         ...round,
-        confirmedPlayers: confirmedByRound.get(round.id) ?? [],
+        confirmedPlayers: orderConfirmedPlayersHostFirstByClaimOrder(
+          confirmedByRound.get(round.id) ?? [],
+          user.id,
+        ),
       })),
     );
 
@@ -211,17 +219,18 @@ export async function GET(req: Request) {
               userId: users.id,
               name: users.name,
               avatar: users.avatar,
+              claimedAt: spots.createdAt,
             })
             .from(spots)
             .innerJoin(users, eq(users.id, spots.userId))
             .where(
               and(inArray(spots.roundId, guestRoundIdList), eq(spots.status, "confirmed")),
             )
-            .orderBy(asc(spots.createdAt));
+            .orderBy(asc(spots.roundId), asc(spots.createdAt));
 
     const guestConfirmedByRound = new Map<
       string,
-      Array<{ id: string; name: string; avatar: string | null }>
+      Array<{ id: string; name: string; avatar: string | null; claimedAt: Date }>
     >();
     for (const row of guestConfirmedRows) {
       const existing = guestConfirmedByRound.get(row.roundId) ?? [];
@@ -229,6 +238,7 @@ export async function GET(req: Request) {
         id: row.userId,
         name: row.name,
         avatar: row.avatar,
+        claimedAt: row.claimedAt,
       });
       guestConfirmedByRound.set(row.roundId, existing);
     }
@@ -237,7 +247,10 @@ export async function GET(req: Request) {
       sortByEffectiveDate(
         joinedUpcomingRows.map((round) => ({
           ...round,
-          confirmedPlayers: guestConfirmedByRound.get(round.id) ?? [],
+          confirmedPlayers: orderConfirmedPlayersHostFirstByClaimOrder(
+            guestConfirmedByRound.get(round.id) ?? [],
+            round.hostId,
+          ),
         })),
       ),
     );
@@ -245,7 +258,10 @@ export async function GET(req: Request) {
       sortByEffectiveDate(
         invitedUpcomingRows.map((round) => ({
           ...round,
-          confirmedPlayers: guestConfirmedByRound.get(round.id) ?? [],
+          confirmedPlayers: orderConfirmedPlayersHostFirstByClaimOrder(
+            guestConfirmedByRound.get(round.id) ?? [],
+            round.hostId,
+          ),
         })),
       ),
     );
