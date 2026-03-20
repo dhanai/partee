@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Partee",
-    "slug": "partee-mobile",
+    "slug": "partee",
     "scheme": "partee",
     "version": "1.0.0",
     "orientation": "portrait",

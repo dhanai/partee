@@ -14,7 +14,7 @@ Partee sends **round invite** pushes via **Expo’s service** from your Next API
 2. **Link the app to an EAS project** (writes `expo.extra.eas.projectId` into `app.json`):
 
    ```bash
-   npx eas init
+   npx eas-cli init
    ```
 
    If `projectId` stays empty, push token registration in the app **does nothing** (`register-expo-push.ts`).
@@ -22,9 +22,9 @@ Partee sends **round invite** pushes via **Expo’s service** from your Next API
 3. **Build a dev client** (push + native modules; Expo Go alone is limiting for real device push):
 
    ```bash
-   npx eas build --profile development --platform ios
+   npx eas-cli build --profile development --platform ios
    # and/or
-   npx eas build --profile development --platform android
+   npx eas-cli build --profile development --platform android
    ```
 
    Install the build on a **physical device**. Use **iOS Simulator** only for UI—not for reliable remote push.
