@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:ensure-user-columns": "tsx db/ensure-user-columns.ts",
     "db:fix-notifications-column": "tsx db/ensure-notifications-column.ts",
     "seed:dev-users": "tsx db/seed-dev-users.ts",
     "seed:dev-users:clear": "tsx db/seed-dev-users.ts --clear"
@@ -23,6 +24,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
+    "expo-server-sdk": "^4.0.0",
     "nanoid": "^5.1.7",
     "next": "^14.2.25",
     "react": "^18.3.1",

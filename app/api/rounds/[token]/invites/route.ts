@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { notifyRoundInvites } from "@/lib/notify-user";
 
 const inviteSchema = z.object({
   inviteeUserIds: z.array(z.string().uuid()).min(1).max(30),
@@ -19,7 +20,13 @@ export async function POST(req: Request, { params }: RouteContext) {
     const parsed = inviteSchema.parse(await req.json());
 
     const [round] = await db
-      .select({ id: rounds.id, hostId: rounds.hostId })
+      .select({
+        id: rounds.id,
+        hostId: rounds.hostId,
+        courseName: rounds.courseName,
+        planningLocation: rounds.planningLocation,
+        mode: rounds.mode,
+      })
       .from(rounds)
       .where(eq(rounds.inviteToken, params.token));
 
@@ -75,6 +82,14 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (inviteRows.length > 0) {
       await db.insert(spots).values(inviteRows).onConflictDoNothing({
         target: [spots.roundId, spots.userId],
+      });
+      const label =
+        round.courseName?.trim() ||
+        round.planningLocation?.trim() ||
+        (round.mode === "planning" ? "a planning round" : "a round");
+      void notifyRoundInvites({
+        inviteeUserIds: inviteRows.map((r) => r.userId),
+        body: `You're invited to ${label} on Partee.`,
       });
     }
 

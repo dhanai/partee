@@ -16,6 +16,7 @@ import { NotificationMustardDot } from "../../components/notification-mustard-do
 import { RoundListCard } from "../../components/round-list-card";
 import { apiGet, apiPost } from "../../lib/api";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
+import { buildRoundListHint, prefetchRoundOpen } from "../../lib/round-details-cache";
 import {
   formatPlanningHeaderDate,
   formatPlanningWindow,
@@ -498,10 +499,16 @@ export default function MyRoundsScreen() {
               joinPolicy={joinPolicy}
               totalSpots={round.totalSpots ?? 0}
               confirmedPlayers={round.confirmedPlayers ?? []}
+              onCardPressIn={() =>
+                prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getTokenRef.current())
+              }
               onPress={() =>
                 router.push({
                   pathname: "/round/[token]",
-                  params: { token: round.inviteToken },
+                  params: {
+                    token: round.inviteToken,
+                    roundHint: buildRoundListHint(round),
+                  },
                 })
               }
               primaryMeta={

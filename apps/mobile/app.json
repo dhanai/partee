@@ -41,10 +41,14 @@
         {
           "locationWhenInUsePermission": "Partee uses your location to show nearby rounds."
         }
-      ]
+      ],
+      "expo-image"
     ],
     "extra": {
-      "apiBaseUrl": "http://localhost:3000"
+      "apiBaseUrl": "http://localhost:3000",
+      "eas": {
+        "projectId": ""
+      }
     }
   }
 }

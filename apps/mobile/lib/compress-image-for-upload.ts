@@ -1,9 +1,9 @@
-import * as ImageManipulator from "expo-image-manipulator";
-
 const DEFAULT_MAX_LONG_EDGE = 2048;
 
 /**
  * JPEG re-encode with resize + quality steps until the file is under maxBytes (or limits hit).
+ * Image manipulator is loaded on demand so the app can boot even if the dev client was built
+ * before this native module was added (rebuild with `npx expo run:ios` to enable compression).
  */
 export async function compressImageToMaxBytes(
   uri: string,
@@ -11,6 +11,8 @@ export async function compressImageToMaxBytes(
   naturalWidth?: number,
   naturalHeight?: number,
 ): Promise<Blob> {
+  const ImageManipulator = await import("expo-image-manipulator");
+
   let targetWidth =
     naturalWidth && naturalHeight
       ? Math.max(

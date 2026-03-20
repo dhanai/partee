@@ -23,6 +23,7 @@ import {
   formatScheduledCardMeta,
 } from "../../lib/round-card-meta";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
+import { buildRoundListHint, prefetchRoundOpen } from "../../lib/round-details-cache";
 import {
   applyOptimisticToDiscoverRound,
   subscribeRoundListsRefresh,
@@ -551,10 +552,16 @@ export default function DiscoverScreen() {
             joinPolicy={round.joinPolicy}
             totalSpots={round.totalSpots}
             confirmedPlayers={round.confirmedPlayers}
+            onCardPressIn={() =>
+              prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getTokenRef.current())
+            }
             onPress={() =>
               router.push({
                 pathname: "/round/[token]",
-                params: { token: round.inviteToken },
+                params: {
+                  token: round.inviteToken,
+                  roundHint: buildRoundListHint(round),
+                },
               })
             }
             primaryMeta={

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { notifyFollowRequest } from "@/lib/notify-user";
 
 type RouteContext = {
   params: { userId: string };
@@ -40,17 +41,28 @@ export async function POST(_req: Request, { params }: RouteContext) {
         followedId: targetUserId,
         status: desiredStatus,
       });
+      if (desiredStatus === "requested") {
+        void notifyFollowRequest({ followedUserId: targetUserId, followerName: viewer.name });
+      }
       return NextResponse.json({ ok: true, status: desiredStatus });
     }
 
-    if (existing.status !== desiredStatus) {
+    // Never downgrade an established follow to "requested" when the target goes private.
+    let nextStatus = existing.status;
+    if (existing.status === "accepted") {
+      nextStatus = "accepted";
+    } else if (existing.status === "requested") {
+      nextStatus = target.followVisibility === "public" ? "accepted" : "requested";
+    }
+
+    if (nextStatus !== existing.status) {
       await db
         .update(userFollows)
-        .set({ status: desiredStatus, updatedAt: new Date() })
+        .set({ status: nextStatus, updatedAt: new Date() })
         .where(eq(userFollows.id, existing.id));
     }
 
-    return NextResponse.json({ ok: true, status: desiredStatus });
+    return NextResponse.json({ ok: true, status: nextStatus });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

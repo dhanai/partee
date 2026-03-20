@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
+import { buildRoundListHint, prefetchRoundOpen } from "../lib/round-details-cache";
 import { useNotificationBadge } from "../lib/notification-badge-context";
 import { colors } from "../lib/theme";
 import { MineRound } from "../types/round";
@@ -28,7 +29,7 @@ type FollowRequestsResponse = {
 export default function NotificationsScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
-  const { markNotificationsSeen } = useNotificationBadge();
+  const { markNotificationsSeen, refresh: refreshNotificationBadge } = useNotificationBadge();
   const markSeenRef = useRef(markNotificationsSeen);
   markSeenRef.current = markNotificationsSeen;
   const getTokenRef = useRef(getToken);
@@ -99,6 +100,7 @@ export default function NotificationsScreen() {
       setFollowRequestNotifications((prev) =>
         prev.filter((request) => request.followerId !== followerId),
       );
+      await refreshNotificationBadge();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Unable to update request.");
     } finally {
@@ -186,10 +188,16 @@ export default function NotificationsScreen() {
                 <Pressable
                   key={`invite-${round.id}`}
                   style={styles.notificationCard}
+                  onPressIn={() =>
+                    prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getTokenRef.current())
+                  }
                   onPress={() =>
                     router.push({
                       pathname: "/round/[token]",
-                      params: { token: round.inviteToken },
+                      params: {
+                        token: round.inviteToken,
+                        roundHint: buildRoundListHint(round),
+                      },
                     })
                   }
                 >

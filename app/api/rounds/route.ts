@@ -1,11 +1,12 @@
 import { nanoid } from "nanoid";
 import { NextResponse } from "next/server";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
+import { notifyRoundInvites } from "@/lib/notify-user";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
 const createRoundSchema = z
@@ -200,6 +201,21 @@ export async function POST(req: Request) {
 
       return [newRound];
     });
+
+    if (invitedCount > 0) {
+      const invitedRows = await db
+        .select({ userId: spots.userId })
+        .from(spots)
+        .where(and(eq(spots.roundId, createdRound.id), eq(spots.status, "invited")));
+      const label =
+        createdRound.courseName?.trim() ||
+        createdRound.planningLocation?.trim() ||
+        (createdRound.mode === "planning" ? "a planning round" : "a round");
+      void notifyRoundInvites({
+        inviteeUserIds: invitedRows.map((r) => r.userId),
+        body: `You're invited to ${label} on Partee.`,
+      });
+    }
 
     return NextResponse.json({
       round: createdRound,

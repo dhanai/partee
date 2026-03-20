@@ -12,6 +12,7 @@ import {
 } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { apiGet, apiPost } from "./api";
+import { configureExpoNotificationBehavior, registerExpoPushTokenWithBackend } from "./register-expo-push";
 
 type BadgeResponse = {
   showBadge: boolean;
@@ -41,7 +42,16 @@ export function NotificationBadgeProvider({ children }: { children: ReactNode })
   }, [getToken]);
 
   useEffect(() => {
+    configureExpoNotificationBehavior();
+  }, []);
+
+  useEffect(() => {
     isSignedInRef.current = isSignedIn;
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    void registerExpoPushTokenWithBackend(() => getTokenRef.current());
   }, [isSignedIn]);
 
   const syncAppIconBadge = useCallback(async (next: boolean) => {

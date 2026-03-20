@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { apiGet, apiPatch } from "../lib/api";
+import { apiGet, apiPatch, apiPost } from "../lib/api";
 import { colors } from "../lib/theme";
 
 type MeResponse = {
@@ -49,6 +49,7 @@ export default function SettingsScreen() {
   }, []);
 
   async function saveFollowVisibility(next: "public" | "private") {
+    const previous = followVisibility;
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -58,6 +59,7 @@ export default function SettingsScreen() {
       await apiPatch("/api/users/me", { followVisibility: next }, token);
       setMessage("Settings updated.");
     } catch (saveError) {
+      setFollowVisibility(previous);
       setError(saveError instanceof Error ? saveError.message : "Unable to save settings.");
     } finally {
       setSaving(false);
@@ -67,6 +69,14 @@ export default function SettingsScreen() {
   async function handleSignOut() {
     setSigningOut(true);
     try {
+      const token = await getTokenRef.current();
+      if (token) {
+        try {
+          await apiPost("/api/users/me/push-token", { expoPushToken: null }, token);
+        } catch {
+          // Best-effort: still sign out if the session or network fails.
+        }
+      }
       await signOut();
     } finally {
       setSigningOut(false);

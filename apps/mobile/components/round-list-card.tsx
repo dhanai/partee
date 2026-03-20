@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { toAbsoluteUrl } from "../lib/api";
+import { RoundCoverImage } from "./round-cover-image";
 import {
   planningWindowTheme,
   type PlanningTimeWindow,
@@ -23,6 +24,8 @@ export type RoundListCardProps = {
   totalSpots: number;
   confirmedPlayers: ConfirmedSpotPlayer[];
   onPress: () => void;
+  /** Prefetch details (e.g. `prefetchRoundDetails`) while the user is pressing the card. */
+  onCardPressIn?: () => void;
   /** Scheduled: date + time line. Planning: time-of-day line (combined with location in-card). */
   primaryMeta: string;
   planningLocation?: string | null;
@@ -47,6 +50,7 @@ export function RoundListCard({
   totalSpots,
   confirmedPlayers,
   onPress,
+  onCardPressIn,
   primaryMeta,
   planningLocation,
   planningHeaderDate,
@@ -75,13 +79,15 @@ export function RoundListCard({
         (Nested pressables often collapse to the parent on iOS.)
       */}
       <View style={styles.cardBody}>
-        <Pressable onPress={onPress} style={styles.cardPress}>
+        <Pressable onPressIn={onCardPressIn} onPress={onPress} style={styles.cardPress}>
           <View style={styles.cardPressInner}>
             {mode === "scheduled" ? (
               <>
-                <Image
-                  source={{ uri: toAbsoluteUrl(imageUrl) }}
+                <RoundCoverImage
+                  recyclingKey={`${roundId}:${imageUrl}`}
+                  uri={toAbsoluteUrl(imageUrl)}
                   style={styles.cardImage}
+                  transitionMs={260}
                 />
                 <View style={styles.topRow}>
                   <Text style={styles.cardTitle}>{courseName ?? "Course TBD"}</Text>
@@ -154,7 +160,6 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 132,
     borderRadius: 12,
-    backgroundColor: "#dfe6df",
   },
   topRow: {
     flexDirection: "row",

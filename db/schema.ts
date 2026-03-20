@@ -54,6 +54,8 @@ export const users = pgTable(
     notificationsLastViewedAt: timestamp("notifications_last_viewed_at", {
       withTimezone: true,
     }),
+    /** Expo push token for device notifications (nullable until client registers). */
+    expoPushToken: text("expo_push_token"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

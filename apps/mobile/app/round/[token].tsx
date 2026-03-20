@@ -1,5 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -14,13 +14,19 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { apiBaseUrl, apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { RoundCoverImage } from "../../components/round-cover-image";
+import { apiBaseUrl, apiDelete, apiPost, toAbsoluteUrl } from "../../lib/api";
 import {
   getInviteSelection,
   InviteSelectionUser,
   setInviteSelection,
 } from "../../lib/invite-selection-store";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
+import {
+  computeBootstrapRound,
+  fetchRoundDetailsAndCache,
+  setCachedRoundDetails,
+} from "../../lib/round-details-cache";
 import {
   applyOptimisticToRoundDetails,
   subscribeRoundListsRefresh,
@@ -32,8 +38,14 @@ import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
 
-type RoundResponse = { round: RoundDetails };
 type CourseResult = { id: string; name: string; address: string };
+
+function coerceRoundHintParam(
+  raw: string | string[] | undefined,
+): string | undefined {
+  if (raw == null) return undefined;
+  return Array.isArray(raw) ? raw[0] : raw;
+}
 function useDebounce(value: string, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -51,12 +63,16 @@ function formatPlanningWindow(
 }
 
 export default function RoundDetailsScreen() {
-  const { token } = useLocalSearchParams<{ token: string }>();
+  const { token, roundHint } = useLocalSearchParams<{
+    token: string;
+    roundHint?: string | string[];
+  }>();
   const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const isFirstFocusRef = useRef(true);
   const [busy, setBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,36 +113,67 @@ export default function RoundDetailsScreen() {
     });
   }, [token]);
 
-  const loadRound = useCallback(async () => {
-    if (!token) return;
-    try {
-      setError(null);
-      const authToken = await getTokenRef.current();
-      const data = await apiGet<RoundResponse>(`/api/rounds/${token}`, authToken);
-      setRound(data.round);
-      if (data.round.mode === "planning") {
-        const target = new Date(data.round.targetDate);
-        target.setHours(0, 0, 0, 0);
-        setFinalizeTeeDate(target);
+  const loadRound = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!token) return;
+      const silent = options?.silent ?? false;
+      if (!silent) {
+        setLoading(true);
       }
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Unable to load.");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+      try {
+        setError(null);
+        const authToken = await getTokenRef.current();
+        const data = await fetchRoundDetailsAndCache(token, authToken);
+        setRound(data);
+        if (data.mode === "planning") {
+          const target = new Date(data.targetDate);
+          target.setHours(0, 0, 0, 0);
+          setFinalizeTeeDate(target);
+        }
+      } catch (fetchError) {
+        setError(fetchError instanceof Error ? fetchError.message : "Unable to load.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [token],
+  );
 
-  useEffect(() => {
-    if (token) {
-      void loadRound();
+  useLayoutEffect(() => {
+    if (!token) {
+      setRound(null);
+      setLoading(true);
+      return;
     }
-  }, [token, loadRound]);
+    isFirstFocusRef.current = true;
+    const hintRaw = coerceRoundHintParam(roundHint);
+    const next = computeBootstrapRound(token, hintRaw);
+    setRound(next);
+    setLoading(!next);
+    if (next?.mode === "planning") {
+      const target = new Date(next.targetDate);
+      target.setHours(0, 0, 0, 0);
+      setFinalizeTeeDate(target);
+    }
+    void loadRound({ silent: Boolean(next) });
+  }, [token, roundHint, loadRound]);
 
   useFocusEffect(
     useCallback(() => {
-      void loadRound();
-    }, [loadRound]),
+      if (!token) return;
+      if (isFirstFocusRef.current) {
+        isFirstFocusRef.current = false;
+        return;
+      }
+      void loadRound({ silent: true });
+    }, [token, loadRound]),
   );
+
+  useEffect(() => {
+    if (round) {
+      setCachedRoundDetails(round);
+    }
+  }, [round]);
 
   useEffect(() => {
     let active = true;
@@ -245,8 +292,8 @@ export default function RoundDetailsScreen() {
         },
         authToken,
       );
-      const refreshed = await apiGet<RoundResponse>(`/api/rounds/${token}`, authToken);
-      setRound(refreshed.round);
+      const refreshed = await fetchRoundDetailsAndCache(token, authToken);
+      setRound(refreshed);
       setMessage("Round finalized.");
     } catch (finalizeSubmitError) {
       setFinalizeError(
@@ -273,8 +320,8 @@ export default function RoundDetailsScreen() {
         { action },
         authToken,
       );
-      const refreshed = await apiGet<RoundResponse>(`/api/rounds/${token}`, authToken);
-      setRound(refreshed.round);
+      const refreshed = await fetchRoundDetailsAndCache(token, authToken);
+      setRound(refreshed);
 
       if (result.status === "requested") {
         setMessage("Join request submitted.");
@@ -387,7 +434,12 @@ export default function RoundDetailsScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {round.mode === "scheduled" ? (
         <>
-          <Image source={{ uri: toAbsoluteUrl(round.imageUrl) }} style={styles.hero} />
+          <RoundCoverImage
+            recyclingKey={`${round.id}:${round.imageUrl}`}
+            uri={toAbsoluteUrl(round.imageUrl)}
+            style={styles.hero}
+            transitionMs={320}
+          />
           <Text style={styles.title}>{round.courseName}</Text>
         </>
       ) : (
@@ -754,7 +806,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, gap: 8, paddingBottom: 32 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  hero: { width: "100%", height: 180, borderRadius: 16, backgroundColor: "#dfe6df" },
+  hero: {
+    width: "100%",
+    height: 180,
+    borderRadius: 16,
+  },
   title: { fontSize: 28, fontWeight: "700", color: colors.text, marginTop: 8 },
   whenBlock: { gap: 2, marginTop: 2 },
   whenDate: { color: colors.text, fontWeight: "700", fontSize: 18 },
