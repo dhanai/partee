@@ -48,7 +48,11 @@ export async function POST(req: Request, { params }: RouteContext) {
         .where(and(eq(spots.roundId, round.id), eq(spots.userId, user.id)));
 
       if (existing?.status === targetStatus) {
-        return NextResponse.json({ ok: true, status: existing.status });
+        return NextResponse.json({
+          ok: true,
+          status: existing.status,
+          me: { id: user.id, name: user.name, avatar: user.avatar },
+        });
       }
 
       const [confirmedCountResult] = await db
@@ -77,7 +81,11 @@ export async function POST(req: Request, { params }: RouteContext) {
           .returning({ id: spots.id });
 
         if (updated.length > 0) {
-          return NextResponse.json({ ok: true, status: targetStatus });
+          return NextResponse.json({
+            ok: true,
+            status: targetStatus,
+            me: { id: user.id, name: user.name, avatar: user.avatar },
+          });
         }
       } else {
         try {
@@ -86,7 +94,11 @@ export async function POST(req: Request, { params }: RouteContext) {
             userId: user.id,
             status: targetStatus,
           });
-          return NextResponse.json({ ok: true, status: targetStatus });
+          return NextResponse.json({
+            ok: true,
+            status: targetStatus,
+            me: { id: user.id, name: user.name, avatar: user.avatar },
+          });
         } catch {
           // Retry on unique collisions/races.
         }

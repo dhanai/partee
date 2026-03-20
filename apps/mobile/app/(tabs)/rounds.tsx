@@ -51,6 +51,46 @@ function sortMineByDate(a: MineRound, b: MineRound) {
   );
 }
 
+/** Avoid duplicate React keys when pagination or optimistic merge overlaps. */
+function appendUniqueMineRounds(prev: MineRound[], page: MineRound[]): MineRound[] {
+  const seen = new Set(prev.map((r) => r.id));
+  const out = [...prev];
+  for (const r of page) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
+}
+
+function dedupeMineRoundsById(rows: MineRound[]): MineRound[] {
+  const seen = new Set<string>();
+  const out: MineRound[] = [];
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
+}
+
+function withMeInConfirmed(
+  players: MineRound["confirmedPlayers"] | undefined,
+  me: { id: string; name: string; avatar: string | null },
+): NonNullable<MineRound["confirmedPlayers"]> {
+  const list = [...(players ?? [])];
+  if (list.some((p) => p.id === me.id)) return list;
+  list.push({ id: me.id, name: me.name, avatar: me.avatar });
+  return list;
+}
+
+function upsertJoinedRoundSorted(prev: MineRound[], row: MineRound): MineRound[] {
+  const idx = prev.findIndex((r) => r.id === row.id);
+  const next = idx === -1 ? [...prev, row] : prev.map((r, i) => (i === idx ? row : r));
+  next.sort(sortMineByDate);
+  return next;
+}
+
 export default function MyRoundsScreen() {
   const navigation = useNavigation();
   const router = useRouter();
@@ -249,19 +289,19 @@ export default function MyRoundsScreen() {
         if (!reset && cursor) params.set("cursor", cursor);
         const data = await apiGet<MineTabResponse>(`/api/rounds/mine?${params.toString()}`, authToken);
         if (tab === "hosting") {
-          setHosting((prev) => (reset ? data.rounds : [...prev, ...data.rounds]));
+          setHosting((prev) => (reset ? data.rounds : appendUniqueMineRounds(prev, data.rounds)));
           setHostingCursor(data.nextCursor);
           setHostingHasMore(data.hasMore);
           if (reset) tabLoadedRef.current.hosting = true;
         } else if (tab === "joined") {
-          setJoined((prev) => (reset ? data.rounds : [...prev, ...data.rounds]));
+          setJoined((prev) => (reset ? data.rounds : appendUniqueMineRounds(prev, data.rounds)));
           setJoinedCursor(data.nextCursor);
           setJoinedHasMore(data.hasMore);
           if (reset) tabLoadedRef.current.joined = true;
         } else {
           setInvited((prev) => {
             if (!reset) {
-              return [...prev, ...data.rounds];
+              return appendUniqueMineRounds(prev, data.rounds);
             }
             const responses = inviteResponseByRoundRef.current;
             const fresh = data.rounds;
@@ -269,7 +309,7 @@ export default function MyRoundsScreen() {
             const carried = prev.filter((r) => responses[r.id] && !freshIds.has(r.id));
             const merged = [...fresh, ...carried];
             merged.sort(sortMineByDate);
-            return merged;
+            return dedupeMineRoundsById(merged);
           });
           setInvitedCursor(data.nextCursor);
           setInvitedHasMore(data.hasMore);
@@ -365,12 +405,36 @@ export default function MyRoundsScreen() {
     });
     try {
       const authToken = await getTokenRef.current();
-      const json = await apiPost<{ ok: boolean; status: InviteSpotResponse }>(
-        `/api/rounds/${round.inviteToken}/join`,
-        { action },
-        authToken,
-      );
-      setInviteResponseByRound((prev) => ({ ...prev, [round.id]: json.status }));
+      const json = await apiPost<{
+        ok: boolean;
+        status: InviteSpotResponse;
+        me?: { id: string; name: string; avatar: string | null };
+      }>(`/api/rounds/${round.inviteToken}/join`, { action }, authToken);
+
+      setInviteResponseByRound((prev) => {
+        const next = { ...prev };
+        delete next[round.id];
+        return next;
+      });
+      setInvited((prev) => prev.filter((r) => r.id !== round.id));
+
+      if (json.me) {
+        if (json.status === "confirmed" || json.status === "requested") {
+          const nextPlayers =
+            json.status === "confirmed"
+              ? withMeInConfirmed(round.confirmedPlayers, json.me)
+              : (round.confirmedPlayers ?? []);
+          const nextRow: MineRound = {
+            ...round,
+            spotStatus: json.status,
+            confirmedPlayers: nextPlayers,
+            confirmedCount: nextPlayers.length,
+          };
+          setJoined((prev) => upsertJoinedRoundSorted(prev, nextRow));
+        }
+      }
+
+      emitRoundListsShouldRefresh();
       void refreshNotificationBadge();
     } catch (actionError) {
       setInviteRowError((prev) => ({

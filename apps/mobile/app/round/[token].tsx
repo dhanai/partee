@@ -1,4 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
@@ -32,6 +33,7 @@ import {
   emitRoundListsShouldRefresh,
   subscribeRoundListsRefresh,
 } from "../../lib/round-lists-refresh";
+import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calendar";
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
 import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
@@ -69,6 +71,7 @@ export default function RoundDetailsScreen() {
     roundHint?: string | string[];
   }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const [round, setRound] = useState<RoundDetails | null>(null);
@@ -175,6 +178,40 @@ export default function RoundDetailsScreen() {
       setCachedRoundDetails(round);
     }
   }, [round]);
+
+  useLayoutEffect(() => {
+    if (loading || !round) {
+      navigation.setOptions({
+        headerRight: undefined,
+        headerRightContainerStyle: undefined,
+      });
+      return;
+    }
+    const canAddToCalendar =
+      round.isHost || round.currentUserSpotStatus === "confirmed";
+    if (!canAddToCalendar) {
+      navigation.setOptions({
+        headerRight: undefined,
+        headerRightContainerStyle: undefined,
+      });
+      return;
+    }
+    navigation.setOptions({
+      headerRightContainerStyle: { paddingRight: 10 },
+      headerRight: () => (
+        <Pressable
+          accessibilityLabel="Add round to calendar"
+          accessibilityRole="button"
+          hitSlop={12}
+          onPress={() => {
+            void presentAddRoundToCalendar(round);
+          }}
+        >
+          <Ionicons name="calendar-outline" size={22} color={colors.text} />
+        </Pressable>
+      ),
+    });
+  }, [navigation, loading, round]);
 
   useEffect(() => {
     let active = true;

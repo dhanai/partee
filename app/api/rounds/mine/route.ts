@@ -150,6 +150,18 @@ export async function GET(req: Request) {
           new Date(b.teeTime ?? b.targetDate).getTime(),
       );
 
+    /** One row per round (duplicate spot rows for the same user+round would otherwise duplicate keys in the app). */
+    function dedupeGuestRowsByRoundId<T extends { id: string }>(rows: T[]): T[] {
+      const seen = new Set<string>();
+      const out: T[] = [];
+      for (const row of rows) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        out.push(row);
+      }
+      return out;
+    }
+
     const hostingUpcoming = sortByEffectiveDate(
       hosting.filter((r) => new Date(r.teeTime ?? r.targetDate) >= now),
     );
@@ -200,11 +212,11 @@ export async function GET(req: Request) {
       })),
     );
 
-    const joinedUpcomingRows = joined.filter(
-      (r) => new Date(r.teeTime ?? r.targetDate) >= now,
+    const joinedUpcomingRows = dedupeGuestRowsByRoundId(
+      joined.filter((r) => new Date(r.teeTime ?? r.targetDate) >= now),
     );
-    const invitedUpcomingRows = invitedOnly.filter(
-      (r) => new Date(r.teeTime ?? r.targetDate) >= now,
+    const invitedUpcomingRows = dedupeGuestRowsByRoundId(
+      invitedOnly.filter((r) => new Date(r.teeTime ?? r.targetDate) >= now),
     );
     const guestRoundIdList = [
       ...new Set([...joinedUpcomingRows.map((r) => r.id), ...invitedUpcomingRows.map((r) => r.id)]),
