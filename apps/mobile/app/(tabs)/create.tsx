@@ -8,7 +8,6 @@ import DateTimePicker, {
 import * as ImagePicker from "expo-image-picker";
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +17,8 @@ import {
 } from "react-native";
 import { apiBaseUrl, apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
 import { colors } from "../../lib/theme";
+import { DatePickerModal } from "../../components/date-picker-modal";
+import { TimePickerModal } from "../../components/time-picker-modal";
 
 type CourseResult = {
   id: string;
@@ -92,10 +93,6 @@ export default function CreateScreen() {
   const [calendarTarget, setCalendarTarget] = useState<"targetDate" | "teeDate">(
     "targetDate",
   );
-  const [calendarMonth, setCalendarMonth] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CourseResult[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(false);
@@ -199,14 +196,6 @@ export default function CreateScreen() {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
   }
 
-  function isSameDay(a: Date, b: Date) {
-    return (
-      a.getFullYear() === b.getFullYear() &&
-      a.getMonth() === b.getMonth() &&
-      a.getDate() === b.getDate()
-    );
-  }
-
   function formatDateLabel(date: Date | null) {
     if (!date) return "Select date";
     return date.toLocaleDateString("en-US", {
@@ -223,31 +212,8 @@ export default function CreateScreen() {
     });
   }
 
-  const monthLabel = calendarMonth.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
-  const firstWeekday = new Date(
-    calendarMonth.getFullYear(),
-    calendarMonth.getMonth(),
-    1,
-  ).getDay();
-  const daysInMonth = new Date(
-    calendarMonth.getFullYear(),
-    calendarMonth.getMonth() + 1,
-    0,
-  ).getDate();
-  const dayCells = [
-    ...Array.from({ length: firstWeekday }).map(() => null),
-    ...Array.from({ length: daysInMonth }).map((_, i) => i + 1),
-  ];
-  while (dayCells.length % 7 !== 0) dayCells.push(null);
-
   function openCalendar(target: "targetDate" | "teeDate") {
     setCalendarTarget(target);
-    const selected = target === "targetDate" ? targetDate : teeDate;
-    const base = selected ?? new Date();
-    setCalendarMonth(new Date(base.getFullYear(), base.getMonth(), 1));
     setCalendarOpen(true);
   }
 
@@ -258,22 +224,12 @@ export default function CreateScreen() {
     } else {
       setTeeDate(picked);
     }
-    setCalendarOpen(false);
   }
 
-  function shiftMonth(delta: number) {
-    const next = new Date(
-      calendarMonth.getFullYear(),
-      calendarMonth.getMonth() + delta,
-      1,
-    );
-    const currentMonthStart = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1,
-    );
-    if (next < currentMonthStart) return;
-    setCalendarMonth(next);
+  function minimumDate() {
+    const min = new Date();
+    min.setHours(0, 0, 0, 0);
+    return min;
   }
 
   useEffect(() => {
@@ -921,96 +877,22 @@ export default function CreateScreen() {
         </Pressable>
       </View>
 
-      <Modal visible={calendarOpen} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setCalendarOpen(false)}>
-          <Pressable
-            style={styles.modalCard}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>
-              {calendarTarget === "targetDate" ? "Select target date" : "Select tee date"}
-            </Text>
-            <View style={styles.monthNavRow}>
-              <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(-1)}>
-                <Ionicons name="chevron-back" size={16} color={colors.fairway} />
-              </Pressable>
-              <Text style={styles.monthLabel}>{monthLabel}</Text>
-              <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(1)}>
-                <Ionicons name="chevron-forward" size={16} color={colors.fairway} />
-              </Pressable>
-            </View>
-            <View style={styles.weekHeader}>
-              {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
-                <Text key={`${d}-${idx}`} style={styles.weekHeaderText}>
-                  {d}
-                </Text>
-              ))}
-            </View>
-            <View style={styles.calendarGrid}>
-              {dayCells.map((dayNum, idx) => {
-                if (dayNum === null) return <View key={`empty-${idx}`} style={styles.dayCell} />;
-                const dayDate = new Date(
-                  calendarMonth.getFullYear(),
-                  calendarMonth.getMonth(),
-                  dayNum,
-                );
-                const isPast =
-                  startOfDay(dayDate).getTime() < startOfDay(new Date()).getTime();
-                const selected =
-                  calendarTarget === "targetDate"
-                    ? targetDate
-                      ? isSameDay(dayDate, targetDate)
-                      : false
-                    : teeDate
-                      ? isSameDay(dayDate, teeDate)
-                      : false;
-                return (
-                  <Pressable
-                    key={`day-${dayNum}`}
-                    style={[
-                      styles.dayCell,
-                      selected && styles.daySelected,
-                      isPast && styles.dayDisabled,
-                    ]}
-                    onPress={() => {
-                      if (isPast) return;
-                      onSelectCalendarDay(dayDate);
-                    }}
-                    disabled={isPast}
-                  >
-                    <Text
-                      style={[
-                        styles.dayText,
-                        selected && styles.dayTextSelected,
-                        isPast && styles.dayTextDisabled,
-                      ]}
-                    >
-                      {dayNum}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Pressable style={styles.modalDoneBtn} onPress={() => setCalendarOpen(false)}>
-              <Text style={styles.modalDoneText}>Done</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <DatePickerModal
+        visible={calendarOpen}
+        title={calendarTarget === "targetDate" ? "Select target date" : "Select tee date"}
+        selectedDate={calendarTarget === "targetDate" ? targetDate : teeDate}
+        onSelectDate={onSelectCalendarDay}
+        onClose={() => setCalendarOpen(false)}
+        minimumDate={minimumDate()}
+      />
 
-      {timePickerOpen && (
-        <DateTimePicker
-          value={teeTimeValue}
-          mode="time"
-          display="default"
-          onChange={(event: DateTimePickerEvent, selected?: Date) => {
-            setTimePickerOpen(false);
-            if (event.type === "set" && selected) {
-              setTeeTimeValue(selected);
-            }
-          }}
-        />
-      )}
+      <TimePickerModal
+        visible={timePickerOpen}
+        title="Select tee time"
+        value={teeTimeValue}
+        onChange={setTeeTimeValue}
+        onClose={() => setTimePickerOpen(false)}
+      />
       {eventDatePickerOpen && (
         <DateTimePicker
           value={eventDate ?? new Date()}
@@ -1232,7 +1114,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   weekHeaderText: {
-    width: `${100 / 7}%`,
+    width: "14.2857%",
     textAlign: "center",
     color: colors.muted,
     fontSize: 12,
@@ -1243,7 +1125,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   dayCell: {
-    width: `${100 / 7}%`,
+    width: "14.2857%",
     aspectRatio: 1,
     alignItems: "center",
     justifyContent: "center",

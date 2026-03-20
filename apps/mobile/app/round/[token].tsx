@@ -2,9 +2,6 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import {
   Share,
   ActivityIndicator,
@@ -20,6 +17,8 @@ import {
 import { apiBaseUrl, apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
+import { DatePickerModal } from "../../components/date-picker-modal";
+import { TimePickerModal } from "../../components/time-picker-modal";
 
 type RoundResponse = { round: RoundDetails };
 type CourseResult = { id: string; name: string; address: string };
@@ -70,10 +69,6 @@ export default function RoundDetailsScreen() {
   });
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -215,14 +210,6 @@ export default function RoundDetailsScreen() {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
   }
 
-  function isSameDay(a: Date, b: Date) {
-    return (
-      a.getFullYear() === b.getFullYear() &&
-      a.getMonth() === b.getMonth() &&
-      a.getDate() === b.getDate()
-    );
-  }
-
   function formatDateLabel(date: Date | null) {
     if (!date) return "Select date";
     return date.toLocaleDateString("en-US", {
@@ -239,50 +226,13 @@ export default function RoundDetailsScreen() {
     });
   }
 
-  const monthLabel = calendarMonth.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
-  const firstWeekday = new Date(
-    calendarMonth.getFullYear(),
-    calendarMonth.getMonth(),
-    1,
-  ).getDay();
-  const daysInMonth = new Date(
-    calendarMonth.getFullYear(),
-    calendarMonth.getMonth() + 1,
-    0,
-  ).getDate();
-  const dayCells = [
-    ...Array.from({ length: firstWeekday }).map(() => null),
-    ...Array.from({ length: daysInMonth }).map((_, i) => i + 1),
-  ];
-  while (dayCells.length % 7 !== 0) dayCells.push(null);
-
   function openCalendar() {
-    const base = finalizeTeeDate ?? new Date();
-    setCalendarMonth(new Date(base.getFullYear(), base.getMonth(), 1));
     setCalendarOpen(true);
   }
 
   function onSelectCalendarDay(day: Date) {
     setFinalizeTeeDate(startOfDay(day));
     setCalendarOpen(false);
-  }
-
-  function shiftMonth(delta: number) {
-    const next = new Date(
-      calendarMonth.getFullYear(),
-      calendarMonth.getMonth() + delta,
-      1,
-    );
-    const currentMonthStart = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1,
-    );
-    if (next < currentMonthStart) return;
-    setCalendarMonth(next);
   }
 
   async function finalizeRound() {
@@ -723,73 +673,14 @@ export default function RoundDetailsScreen() {
         </View>
       ) : null}
 
-      <Modal visible={calendarOpen} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setCalendarOpen(false)}>
-          <Pressable
-            style={styles.modalCard}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>Select tee date</Text>
-            <View style={styles.monthNavRow}>
-              <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(-1)}>
-                <Ionicons name="chevron-back" size={16} color={colors.fairway} />
-              </Pressable>
-              <Text style={styles.monthLabel}>{monthLabel}</Text>
-              <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(1)}>
-                <Ionicons name="chevron-forward" size={16} color={colors.fairway} />
-              </Pressable>
-            </View>
-            <View style={styles.weekHeader}>
-              {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
-                <Text key={`${d}-${idx}`} style={styles.weekHeaderText}>
-                  {d}
-                </Text>
-              ))}
-            </View>
-            <View style={styles.calendarGrid}>
-              {dayCells.map((dayNum, idx) => {
-                if (dayNum === null) return <View key={`empty-${idx}`} style={styles.dayCell} />;
-                const dayDate = new Date(
-                  calendarMonth.getFullYear(),
-                  calendarMonth.getMonth(),
-                  dayNum,
-                );
-                const isPast =
-                  startOfDay(dayDate).getTime() < startOfDay(new Date()).getTime();
-                const selected = finalizeTeeDate ? isSameDay(dayDate, finalizeTeeDate) : false;
-                return (
-                  <Pressable
-                    key={`day-${dayNum}`}
-                    style={[
-                      styles.dayCell,
-                      selected && styles.daySelected,
-                      isPast && styles.dayDisabled,
-                    ]}
-                    onPress={() => {
-                      if (isPast) return;
-                      onSelectCalendarDay(dayDate);
-                    }}
-                    disabled={isPast}
-                  >
-                    <Text
-                      style={[
-                        styles.dayText,
-                        selected && styles.dayTextSelected,
-                        isPast && styles.dayTextDisabled,
-                      ]}
-                    >
-                      {dayNum}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Pressable style={styles.modalDoneBtn} onPress={() => setCalendarOpen(false)}>
-              <Text style={styles.modalDoneText}>Done</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <DatePickerModal
+        visible={calendarOpen}
+        title="Select tee date"
+        selectedDate={finalizeTeeDate}
+        onSelectDate={onSelectCalendarDay}
+        onClose={() => setCalendarOpen(false)}
+        minimumDate={new Date()}
+      />
 
       <Modal visible={deleteConfirmOpen} transparent animationType="fade">
         <Pressable style={styles.modalBackdrop} onPress={() => setDeleteConfirmOpen(false)}>
@@ -822,19 +713,13 @@ export default function RoundDetailsScreen() {
         </Pressable>
       </Modal>
 
-      {timePickerOpen && (
-        <DateTimePicker
-          value={finalizeTeeTimeValue}
-          mode="time"
-          display="default"
-          onChange={(event: DateTimePickerEvent, selected?: Date) => {
-            setTimePickerOpen(false);
-            if (event.type === "set" && selected) {
-              setFinalizeTeeTimeValue(selected);
-            }
-          }}
-        />
-      )}
+      <TimePickerModal
+        visible={timePickerOpen}
+        title="Select tee time"
+        value={finalizeTeeTimeValue}
+        onChange={setFinalizeTeeTimeValue}
+        onClose={() => setTimePickerOpen(false)}
+      />
     </ScrollView>
   );
 }
@@ -1048,52 +933,4 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
-  monthNavRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  monthNavBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 12,
-    backgroundColor: "#f3f1ed",
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  monthLabel: { color: colors.text, fontSize: 15, fontWeight: "700" },
-  weekHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 4,
-  },
-  weekHeaderText: {
-    width: `${100 / 7}%`,
-    textAlign: "center",
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
-  dayCell: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-  },
-  daySelected: { backgroundColor: colors.fairway },
-  dayDisabled: { opacity: 0.35 },
-  dayText: { color: colors.text, fontWeight: "600" },
-  dayTextSelected: { color: "#fff" },
-  dayTextDisabled: { color: colors.muted },
-  modalDoneBtn: {
-    backgroundColor: colors.fairway,
-    borderRadius: 12,
-    paddingVertical: 11,
-    alignItems: "center",
-  },
-  modalDoneText: { color: "#fff", fontWeight: "700" },
 });

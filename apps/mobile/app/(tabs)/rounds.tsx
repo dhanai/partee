@@ -93,6 +93,7 @@ export default function MyRoundsScreen() {
       try {
         setError(null);
         if (reset && existingCount === 0) {
+          setLoadingMore(false);
           setLoading(true);
         } else {
           setLoadingMore(true);
@@ -233,10 +234,12 @@ export default function MyRoundsScreen() {
   }
 
   const activeRounds = activeTab === "hosting" ? hosting : joined;
+  const emptyTitle =
+    activeTab === "hosting" ? "No hosted rounds yet" : "No joined rounds yet";
   const emptyMessage =
     activeTab === "hosting"
-      ? "No upcoming rounds you are hosting."
-      : "No upcoming rounds you have claimed.";
+      ? "Create your first round and invite friends to get a game going."
+      : "Claim a spot from Discover and your joined rounds will show up here.";
   const listHeader = (
     <>
       <Text style={styles.heading}>My rounds</Text>
@@ -277,11 +280,33 @@ export default function MyRoundsScreen() {
               <ActivityIndicator color={colors.fairway} />
             </View>
           ) : (
-            <Text style={styles.emptyText}>{emptyMessage}</Text>
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons
+                  name={activeTab === "hosting" ? "flag-outline" : "people-outline"}
+                  size={18}
+                  color={colors.fairway}
+                />
+              </View>
+              <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+              <Text style={styles.emptyText}>{emptyMessage}</Text>
+              <Pressable
+                style={styles.emptyCta}
+                onPress={() =>
+                  router.push(activeTab === "hosting" ? "/(tabs)/create" : "/(tabs)")
+                }
+              >
+                <Text style={styles.emptyCtaText}>
+                  {activeTab === "hosting" ? "Create a round" : "Browse Discover"}
+                </Text>
+              </Pressable>
+            </View>
           )
         }
         ListFooterComponent={
-          loadingMore ? <ActivityIndicator color={colors.fairway} style={styles.loadingMore} /> : null
+          loadingMore && !loading && activeRounds.length > 0 ? (
+            <ActivityIndicator color={colors.fairway} style={styles.loadingMore} />
+          ) : null
         }
         initialNumToRender={8}
         maxToRenderPerBatch={10}
@@ -423,6 +448,32 @@ const styles = StyleSheet.create({
   tabText: { color: colors.text, fontWeight: "700" },
   tabTextActive: { color: "#fff" },
   emptyText: { color: colors.muted, marginBottom: 4 },
+  emptyCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 14,
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  emptyIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.fairwaySoft,
+  },
+  emptyTitle: { color: colors.text, fontWeight: "700", fontSize: 17 },
+  emptyCta: {
+    marginTop: 4,
+    backgroundColor: colors.fairway,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  emptyCtaText: { color: "#fff", fontWeight: "700", fontSize: 12 },
   inlineLoadingWrap: { paddingVertical: 20, alignItems: "center" },
   headerBellBtn: {
     width: 30,

@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
+import * as SecureStore from "expo-secure-store";
 import {
   ActivityIndicator,
   FlatList,
@@ -25,6 +26,14 @@ type DiscoverResponse = {
   hasMore: boolean;
 };
 type LocationResult = { label: string; city: string; state: string; lat: number; lng: number };
+type StoredLocationOverride = {
+  label: string;
+  lat: number;
+  lng: number;
+  radiusMiles: number;
+};
+
+const DISCOVER_LOCATION_OVERRIDE_KEY = "discover.location.override.v1";
 
 export default function DiscoverScreen() {
   const navigation = useNavigation();
@@ -48,6 +57,7 @@ export default function DiscoverScreen() {
   const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
   const [locationSearchLoading, setLocationSearchLoading] = useState(false);
   const [showLocationResults, setShowLocationResults] = useState(false);
+  const [locationHydrated, setLocationHydrated] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -59,6 +69,7 @@ export default function DiscoverScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const roundsRef = useRef<DiscoverRound[]>([]);
+  const hasManualLocationRef = useRef(false);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -68,46 +79,98 @@ export default function DiscoverScreen() {
     roundsRef.current = rounds;
   }, [rounds]);
 
+  const saveManualLocationOverride = useCallback(
+    async (next: { label: string; lat: number; lng: number }, radius = radiusMiles) => {
+      const payload: StoredLocationOverride = {
+        label: next.label,
+        lat: next.lat,
+        lng: next.lng,
+        radiusMiles: radius,
+      };
+      await SecureStore.setItemAsync(DISCOVER_LOCATION_OVERRIDE_KEY, JSON.stringify(payload));
+    },
+    [radiusMiles],
+  );
+
+  const clearManualLocationOverride = useCallback(async () => {
+    await SecureStore.deleteItemAsync(DISCOVER_LOCATION_OVERRIDE_KEY);
+  }, []);
+
+  const resolveCurrentLocation = useCallback(async () => {
+    setLocationStatus("locating");
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== "granted") {
+      setLocationStatus("denied");
+      return;
+    }
+    const position = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+    const reverse = await Location.reverseGeocodeAsync({
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+    });
+    const place = reverse[0];
+    setCoords({
+      lat: position.coords.latitude,
+      lng: position.coords.longitude,
+    });
+    setLocationLabel(place?.city && place?.region ? `${place.city}, ${place.region}` : "Near me");
+    setLocationStatus("ready");
+  }, []);
+
   useEffect(() => {
     let active = true;
-    async function requestLocation() {
+    async function hydrateLocation() {
       try {
-        setLocationStatus("locating");
-        const permission = await Location.requestForegroundPermissionsAsync();
+        const raw = await SecureStore.getItemAsync(DISCOVER_LOCATION_OVERRIDE_KEY);
         if (!active) return;
-        if (permission.status !== "granted") {
-          setLocationStatus("denied");
+        if (raw) {
+          const parsed = JSON.parse(raw) as StoredLocationOverride;
+          if (
+            Number.isFinite(parsed?.lat) &&
+            Number.isFinite(parsed?.lng) &&
+            typeof parsed?.label === "string"
+          ) {
+            hasManualLocationRef.current = true;
+            setCoords({ lat: parsed.lat, lng: parsed.lng });
+            setLocationLabel(parsed.label);
+            setRadiusMiles(parsed.radiusMiles || 25);
+            setLocationStatus("ready");
+            setLocationHydrated(true);
+            return;
+          }
+        }
+        hasManualLocationRef.current = false;
+        await resolveCurrentLocation();
+        if (!active || hasManualLocationRef.current) {
           return;
         }
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (!active) return;
-        const reverse = await Location.reverseGeocodeAsync({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-        const place = reverse[0];
-        if (place?.city && place?.region) {
-          setLocationLabel(`${place.city}, ${place.region}`);
-        }
-        setCoords({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-        setLocationStatus("ready");
       } catch {
         if (!active) return;
         setLocationStatus("unavailable");
+      } finally {
+        if (active) setLocationHydrated(true);
       }
     }
-    void requestLocation();
+    void hydrateLocation();
     return () => {
       active = false;
     };
-  }, []);
+  }, [resolveCurrentLocation]);
 
   useLayoutEffect(() => {
+    const openLocationModal = () => {
+      if (locationLabel && locationLabel !== "Near me") {
+        setLocationQuery(locationLabel);
+      } else {
+        setLocationQuery("");
+      }
+      setLocationResults([]);
+      setShowLocationResults(false);
+      setLocationModalOpen(true);
+    };
+
     navigation.setOptions({
       headerRightContainerStyle: {
         paddingRight: 12,
@@ -119,7 +182,7 @@ export default function DiscoverScreen() {
           </Text>
           <Pressable
             style={styles.headerCalendarBtn}
-            onPress={() => setLocationModalOpen(true)}
+            onPress={openLocationModal}
             accessibilityLabel="Open location and radius picker"
           >
             <Ionicons name="location-outline" size={18} color={colors.fairway} />
@@ -182,15 +245,33 @@ export default function DiscoverScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (!locationHydrated) return;
       void loadRounds({ reset: true });
-    }, [loadRounds]),
+    }, [loadRounds, locationHydrated]),
   );
+
+  useEffect(() => {
+    if (!locationHydrated) return;
+    if (!hasManualLocationRef.current || !coords) return;
+    void saveManualLocationOverride(
+      { label: locationLabel, lat: coords.lat, lng: coords.lng },
+      radiusMiles,
+    );
+  }, [radiusMiles, coords, locationLabel, locationHydrated, saveManualLocationOverride]);
 
   useEffect(() => {
     let active = true;
     async function runLocationSearch() {
       const q = locationQuery.trim();
+      const currentLabel = locationLabel.trim();
       if (q.length < 2) {
+        if (active) {
+          setLocationResults([]);
+          setShowLocationResults(false);
+        }
+        return;
+      }
+      if (currentLabel && q.toLowerCase() === currentLabel.toLowerCase()) {
         if (active) {
           setLocationResults([]);
           setShowLocationResults(false);
@@ -221,7 +302,7 @@ export default function DiscoverScreen() {
       active = false;
       clearTimeout(timer);
     };
-  }, [locationQuery]);
+  }, [locationQuery, locationLabel]);
 
   if (loading) {
     return (
@@ -381,7 +462,46 @@ export default function DiscoverScreen() {
         data={filteredRounds}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={listHeader}
-        ListEmptyComponent={<Text style={styles.emptyText}>No rounds match this filter yet.</Text>}
+        ListEmptyComponent={
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="golf-outline" size={18} color={colors.fairway} />
+            </View>
+            <Text style={styles.emptyTitle}>No rounds match this filter</Text>
+            <Text style={styles.emptyText}>
+              Try a wider date range, larger radius, or switch location.
+            </Text>
+            <View style={styles.emptyActionsRow}>
+              <Pressable
+                style={styles.emptySecondaryBtn}
+                onPress={() => {
+                  setStartDate(null);
+                  setEndDate(null);
+                  setDraftStartDate(null);
+                  setDraftEndDate(null);
+                  setRangeModalOpen(false);
+                }}
+              >
+                <Text style={styles.emptySecondaryBtnText}>Clear dates</Text>
+              </Pressable>
+              <Pressable
+                style={styles.emptyPrimaryBtn}
+                onPress={() => {
+                  if (locationLabel && locationLabel !== "Near me") {
+                    setLocationQuery(locationLabel);
+                  } else {
+                    setLocationQuery("");
+                  }
+                  setLocationResults([]);
+                  setShowLocationResults(false);
+                  setLocationModalOpen(true);
+                }}
+              >
+                <Text style={styles.emptyPrimaryBtnText}>Change location</Text>
+              </Pressable>
+            </View>
+          </View>
+        }
         ListFooterComponent={
           loadingMore ? <ActivityIndicator color={colors.fairway} style={styles.loadingMore} /> : null
         }
@@ -514,11 +634,10 @@ export default function DiscoverScreen() {
                 const inRange = !isPast && isInSelectedRange(dayDate);
                 return (
                   <Pressable
-                    key={`day-${dayNum}`}
+                    key={`day-${calendarMonth.getFullYear()}-${calendarMonth.getMonth()}-${dayNum}-${idx}`}
                     style={[
                       styles.dayCell,
                       inRange && styles.dayInRange,
-                      (isStart || isEnd) && styles.daySelected,
                       isPast && styles.dayDisabled,
                     ]}
                     onPress={() => {
@@ -527,15 +646,17 @@ export default function DiscoverScreen() {
                     }}
                     disabled={isPast}
                   >
-                    <Text
-                      style={[
-                        styles.dayText,
-                        (isStart || isEnd) && styles.dayTextSelected,
-                        isPast && styles.dayTextDisabled,
-                      ]}
-                    >
-                      {dayNum}
-                    </Text>
+                    <View style={[styles.dayPill, (isStart || isEnd) && styles.dayPillSelected]}>
+                      <Text
+                        style={[
+                          styles.dayText,
+                          (isStart || isEnd) && styles.dayTextSelected,
+                          isPast && styles.dayTextDisabled,
+                        ]}
+                      >
+                        {dayNum}
+                      </Text>
+                    </View>
                   </Pressable>
                 );
               })}
@@ -562,31 +683,10 @@ export default function DiscoverScreen() {
               style={styles.useCurrentBtn}
               onPress={async () => {
                 try {
-                  setLocationStatus("locating");
-                  const permission = await Location.requestForegroundPermissionsAsync();
-                  if (permission.status !== "granted") {
-                    setLocationStatus("denied");
-                    return;
-                  }
-                  const position = await Location.getCurrentPositionAsync({
-                    accuracy: Location.Accuracy.Balanced,
-                  });
-                  const nextCoords = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                  };
-                  const reverse = await Location.reverseGeocodeAsync({
-                    latitude: position.coords.latitude,
-                    longitude: position.coords.longitude,
-                  });
-                  const place = reverse[0];
-                  setCoords(nextCoords);
-                  setLocationStatus("ready");
-                  setLocationLabel(
-                    place?.city && place?.region
-                      ? `${place.city}, ${place.region}`
-                      : "Near me",
-                  );
+                  hasManualLocationRef.current = false;
+                  await clearManualLocationOverride();
+                  await resolveCurrentLocation();
+                  setLocationModalOpen(false);
                 } catch {
                   setLocationStatus("unavailable");
                 }
@@ -596,14 +696,29 @@ export default function DiscoverScreen() {
               <Text style={styles.useCurrentText}>Use current location</Text>
             </Pressable>
 
-            <TextInput
-              value={locationQuery}
-              onChangeText={setLocationQuery}
-              onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
-              placeholder="Search City, State"
-              placeholderTextColor={colors.muted}
-              style={styles.locationInput}
-            />
+            <View style={styles.locationInputRow}>
+              <TextInput
+                value={locationQuery}
+                onChangeText={setLocationQuery}
+                onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
+                placeholder="Search City, State"
+                placeholderTextColor={colors.muted}
+                style={styles.locationInput}
+              />
+              {locationQuery.trim().length > 0 ? (
+                <Pressable
+                  style={styles.locationInputClearBtn}
+                  onPress={() => {
+                    setLocationQuery("");
+                    setLocationResults([]);
+                    setShowLocationResults(false);
+                  }}
+                  accessibilityLabel="Clear location search"
+                >
+                  <Ionicons name="close" size={14} color={colors.muted} />
+                </Pressable>
+              ) : null}
+            </View>
             {locationSearchLoading ? (
               <Text style={styles.locationHint}>Searching locations...</Text>
             ) : null}
@@ -612,13 +727,20 @@ export default function DiscoverScreen() {
                 <Pressable
                   key={item.label}
                   style={styles.listRow}
-                  onPress={() => {
+                  onPress={async () => {
+                    hasManualLocationRef.current = true;
                     setCoords({ lat: item.lat, lng: item.lng });
                     setLocationStatus("ready");
                     setLocationLabel(item.label);
-                    setLocationQuery("");
+                    setLocationQuery(item.label);
                     setLocationResults([]);
                     setShowLocationResults(false);
+                    setLocationModalOpen(false);
+                    await saveManualLocationOverride({
+                      label: item.label,
+                      lat: item.lat,
+                      lng: item.lng,
+                    });
                   }}
                 >
                   <Text style={styles.listTitle}>{item.label}</Text>
@@ -631,7 +753,10 @@ export default function DiscoverScreen() {
                 <Pressable
                   key={miles}
                   style={[styles.radiusPill, radiusMiles === miles && styles.radiusPillActive]}
-                  onPress={() => setRadiusMiles(miles)}
+                  onPress={() => {
+                    setRadiusMiles(miles);
+                    setLocationModalOpen(false);
+                  }}
                 >
                   <Text
                     style={[
@@ -645,7 +770,10 @@ export default function DiscoverScreen() {
               ))}
               <Pressable
                 style={[styles.radiusPill, radiusMiles >= 9999 && styles.radiusPillActive]}
-                onPress={() => setRadiusMiles(9999)}
+                onPress={() => {
+                  setRadiusMiles(9999);
+                  setLocationModalOpen(false);
+                }}
               >
                 <Text
                   style={[
@@ -701,6 +829,39 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   emptyText: { color: colors.muted, paddingVertical: 6 },
+  emptyCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 14,
+    gap: 8,
+    alignItems: "flex-start",
+  },
+  emptyIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.fairwaySoft,
+  },
+  emptyTitle: { color: colors.text, fontWeight: "700", fontSize: 17 },
+  emptyActionsRow: { flexDirection: "row", gap: 8, marginTop: 2 },
+  emptyPrimaryBtn: {
+    backgroundColor: colors.fairway,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  emptyPrimaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  emptySecondaryBtn: {
+    backgroundColor: "#ece8e1",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  emptySecondaryBtnText: { color: colors.text, fontWeight: "700", fontSize: 12 },
   loadingMore: { marginVertical: 10 },
   card: {
     backgroundColor: colors.surface,
@@ -793,12 +954,27 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   useCurrentText: { color: colors.fairway, fontWeight: "700", fontSize: 12 },
+  locationInputRow: {
+    position: "relative",
+  },
   locationInput: {
     backgroundColor: "#f1efea",
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 12,
+    paddingRight: 42,
     color: colors.text,
+  },
+  locationInputClearBtn: {
+    position: "absolute",
+    right: 10,
+    top: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ece8e1",
   },
   labelText: {
     color: colors.muted,
@@ -826,7 +1002,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
-    gap: 12,
+    gap: 8,
   },
   modalTitle: {
     fontSize: 16,
@@ -859,7 +1035,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   weekHeaderText: {
-    width: `${100 / 7}%`,
+    width: "14.2857%",
     textAlign: "center",
     color: colors.muted,
     fontSize: 12,
@@ -868,10 +1044,11 @@ const styles = StyleSheet.create({
   calendarGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
+    marginBottom: 4,
   },
   dayCell: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
+    width: "14.2857%",
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 10,
@@ -879,7 +1056,14 @@ const styles = StyleSheet.create({
   dayInRange: {
     backgroundColor: colors.fairwaySoft,
   },
-  daySelected: {
+  dayPill: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayPillSelected: {
     backgroundColor: colors.fairway,
   },
   dayDisabled: {
@@ -888,6 +1072,8 @@ const styles = StyleSheet.create({
   dayText: {
     color: colors.text,
     fontWeight: "600",
+    textAlign: "center",
+    width: "100%",
   },
   dayTextSelected: {
     color: "#fff",
