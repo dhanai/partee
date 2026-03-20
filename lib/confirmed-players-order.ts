@@ -6,6 +6,10 @@ export type ConfirmedPlayerPublic = {
 
 type WithClaimTime = ConfirmedPlayerPublic & { claimedAt: Date };
 
+function toPublicPlayer(row: WithClaimTime): ConfirmedPlayerPublic {
+  return { id: row.id, name: row.name, avatar: row.avatar };
+}
+
 /**
  * Left-to-right = claim order (`spots.createdAt` ascending). Host is always first
  * when they have a confirmed spot; everyone else stays in claim order after them.
@@ -18,11 +22,8 @@ export function orderConfirmedPlayersHostFirstByClaimOrder(
   const sorted = [...rows].sort((a, b) => a.claimedAt.getTime() - b.claimedAt.getTime());
   const hostIdx = sorted.findIndex((r) => r.id === hostId);
   if (hostIdx <= 0) {
-    return sorted.map(({ claimedAt: _t, ...p }) => p);
+    return sorted.map(toPublicPlayer);
   }
   const [host] = sorted.splice(hostIdx, 1);
-  return [
-    { id: host.id, name: host.name, avatar: host.avatar },
-    ...sorted.map(({ claimedAt: _t, ...p }) => p),
-  ];
+  return [toPublicPlayer(host), ...sorted.map(toPublicPlayer)];
 }
