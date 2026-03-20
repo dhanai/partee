@@ -1,3 +1,14 @@
+# Mobile dev notes (EAS)
+
+## API base URL (fixes “Network request failed” on a real phone)
+
+On a **physical device**, `http://localhost:3000` is the **phone**, not your Mac. The app reads **`EXPO_PUBLIC_API_BASE_URL`** first (see `lib/api.ts`).
+
+- **Local LAN:** In `apps/mobile/.env`, set e.g. `EXPO_PUBLIC_API_BASE_URL=http://192.168.x.x:3000` (your Mac’s IP). Run Next with `npx next dev -H 0.0.0.0` so it listens on the LAN. Restart Metro (`npx expo start -c`).
+- **No Mac / easiest:** Set `EXPO_PUBLIC_API_BASE_URL=https://your-app.vercel.app` in **`apps/mobile/.env`** for dev-client sessions, and add the same variable under **EAS → Project → Environment variables** for **development** builds so installs work without Metro.
+
+---
+
 # Push notifications (round invites)
 
 Partee sends **round invite** pushes via **Expo’s service** from your Next API (`lib/notify-user.ts` → `lib/push-expo.ts`). The **invitee’s** app must register an **Expo push token**; the API must have **`EXPO_ACCESS_TOKEN`**.

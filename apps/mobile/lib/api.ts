@@ -11,9 +11,10 @@ type RequestOptions = {
 };
 
 const fallbackBaseUrl = "http://localhost:3000";
+/** Prefer env so `apps/mobile/.env` and EAS secrets override baked `app.json` (physical devices cannot use localhost). */
 const baseUrlFromExpoConfig =
-  Constants.expoConfig?.extra?.apiBaseUrl ??
   process.env.EXPO_PUBLIC_API_BASE_URL ??
+  (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ??
   fallbackBaseUrl;
 
 export const apiBaseUrl = String(baseUrlFromExpoConfig).replace(/\/$/, "");

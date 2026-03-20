@@ -48,7 +48,6 @@
       "expo-image"
     ],
     "extra": {
-      "apiBaseUrl": "http://localhost:3000",
       "eas": {
         "projectId": "ca60538d-b37d-4cac-ac71-e387df5694d9"
       }
