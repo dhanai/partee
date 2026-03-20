@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 
 type DiscoverRound = {
   id: string;
@@ -11,31 +13,26 @@ type DiscoverRound = {
   spotsRemaining: number;
   distanceMiles: number | null;
   joinPolicy: "instant" | "approval";
+  imageUrl: string;
 };
 
 export default function DiscoverPage() {
   const [date, setDate] = useState("");
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
-  const [distanceMiles, setDistanceMiles] = useState("25");
   const [rounds, setRounds] = useState<DiscoverRound[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadRounds() {
+  const loadRounds = useCallback(async (filterDate?: string) => {
     setLoading(true);
     setError(null);
     const params = new URLSearchParams();
-    if (date) params.set("date", date);
-    if (lat) params.set("lat", lat);
-    if (lng) params.set("lng", lng);
-    params.set("distanceMiles", distanceMiles);
+    if (filterDate) params.set("date", filterDate);
 
     try {
       const response = await fetch(`/api/rounds/discover?${params.toString()}`);
       const json = (await response.json()) as { rounds: DiscoverRound[]; error?: string };
       if (!response.ok) {
-        throw new Error(json.error ?? "Failed to load discover rounds.");
+        throw new Error(json.error ?? "Failed to load rounds.");
       }
       setRounds(json.rounds);
     } catch (loadError) {
@@ -43,80 +40,110 @@ export default function DiscoverPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    loadRounds();
+  }, [loadRounds]);
+
+  function handleDateChange(value: string) {
+    setDate(value);
+    loadRounds(value || undefined);
+  }
+
+  function clearDate() {
+    setDate("");
+    loadRounds();
   }
 
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-fairway">Discover rounds</h1>
-        <p className="text-sm text-slate-600">
-          Find public rounds with open spots near you.
+        <h1 className="text-2xl font-bold tracking-tightest text-charcoal">
+          Discover
+        </h1>
+        <p className="mt-1 text-sm text-charcoal-400">
+          Open rounds looking for players.
         </p>
       </div>
 
-      <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <input
-            type="number"
-            placeholder="Distance miles"
-            value={distanceMiles}
-            onChange={(e) => setDistanceMiles(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <input
-            type="number"
-            placeholder="Your latitude"
-            value={lat}
-            onChange={(e) => setLat(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <input
-            type="number"
-            placeholder="Your longitude"
-            value={lng}
-            onChange={(e) => setLng(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={loadRounds}
-          disabled={loading}
-          className="mt-3 rounded-lg bg-fairway px-4 py-2 text-sm font-medium text-white"
-        >
-          {loading ? "Loading..." : "Find rounds"}
-        </button>
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => handleDateChange(e.target.value)}
+          className="partee-input w-full sm:max-w-[190px]"
+        />
+        {date && (
+          <button
+            type="button"
+            onClick={clearDate}
+            className="text-sm font-medium text-fairway"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {error && (
-        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>
+        <p className="partee-card text-sm text-red-600">{error}</p>
+      )}
+
+      {loading && (
+        <p className="text-sm text-charcoal-300">Loading...</p>
+      )}
+
+      {!loading && rounds.length === 0 && (
+        <div className="partee-card text-center text-sm text-charcoal-300">
+          No open rounds{date ? ` on ${date}` : ""} right now.
+        </div>
       )}
 
       <ul className="space-y-3">
         {rounds.map((round) => (
-          <li key={round.id} className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-            <p className="font-medium text-slate-900">{round.courseName}</p>
-            <p className="text-sm text-slate-600">
-              {new Date(round.teeTime).toLocaleString()} with {round.hostName}
-            </p>
-            <p className="text-sm text-slate-600">
-              Spots left: {round.spotsRemaining} -{" "}
-              {round.joinPolicy === "instant" ? "Instant claim" : "Host approval"}
-            </p>
-            {round.distanceMiles !== null && (
-              <p className="text-sm text-slate-500">
-                {round.distanceMiles.toFixed(1)} miles away
-              </p>
-            )}
-            <a href={`/round/${round.inviteToken}`} className="text-sm text-fairway underline">
-              View round
-            </a>
+          <li key={round.id}>
+            <Link
+              href={`/round/${round.inviteToken}`}
+              className="partee-card block p-4 transition hover:shadow-md sm:p-5"
+            >
+              <div className="space-y-3">
+                <Image
+                  src={round.imageUrl}
+                  alt={round.courseName}
+                  width={1200}
+                  height={700}
+                  className="h-40 w-full rounded-2xl object-cover"
+                />
+                <div className="space-y-1">
+                  <p className="text-xl font-semibold leading-tight text-charcoal">
+                    {round.courseName}
+                  </p>
+                  <p className="text-base text-charcoal-400">
+                    {new Date(round.teeTime).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })}{" "}
+                    at{" "}
+                    {new Date(round.teeTime).toLocaleTimeString("en-US", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                  <p className="text-sm text-charcoal-300">Hosted by {round.hostName}</p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="rounded-full bg-fairway-50 px-3 py-1 text-sm font-semibold text-fairway">
+                    {round.spotsRemaining} spot{round.spotsRemaining !== 1 ? "s" : ""}
+                  </span>
+                  <span className="rounded-full bg-cream-200 px-3 py-1 text-xs font-medium text-charcoal-400">
+                    {round.joinPolicy === "instant"
+                      ? "Instant claim"
+                      : "Host approval"}
+                  </span>
+                </div>
+              </div>
+            </Link>
           </li>
         ))}
       </ul>

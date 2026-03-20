@@ -2,10 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-slate-50 text-slate-900;
+@layer base {
+  body {
+    @apply bg-cream font-sans text-charcoal antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    @apply bg-fairway-200 text-fairway-700;
+  }
 }
 
-.partee-shell {
-  @apply mx-auto w-full max-w-5xl px-4 py-6;
+@layer components {
+  .partee-shell {
+    @apply mx-auto w-full max-w-lg px-5 py-6 sm:max-w-2xl;
+  }
+
+  .partee-card {
+    @apply rounded-2xl bg-white p-5 shadow-sm;
+  }
+
+  .partee-input {
+    @apply w-full rounded-xl border-0 bg-cream-200 px-4 py-3 text-sm text-charcoal placeholder:text-charcoal-300 focus:outline-none focus:ring-2 focus:ring-fairway-400 transition-shadow;
+  }
+
+  .partee-select {
+    @apply w-full rounded-xl border-0 bg-cream-200 px-4 py-3 text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-fairway-400 transition-shadow appearance-none;
+  }
+
+  .partee-btn {
+    @apply inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm font-semibold tracking-tight transition-all active:scale-[0.98];
+  }
+
+  .partee-btn-primary {
+    @apply partee-btn bg-fairway text-white hover:bg-fairway-600;
+  }
+
+  .partee-btn-secondary {
+    @apply partee-btn bg-cream-200 text-charcoal hover:bg-cream-300;
+  }
+
+  .partee-label {
+    @apply block text-xs font-semibold uppercase tracking-wider text-charcoal-400 mb-2;
+  }
 }

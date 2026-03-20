@@ -1,9 +1,11 @@
+import Image from "next/image";
 import Link from "next/link";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq, gte, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { rounds, spots } from "@/db/schema";
+import { courses, rounds, spots } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/utils";
+import { resolveRoundImageUrl } from "@/lib/round-images";
 
 export default async function DashboardPage() {
   const user = await requireDbUser();
@@ -15,9 +17,12 @@ export default async function DashboardPage() {
       courseName: rounds.courseName,
       teeTime: rounds.teeTime,
       inviteToken: rounds.inviteToken,
+      customImageUrl: rounds.customImageUrl,
+      courseMetadata: courses.metadata,
     })
     .from(rounds)
-    .where(eq(rounds.hostId, user.id))
+    .innerJoin(courses, eq(courses.id, rounds.courseId))
+    .where(and(eq(rounds.hostId, user.id), gte(rounds.teeTime, now)))
     .orderBy(asc(rounds.teeTime));
 
   const joined = await db
@@ -26,71 +31,99 @@ export default async function DashboardPage() {
       courseName: rounds.courseName,
       teeTime: rounds.teeTime,
       inviteToken: rounds.inviteToken,
-      spotStatus: spots.status,
+      customImageUrl: rounds.customImageUrl,
+      courseMetadata: courses.metadata,
     })
     .from(spots)
     .innerJoin(rounds, eq(rounds.id, spots.roundId))
-    .where(and(eq(spots.userId, user.id), ne(rounds.hostId, user.id)))
+    .innerJoin(courses, eq(courses.id, rounds.courseId))
+    .where(
+      and(
+        eq(spots.userId, user.id),
+        ne(rounds.hostId, user.id),
+        gte(rounds.teeTime, now),
+      ),
+    )
     .orderBy(asc(rounds.teeTime));
 
-  const hostingUpcoming = hosting.filter((r) => new Date(r.teeTime) >= now);
-  const hostingPast = hosting.filter((r) => new Date(r.teeTime) < now);
-  const joinedUpcoming = joined.filter((r) => new Date(r.teeTime) >= now);
-  const joinedPast = joined.filter((r) => new Date(r.teeTime) < now);
+  const hostingWithImages = hosting.map((round) => ({
+    ...round,
+    imageUrl: resolveRoundImageUrl({
+      customImageUrl: round.customImageUrl,
+      courseMetadata: round.courseMetadata,
+    }),
+  }));
+
+  const joinedWithImages = joined.map((round) => ({
+    ...round,
+    imageUrl: resolveRoundImageUrl({
+      customImageUrl: round.customImageUrl,
+      courseMetadata: round.courseMetadata,
+    }),
+  }));
 
   return (
     <section className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-fairway">Dashboard</h1>
-          <p className="text-sm text-slate-600">
-            Rounds you host and rounds you have joined.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tightest text-charcoal">
+            Dashboard
+          </h1>
+          <p className="mt-1 text-sm text-charcoal-400">Your upcoming rounds.</p>
         </div>
-        <Link
-          href="/create"
-          className="rounded-lg bg-fairway px-4 py-2 text-sm font-medium text-white"
-        >
-          Create round
+        <Link href="/create" className="partee-btn-primary">
+          + New round
         </Link>
       </div>
 
-      <RoundList title="Hosting (upcoming)" rounds={hostingUpcoming} />
-      <RoundList title="Joined (upcoming)" rounds={joinedUpcoming} />
-      <RoundList title="Hosting (past)" rounds={hostingPast} />
-      <RoundList title="Joined (past)" rounds={joinedPast} />
+      <RoundSection label="Hosting" rounds={hostingWithImages} />
+      <RoundSection label="Joined" rounds={joinedWithImages} />
     </section>
   );
 }
 
-function RoundList({
-  title,
+function RoundSection({
+  label,
   rounds,
 }: {
-  title: string;
-  rounds: Array<{ id: string; courseName: string; teeTime: Date; inviteToken: string }>;
+  label: string;
+  rounds: Array<{
+    id: string;
+    courseName: string;
+    teeTime: Date;
+    inviteToken: string;
+    imageUrl: string;
+  }>;
 }) {
   return (
-    <section className="space-y-3">
-      <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
+    <section>
+      <p className="partee-label">{label}</p>
       {rounds.length === 0 ? (
-        <p className="rounded-xl bg-white p-4 text-sm text-slate-600 ring-1 ring-slate-200">
-          No rounds yet.
-        </p>
+        <div className="partee-card text-center text-sm text-charcoal-300">
+          No {label.toLowerCase()} rounds yet.
+        </div>
       ) : (
         <ul className="space-y-3">
           {rounds.map((round) => (
-            <li
-              key={round.id}
-              className="rounded-xl bg-white p-4 ring-1 ring-slate-200"
-            >
-              <p className="font-medium text-slate-900">{round.courseName}</p>
-              <p className="text-sm text-slate-600">{formatDateTime(round.teeTime)}</p>
+            <li key={round.id}>
               <Link
                 href={`/round/${round.inviteToken}`}
-                className="mt-2 inline-block text-sm text-fairway underline"
+                className="partee-card flex items-center gap-4 transition hover:shadow-md"
               >
-                View invite
+                <Image
+                  src={round.imageUrl}
+                  alt={round.courseName}
+                  width={72}
+                  height={72}
+                  className="h-[72px] w-[72px] rounded-xl object-cover"
+                />
+                <div>
+                  <p className="font-semibold text-charcoal">{round.courseName}</p>
+                  <p className="mt-0.5 text-sm text-charcoal-400">
+                    {formatDateTime(round.teeTime)}
+                  </p>
+                </div>
+                <span className="ml-auto text-charcoal-300">&rsaquo;</span>
               </Link>
             </li>
           ))}

@@ -85,6 +85,7 @@ export const rounds = pgTable(
     visibility: roundVisibilityEnum("visibility").notNull(),
     status: roundStatusEnum("status").notNull().default("forming"),
     joinPolicy: joinPolicyEnum("join_policy").notNull().default("instant"),
+    customImageUrl: text("custom_image_url"),
     inviteToken: text("invite_token").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

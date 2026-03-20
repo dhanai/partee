@@ -15,6 +15,13 @@
       "when": 1773804616622,
       "tag": "0001_brave_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773976917443,
+      "tag": "0002_flawless_gorilla_man",
+      "breakpoints": true
     }
   ]
 }

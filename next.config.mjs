@@ -2,6 +2,13 @@
 const nextConfig = {
   experimental: {
     typedRoutes: true,
+    serverComponentsExternalPackages: ["ws", "@neondatabase/serverless"],
+  },
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "img.clerk.com" },
+      { protocol: "https", hostname: "images.clerk.dev" },
+    ],
   },
 };
 

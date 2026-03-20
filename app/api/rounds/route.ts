@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { resolveRoundImageUrl } from "@/lib/round-images";
 
 const createRoundSchema = z.object({
   courseId: z.string().uuid(),
@@ -12,6 +13,21 @@ const createRoundSchema = z.object({
   totalSpots: z.number().int().min(2).max(4),
   visibility: z.enum(["private", "public"]),
   joinPolicy: z.enum(["instant", "approval"]).default("instant"),
+  customImageUrl: z
+    .string()
+    .trim()
+    .max(2048)
+    .refine(
+      (value) =>
+        value.length === 0 ||
+        value.startsWith("/") ||
+        /^https?:\/\/.+/i.test(value),
+      {
+        message: "customImageUrl must be a valid URL or app-relative path.",
+      },
+    )
+    .optional()
+    .nullable(),
   inviteeUserIds: z.array(z.string().uuid()).max(30).default([]),
 });
 
@@ -53,6 +69,10 @@ export async function POST(req: Request) {
           totalSpots: parsed.totalSpots,
           visibility: parsed.visibility,
           joinPolicy: parsed.joinPolicy,
+          customImageUrl:
+            parsed.customImageUrl && parsed.customImageUrl.trim().length > 0
+              ? parsed.customImageUrl.trim()
+              : null,
           status: "forming",
           inviteToken: nanoid(12),
         })
@@ -105,10 +125,10 @@ export async function POST(req: Request) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.json(
-      { error: "Failed to create round." },
-      { status: 500 },
-    );
+    const message =
+      error instanceof Error ? error.message : "Failed to create round.";
+    console.error("[POST /api/rounds]", error);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -121,6 +141,8 @@ export async function GET() {
       .select({
         id: rounds.id,
         courseName: rounds.courseName,
+        customImageUrl: rounds.customImageUrl,
+        courseMetadata: courses.metadata,
         teeTime: rounds.teeTime,
         visibility: rounds.visibility,
         totalSpots: rounds.totalSpots,
@@ -130,12 +152,26 @@ export async function GET() {
           ),
       })
       .from(rounds)
+      .innerJoin(courses, eq(courses.id, rounds.courseId))
       .leftJoin(spots, eq(spots.roundId, rounds.id))
       .where(gte(rounds.teeTime, now))
-      .groupBy(rounds.id)
+      .groupBy(rounds.id, courses.metadata)
       .orderBy(rounds.teeTime);
 
-    return NextResponse.json({ rounds: upcoming });
+    return NextResponse.json({
+      rounds: upcoming.map((round) => ({
+        id: round.id,
+        courseName: round.courseName,
+        teeTime: round.teeTime,
+        visibility: round.visibility,
+        totalSpots: round.totalSpots,
+        confirmedCount: round.confirmedCount,
+        imageUrl: resolveRoundImageUrl({
+          customImageUrl: round.customImageUrl,
+          courseMetadata: round.courseMetadata,
+        }),
+      })),
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -21,10 +21,17 @@ type GoogleTextSearchResponse = {
 };
 
 export async function searchGolfCourses(query: string): Promise<PlacesCourse[]> {
+  const apiKey = env.server.GOOGLE_PLACES_API_KEY.trim();
+  if (!apiKey || apiKey.includes("placeholder") || !apiKey.startsWith("AIza")) {
+    throw new Error(
+      "GOOGLE_PLACES_API_KEY is missing or invalid. Add a real server key in environment variables.",
+    );
+  }
+
   const params = new URLSearchParams({
     query: `${query} golf course`,
     type: "golf_course",
-    key: env.server.GOOGLE_PLACES_API_KEY,
+    key: apiKey,
   });
 
   const response = await fetch(

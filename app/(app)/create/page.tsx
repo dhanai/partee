@@ -1,38 +1,36 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 
-type CourseResult = {
-  id: string;
-  name: string;
-  address: string;
-};
+type CourseResult = { id: string; name: string; address: string };
+type UserSearchResult = { id: string; name: string; email: string | null; avatar: string | null };
+type CreateRoundResponse = { round: { id: string; inviteToken: string }; invitePath: string; invitedCount: number };
 
-type UserSearchResult = {
-  id: string;
-  name: string;
-  email: string | null;
-  avatar: string | null;
-};
-
-type CreateRoundResponse = {
-  round: {
-    id: string;
-    inviteToken: string;
-  };
-  invitePath: string;
-  invitedCount: number;
-};
+function useDebounce(value: string, delayMs: number): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 export default function CreateRoundPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CourseResult[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<CourseResult | null>(null);
+  const [showCourseResults, setShowCourseResults] = useState(false);
+  const courseRef = useRef<HTMLDivElement>(null);
+
   const [friendQuery, setFriendQuery] = useState("");
   const [friendResults, setFriendResults] = useState<UserSearchResult[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState<UserSearchResult[]>([]);
+  const [showFriendResults, setShowFriendResults] = useState(false);
+  const friendRef = useRef<HTMLDivElement>(null);
+
   const [teeTime, setTeeTime] = useState("");
   const [totalSpots, setTotalSpots] = useState(4);
   const [visibility, setVisibility] = useState<"private" | "public">("private");
@@ -40,92 +38,92 @@ export default function CreateRoundPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdInvitePath, setCreatedInvitePath] = useState<string | null>(null);
-  const [createdInvitedCount, setCreatedInvitedCount] = useState<number>(0);
+  const [createdInvitedCount, setCreatedInvitedCount] = useState(0);
+  const [customImageUrl, setCustomImageUrl] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
+  const debouncedCourse = useDebounce(query, 300);
+  const debouncedFriend = useDebounce(friendQuery, 300);
   const canSubmit = useMemo(
-    () => Boolean(selectedCourse && teeTime && !submitting),
-    [selectedCourse, teeTime, submitting],
+    () => Boolean(selectedCourse && teeTime && !submitting && !uploadingImage),
+    [selectedCourse, teeTime, submitting, uploadingImage],
   );
 
-  async function runSearch() {
-    if (query.trim().length < 2) {
-      setResults([]);
-      return;
-    }
+  const searchCourses = useCallback(async (q: string) => {
+    if (q.trim().length < 2) { setResults([]); return; }
     setLoadingCourses(true);
-    setError(null);
     try {
-      const response = await fetch("/api/courses/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
-      });
-      const json = (await response.json()) as { courses: CourseResult[]; error?: string };
-      if (!response.ok) {
-        throw new Error(json.error ?? "Failed to search courses.");
-      }
+      const res = await fetch("/api/courses/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: q }) });
+      const json = (await res.json()) as { courses: CourseResult[]; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Search failed.");
       setResults(json.courses);
-    } catch (searchError) {
-      setError(searchError instanceof Error ? searchError.message : "Search failed.");
-    } finally {
-      setLoadingCourses(false);
-    }
-  }
+      setShowCourseResults(true);
+    } catch (e) { setError(e instanceof Error ? e.message : "Search failed."); }
+    finally { setLoadingCourses(false); }
+  }, []);
 
-  async function runFriendSearch() {
-    if (friendQuery.trim().length < 2) {
-      setFriendResults([]);
-      return;
-    }
+  useEffect(() => { if (!selectedCourse) searchCourses(debouncedCourse); }, [debouncedCourse, searchCourses, selectedCourse]);
+
+  const searchFriends = useCallback(async (q: string) => {
+    if (q.trim().length < 2) { setFriendResults([]); return; }
     setLoadingFriends(true);
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(q.trim())}`);
+      const json = (await res.json()) as { users: UserSearchResult[]; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Search failed.");
+      setFriendResults(json.users.filter((u) => !selectedFriends.some((s) => s.id === u.id)));
+      setShowFriendResults(true);
+    } catch (e) { setError(e instanceof Error ? e.message : "Search failed."); }
+    finally { setLoadingFriends(false); }
+  }, [selectedFriends]);
+
+  useEffect(() => { searchFriends(debouncedFriend); }, [debouncedFriend, searchFriends]);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (courseRef.current && !courseRef.current.contains(e.target as Node)) setShowCourseResults(false);
+      if (friendRef.current && !friendRef.current.contains(e.target as Node)) setShowFriendResults(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  function selectCourse(c: CourseResult) { setSelectedCourse(c); setQuery(c.name); setShowCourseResults(false); setResults([]); }
+  function clearCourse() { setSelectedCourse(null); setQuery(""); setResults([]); }
+  function addFriend(f: UserSearchResult) { if (!selectedFriends.some((s) => s.id === f.id)) { setSelectedFriends((p) => [...p, f]); setFriendResults((p) => p.filter((r) => r.id !== f.id)); } }
+  function removeFriend(id: string) { setSelectedFriends((p) => p.filter((f) => f.id !== id)); }
+
+  async function handleImageUpload(file: File | null) {
+    if (!file) return;
+    setUploadingImage(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ q: friendQuery.trim() });
-      const response = await fetch(`/api/users/search?${params.toString()}`);
-      const json = (await response.json()) as {
-        users: UserSearchResult[];
-        error?: string;
-      };
-      if (!response.ok) {
-        throw new Error(json.error ?? "Failed to search friends.");
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/uploads/event-image", {
+        method: "POST",
+        body: formData,
+      });
+      const json = (await response.json()) as { url?: string; error?: string };
+      if (!response.ok || !json.url) {
+        throw new Error(json.error ?? "Failed to upload image.");
       }
-      setFriendResults(
-        json.users.filter(
-          (user) => !selectedFriends.some((selected) => selected.id === user.id),
-        ),
+      setCustomImageUrl(json.url);
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error ? uploadError.message : "Failed to upload image.",
       );
-    } catch (searchError) {
-      setError(searchError instanceof Error ? searchError.message : "Search failed.");
     } finally {
-      setLoadingFriends(false);
+      setUploadingImage(false);
     }
   }
 
-  function addFriend(friend: UserSearchResult) {
-    if (selectedFriends.some((f) => f.id === friend.id)) {
-      return;
-    }
-    setSelectedFriends((prev) => [...prev, friend]);
-    setFriendResults((prev) => prev.filter((f) => f.id !== friend.id));
-  }
-
-  function removeFriend(friendId: string) {
-    setSelectedFriends((prev) => prev.filter((friend) => friend.id !== friendId));
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedCourse) {
-      setError("Please select a course.");
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-    setCreatedInvitePath(null);
-    setCreatedInvitedCount(0);
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!selectedCourse) { setError("Select a course."); return; }
+    setSubmitting(true); setError(null); setCreatedInvitePath(null); setCreatedInvitedCount(0);
     try {
-      const response = await fetch("/api/rounds", {
+      const res = await fetch("/api/rounds", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -134,220 +132,196 @@ export default function CreateRoundPage() {
           totalSpots,
           visibility,
           joinPolicy,
-          inviteeUserIds: selectedFriends.map((friend) => friend.id),
+          customImageUrl,
+          inviteeUserIds: selectedFriends.map((f) => f.id),
         }),
       });
-      const json = (await response.json()) as CreateRoundResponse & { error?: string };
-      if (!response.ok) {
-        throw new Error(json.error ?? "Failed to create round.");
-      }
+      const json = (await res.json()) as CreateRoundResponse & { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed.");
       setCreatedInvitePath(json.invitePath);
       setCreatedInvitedCount(json.invitedCount);
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Create round failed.");
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed."); }
+    finally { setSubmitting(false); }
   }
 
   return (
-    <section className="mx-auto max-w-xl space-y-6">
+    <section className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-fairway">Create a round</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Pick a course, tee time, and how players can join.
-        </p>
+        <h1 className="text-2xl font-bold tracking-tightest text-charcoal">New round</h1>
+        <p className="mt-1 text-sm text-charcoal-400">Set it up. Blast invites. Tee off.</p>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-4 rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
-      >
-        <label className="block text-sm font-medium text-slate-700">
-          Course search
-          <div className="mt-1 flex gap-2">
+      <form onSubmit={handleSubmit} className="partee-card space-y-5">
+        <div>
+          <p className="partee-label">Event image (optional)</p>
+          <label className="partee-input flex cursor-pointer items-center justify-between">
+            <span className="text-sm text-charcoal-400">
+              {uploadingImage ? "Uploading..." : "Upload custom cover image"}
+            </span>
+            <span className="text-xs font-semibold text-fairway">Choose file</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) =>
+                void handleImageUpload(event.currentTarget.files?.[0] ?? null)
+              }
+            />
+          </label>
+          <p className="mt-2 text-xs text-charcoal-300">
+            If you skip this, we&apos;ll try Google Places imagery first.
+          </p>
+
+          {customImageUrl && (
+            <div className="mt-3">
+              <Image
+                src={customImageUrl}
+                alt="Custom event cover"
+                width={1200}
+                height={700}
+                className="h-36 w-full rounded-xl object-cover"
+              />
+              <button
+                type="button"
+                className="mt-2 text-xs font-medium text-charcoal-400 underline"
+                onClick={() => setCustomImageUrl(null)}
+              >
+                Remove custom image
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Course */}
+        <div ref={courseRef} className="relative">
+          <p className="partee-label">Course</p>
+          <div className="relative">
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Search golf courses"
+              onChange={(e) => { setQuery(e.target.value); if (selectedCourse) setSelectedCourse(null); }}
+              onFocus={() => results.length > 0 && setShowCourseResults(true)}
+              className="partee-input"
+              placeholder="Search golf courses..."
             />
-            <button
-              type="button"
-              onClick={runSearch}
-              className="rounded-lg bg-fairway px-3 py-2 text-sm font-medium text-white"
-              disabled={loadingCourses}
-            >
-              {loadingCourses ? "Searching..." : "Search"}
-            </button>
+            {loadingCourses && <span className="absolute right-4 top-3.5 text-xs text-charcoal-300">Searching...</span>}
           </div>
-        </label>
 
-        {results.length > 0 && (
-          <ul className="max-h-44 overflow-auto rounded-lg border border-slate-200">
-            {results.map((course) => (
-              <li key={course.id}>
-                <button
-                  type="button"
-                  className="w-full border-b border-slate-100 px-3 py-2 text-left text-sm hover:bg-slate-50"
-                  onClick={() => setSelectedCourse(course)}
-                >
-                  <span className="block font-medium text-slate-800">{course.name}</span>
-                  <span className="block text-xs text-slate-500">{course.address}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {selectedCourse && (
-          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-            Selected: {selectedCourse.name}
-          </p>
-        )}
-
-        <label className="block text-sm font-medium text-slate-700">
-          Tee time
-          <input
-            type="datetime-local"
-            value={teeTime}
-            onChange={(e) => setTeeTime(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            required
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-slate-700">
-          Invite friends on Partee
-          <div className="mt-1 flex gap-2">
-            <input
-              value={friendQuery}
-              onChange={(e) => setFriendQuery(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Search by name or email"
-            />
-            <button
-              type="button"
-              onClick={runFriendSearch}
-              className="rounded-lg bg-fairway px-3 py-2 text-sm font-medium text-white"
-              disabled={loadingFriends}
-            >
-              {loadingFriends ? "Searching..." : "Find"}
-            </button>
-          </div>
-        </label>
-
-        {friendResults.length > 0 && (
-          <ul className="max-h-40 overflow-auto rounded-lg border border-slate-200">
-            {friendResults.map((friend) => (
-              <li key={friend.id}>
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between border-b border-slate-100 px-3 py-2 text-left text-sm hover:bg-slate-50"
-                  onClick={() => addFriend(friend)}
-                >
-                  <span>
-                    <span className="block font-medium text-slate-800">{friend.name}</span>
-                    {friend.email && (
-                      <span className="block text-xs text-slate-500">{friend.email}</span>
-                    )}
-                  </span>
-                  <span className="text-xs text-fairway">Add</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {selectedFriends.length > 0 && (
-          <div className="rounded-lg border border-slate-200 p-3">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-              Will receive invite blast ({selectedFriends.length})
-            </p>
-            <ul className="space-y-2">
-              {selectedFriends.map((friend) => (
-                <li key={friend.id} className="flex items-center justify-between text-sm">
-                  <span className="text-slate-700">
-                    {friend.name}
-                    {friend.email ? ` (${friend.email})` : ""}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-rose-600 hover:underline"
-                    onClick={() => removeFriend(friend.id)}
-                  >
-                    Remove
+          {showCourseResults && results.length > 0 && (
+            <ul className="absolute z-20 mt-2 max-h-52 w-full overflow-auto rounded-2xl bg-white shadow-lg">
+              {results.map((c) => (
+                <li key={c.id}>
+                  <button type="button" onClick={() => selectCourse(c)} className="w-full px-4 py-3 text-left transition hover:bg-cream-100">
+                    <span className="block text-sm font-semibold text-charcoal">{c.name}</span>
+                    <span className="block text-xs text-charcoal-300">{c.address}</span>
                   </button>
                 </li>
               ))}
             </ul>
+          )}
+
+          {selectedCourse && (
+            <div className="mt-2 flex items-center justify-between rounded-xl bg-fairway-50 px-4 py-2.5">
+              <span className="text-sm font-semibold text-fairway">{selectedCourse.name}</span>
+              <button type="button" onClick={clearCourse} className="text-xs font-medium text-fairway-400 hover:text-fairway">Change</button>
+            </div>
+          )}
+        </div>
+
+        {/* Tee time */}
+        <div>
+          <p className="partee-label">Tee time</p>
+          <input type="datetime-local" value={teeTime} onChange={(e) => setTeeTime(e.target.value)} className="partee-input" required />
+        </div>
+
+        {/* Friends */}
+        <div ref={friendRef} className="relative">
+          <p className="partee-label">Invite friends</p>
+          <input
+            value={friendQuery}
+            onChange={(e) => setFriendQuery(e.target.value)}
+            onFocus={() => friendResults.length > 0 && setShowFriendResults(true)}
+            className="partee-input"
+            placeholder="Name or email..."
+          />
+          {loadingFriends && <span className="absolute right-4 top-10 text-xs text-charcoal-300">Searching...</span>}
+
+          {showFriendResults && friendResults.length > 0 && (
+            <ul className="absolute z-20 mt-2 max-h-44 w-full overflow-auto rounded-2xl bg-white shadow-lg">
+              {friendResults.map((f) => (
+                <li key={f.id}>
+                  <button type="button" onClick={() => addFriend(f)} className="flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-cream-100">
+                    <span>
+                      <span className="block text-sm font-semibold text-charcoal">{f.name}</span>
+                      {f.email && <span className="block text-xs text-charcoal-300">{f.email}</span>}
+                    </span>
+                    <span className="text-xs font-semibold text-fairway">+ Add</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {selectedFriends.length > 0 && (
+          <div className="space-y-2">
+            <p className="partee-label">Invite blast ({selectedFriends.length})</p>
+            {selectedFriends.map((f) => (
+              <div key={f.id} className="flex items-center justify-between rounded-xl bg-cream-200 px-4 py-2.5">
+                <span className="text-sm text-charcoal">{f.name}{f.email ? ` · ${f.email}` : ""}</span>
+                <button type="button" onClick={() => removeFriend(f.id)} className="text-xs font-medium text-charcoal-300 hover:text-red-500 transition-colors">&times;</button>
+              </div>
+            ))}
           </div>
         )}
 
-        <label className="block text-sm font-medium text-slate-700">
-          Total spots
-          <select
-            value={totalSpots}
-            onChange={(e) => setTotalSpots(Number(e.target.value))}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value={2}>2 players</option>
-            <option value={3}>3 players</option>
-            <option value={4}>4 players</option>
-          </select>
-        </label>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Visibility
-            <select
-              value={visibility}
-              onChange={(e) => setVisibility(e.target.value as "private" | "public")}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="private">Private (invite-only)</option>
-              <option value="public">Public (discoverable)</option>
-            </select>
-          </label>
-
-          <label className="block text-sm font-medium text-slate-700">
-            Join policy
-            <select
-              value={joinPolicy}
-              onChange={(e) => setJoinPolicy(e.target.value as "instant" | "approval")}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="instant">Instant claim</option>
-              <option value="approval">Host approval required</option>
-            </select>
-          </label>
+        {/* Spots + settings */}
+        <div>
+          <p className="partee-label">Spots</p>
+          <div className="flex gap-2">
+            {[2, 3, 4].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setTotalSpots(n)}
+                className={`flex-1 rounded-xl py-3 text-sm font-semibold transition ${totalSpots === n ? "bg-fairway text-white" : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"}`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {error && (
-          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>
-        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="partee-label">Visibility</p>
+            <select value={visibility} onChange={(e) => setVisibility(e.target.value as "private" | "public")} className="partee-select">
+              <option value="private">Private</option>
+              <option value="public">Public</option>
+            </select>
+          </div>
+          <div>
+            <p className="partee-label">Join policy</p>
+            <select value={joinPolicy} onChange={(e) => setJoinPolicy(e.target.value as "instant" | "approval")} className="partee-select">
+              <option value="instant">Instant</option>
+              <option value="approval">Approval</option>
+            </select>
+          </div>
+        </div>
 
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="w-full rounded-lg bg-putting px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
+
+        <button type="submit" disabled={!canSubmit} className="partee-btn-primary w-full disabled:opacity-40">
           {submitting ? "Creating..." : "Create round"}
         </button>
       </form>
 
       {createdInvitePath && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-          <p className="font-medium">Round created.</p>
+        <div className="partee-card space-y-2 border border-fairway-100 bg-fairway-50">
+          <p className="font-semibold text-fairway">Round created</p>
           {createdInvitedCount > 0 && (
-            <p className="mt-1">Invite blast sent to {createdInvitedCount} golfers on Partee.</p>
+            <p className="text-sm text-charcoal-400">Blast sent to {createdInvitedCount} golfer{createdInvitedCount !== 1 ? "s" : ""}.</p>
           )}
-          <p className="mt-1">
-            Share this invite:
-            <a href={createdInvitePath} className="ml-2 underline">
-              {createdInvitePath}
-            </a>
-          </p>
+          <a href={createdInvitePath} className="block text-sm font-medium text-fairway underline">{createdInvitePath}</a>
         </div>
       )}
     </section>

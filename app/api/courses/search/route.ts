@@ -53,6 +53,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    if (error instanceof Error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     return NextResponse.json(
       { error: "Unable to search courses right now." },
       { status: 500 },

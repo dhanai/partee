@@ -1,8 +1,11 @@
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { neonConfig, Pool } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import ws from "ws";
 import * as schema from "./schema";
 import { env } from "@/lib/env";
 
-const sql = neon(env.server.DATABASE_URL);
+neonConfig.webSocketConstructor = ws;
 
-export const db = drizzle(sql, { schema });
+const pool = new Pool({ connectionString: env.server.DATABASE_URL });
+
+export const db = drizzle(pool, { schema });
