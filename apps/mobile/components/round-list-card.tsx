@@ -39,6 +39,11 @@ export type RoundListCardProps = {
   trailingAfterSpots?: ReactNode;
   /** e.g. Invited tab claim / decline */
   footer?: ReactNode;
+  /**
+   * Delays press feedback so a horizontal row swipe can steal the gesture without
+   * Pressable cancel → visual flash (e.g. My Rounds swipe rows).
+   */
+  delayPressIn?: number;
 };
 
 export function RoundListCard({
@@ -59,6 +64,7 @@ export function RoundListCard({
   onPlayerPressIn,
   trailingAfterSpots,
   footer,
+  delayPressIn,
 }: RoundListCardProps) {
   const planningMetaLine =
     mode === "planning"
@@ -81,6 +87,8 @@ export function RoundListCard({
       <View style={styles.cardBody}>
         <Pressable
           style={StyleSheet.absoluteFillObject}
+          unstable_pressDelay={delayPressIn}
+          android_ripple={delayPressIn != null && delayPressIn > 0 ? null : undefined}
           onPressIn={onCardPressIn}
           onPress={onPress}
         />

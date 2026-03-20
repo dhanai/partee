@@ -5,8 +5,10 @@ import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   FlatList,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -14,7 +16,8 @@ import {
 } from "react-native";
 import { NotificationMustardDot } from "../../components/notification-mustard-dot";
 import { RoundListCard } from "../../components/round-list-card";
-import { apiGet, apiPost } from "../../lib/api";
+import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
+import { apiDelete, apiGet, apiPost } from "../../lib/api";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
 import { buildRoundListHint, prefetchRoundOpen } from "../../lib/round-details-cache";
 import {
@@ -25,6 +28,7 @@ import {
 import { useNotificationBadge } from "../../lib/notification-badge-context";
 import {
   applyOptimisticToMineRound,
+  emitRoundListsShouldRefresh,
   subscribeRoundListsRefresh,
 } from "../../lib/round-lists-refresh";
 import { colors } from "../../lib/theme";
@@ -105,7 +109,20 @@ export default function MyRoundsScreen() {
   inviteResponseByRoundRef.current = inviteResponseByRound;
 
   const [inviteActionRoundId, setInviteActionRoundId] = useState<string | null>(null);
+  const [hostActionRoundId, setHostActionRoundId] = useState<string | null>(null);
   const [inviteRowError, setInviteRowError] = useState<Record<string, string>>({});
+  /** Mail-style: no list scroll while a row owns the horizontal pan. */
+  const [listScrollLockedForRowSwipe, setListScrollLockedForRowSwipe] = useState(false);
+
+  const onRowSwipeActiveChange = useCallback((active: boolean) => {
+    setListScrollLockedForRowSwipe(active);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "hosting" && activeTab !== "invited") {
+      setListScrollLockedForRowSwipe(false);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -307,6 +324,38 @@ export default function MyRoundsScreen() {
     }
   }, [activeTab, hosting.length, joined.length, invited.length, loading, loadingMore]);
 
+  function promptHostDelete(round: MineRound) {
+    Alert.alert(
+      "Delete this round?",
+      "This removes the round for everyone and can’t be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => void confirmDeleteHostedRound(round),
+        },
+      ],
+    );
+  }
+
+  async function confirmDeleteHostedRound(round: MineRound) {
+    setHostActionRoundId(round.id);
+    setError(null);
+    try {
+      const authToken = await getTokenRef.current();
+      await apiDelete<unknown>(`/api/rounds/${round.inviteToken}`, authToken);
+      emitRoundListsShouldRefresh();
+      setHosting((prev) => prev.filter((r) => r.id !== round.id));
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error ? deleteError.message : "Could not delete round.",
+      );
+    } finally {
+      setHostActionRoundId(null);
+    }
+  }
+
   async function submitInviteAction(round: MineRound, action: "claim" | "decline") {
     setInviteActionRoundId(round.id);
     setInviteRowError((prev) => {
@@ -418,6 +467,9 @@ export default function MyRoundsScreen() {
       <FlatList
         style={styles.container}
         contentContainerStyle={styles.content}
+        scrollEnabled={!listScrollLockedForRowSwipe}
+        directionalLockEnabled={Platform.OS === "ios"}
+        nestedScrollEnabled
         data={activeRounds}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={listHeader}
@@ -471,7 +523,7 @@ export default function MyRoundsScreen() {
         initialNumToRender={8}
         maxToRenderPerBatch={10}
         windowSize={7}
-        removeClippedSubviews
+        removeClippedSubviews={false}
         refreshing={refreshing}
         onRefresh={() => {
           setRefreshing(true);
@@ -501,96 +553,126 @@ export default function MyRoundsScreen() {
         renderItem={({ item: round }) => {
           const inviteOutcome = inviteResponseByRound[round.id];
           const rowBusy = inviteActionRoundId === round.id;
+          const swipeVariant: "host" | "invite" | "none" =
+            activeTab === "hosting"
+              ? "host"
+              : activeTab === "invited" && !inviteOutcome
+                ? "invite"
+                : "none";
+          const swipeEnabled =
+            activeTab === "hosting"
+              ? !hostActionRoundId
+              : activeTab === "invited"
+                ? !inviteOutcome && !inviteActionRoundId
+                : false;
           const effectiveIso = round.teeTime ?? round.targetDate;
           const imageUrl = round.imageUrl ?? "/images/event-fallback.svg";
           const joinPolicy = round.joinPolicy ?? "instant";
           return (
-            <RoundListCard
-              roundId={round.id}
-              mode={round.mode === "scheduled" ? "scheduled" : "planning"}
-              courseName={round.courseName}
-              imageUrl={imageUrl}
-              joinPolicy={joinPolicy}
-              totalSpots={round.totalSpots ?? 0}
-              confirmedPlayers={round.confirmedPlayers ?? []}
-              onCardPressIn={() =>
-                prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getTokenRef.current())
-              }
-              onPress={() =>
+            <SwipeableMineRoundRow
+              variant={swipeVariant}
+              enabled={swipeEnabled}
+              onSwipeActiveChange={onRowSwipeActiveChange}
+              onHostDelete={() => promptHostDelete(round)}
+              onHostEdit={() =>
                 router.push({
-                  pathname: "/round/[token]",
-                  params: {
-                    token: round.inviteToken,
-                    roundHint: buildRoundListHint(round),
-                  },
+                  pathname: "/round/[token]/edit",
+                  params: { token: round.inviteToken },
                 })
               }
-              primaryMeta={
-                round.mode === "scheduled"
-                  ? formatScheduledCardMeta(effectiveIso, round.teeTime)
-                  : formatPlanningWindow(round.preferredTimeWindow)
-              }
-              planningLocation={round.planningLocation}
-              planningHeaderDate={formatPlanningHeaderDate(effectiveIso)}
-              preferredTimeWindow={round.preferredTimeWindow}
-              onPlayerPress={(player) =>
-                router.push({
-                  pathname: "/profile/[userId]",
-                  params: {
-                    userId: player.id,
-                    userName: player.name,
-                    userAvatar: player.avatar ?? "",
-                  },
-                })
-              }
-              onPlayerPressIn={(player) =>
-                prefetchPublicProfile(player.id, () => getTokenRef.current())
-              }
-              trailingAfterSpots={
-                activeTab === "joined" && round.spotStatus === "requested" ? (
-                  <Text style={styles.badgeMutedSub}>Pending</Text>
-                ) : undefined
-              }
-              footer={
-                activeTab === "invited" ? (
-                  <View style={styles.inviteFooter}>
-                    {inviteOutcome ? (
-                      <Text
-                        style={
-                          inviteOutcome === "declined"
-                            ? styles.inviteResponseTextMuted
-                            : styles.inviteResponseText
-                        }
-                      >
-                        {inviteResponseLabel(inviteOutcome)}
-                      </Text>
-                    ) : rowBusy ? (
-                      <ActivityIndicator color={colors.fairway} style={styles.inviteRowSpinner} />
-                    ) : (
-                      <View style={styles.inviteButtonsRow}>
-                        <Pressable
-                          style={[styles.inviteActionBtn, styles.inviteClaimBtn]}
-                          onPress={() => void submitInviteAction(round, "claim")}
-                          accessibilityLabel="Claim spot on this round"
+              onInviteClaim={() => void submitInviteAction(round, "claim")}
+              onInviteDecline={() => void submitInviteAction(round, "decline")}
+            >
+              <RoundListCard
+                roundId={round.id}
+                delayPressIn={
+                  swipeVariant !== "none" && swipeEnabled ? 200 : undefined
+                }
+                mode={round.mode === "scheduled" ? "scheduled" : "planning"}
+                courseName={round.courseName}
+                imageUrl={imageUrl}
+                joinPolicy={joinPolicy}
+                totalSpots={round.totalSpots ?? 0}
+                confirmedPlayers={round.confirmedPlayers ?? []}
+                onCardPressIn={() =>
+                  prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getTokenRef.current())
+                }
+                onPress={() =>
+                  router.push({
+                    pathname: "/round/[token]",
+                    params: {
+                      token: round.inviteToken,
+                      roundHint: buildRoundListHint(round),
+                    },
+                  })
+                }
+                primaryMeta={
+                  round.mode === "scheduled"
+                    ? formatScheduledCardMeta(effectiveIso, round.teeTime)
+                    : formatPlanningWindow(round.preferredTimeWindow)
+                }
+                planningLocation={round.planningLocation}
+                planningHeaderDate={formatPlanningHeaderDate(effectiveIso)}
+                preferredTimeWindow={round.preferredTimeWindow}
+                onPlayerPress={(player) =>
+                  router.push({
+                    pathname: "/profile/[userId]",
+                    params: {
+                      userId: player.id,
+                      userName: player.name,
+                      userAvatar: player.avatar ?? "",
+                    },
+                  })
+                }
+                onPlayerPressIn={(player) =>
+                  prefetchPublicProfile(player.id, () => getTokenRef.current())
+                }
+                trailingAfterSpots={
+                  activeTab === "joined" && round.spotStatus === "requested" ? (
+                    <Text style={styles.badgeMutedSub}>Pending</Text>
+                  ) : undefined
+                }
+                footer={
+                  activeTab === "invited" ? (
+                    <View style={styles.inviteFooter}>
+                      {inviteOutcome ? (
+                        <Text
+                          style={
+                            inviteOutcome === "declined"
+                              ? styles.inviteResponseTextMuted
+                              : styles.inviteResponseText
+                          }
                         >
-                          <Text style={styles.inviteClaimBtnText}>Claim spot</Text>
-                        </Pressable>
-                        <Pressable
-                          style={[styles.inviteActionBtn, styles.inviteDeclineBtn]}
-                          onPress={() => void submitInviteAction(round, "decline")}
-                          accessibilityLabel="Decline this invite"
-                        >
-                          <Text style={styles.inviteDeclineBtnText}>Decline</Text>
-                        </Pressable>
-                      </View>
-                    )}
-                    {inviteRowError[round.id] ? (
-                      <Text style={styles.inviteRowErrorText}>{inviteRowError[round.id]}</Text>
-                    ) : null}
-                  </View>
-                ) : undefined
-              }
-            />
+                          {inviteResponseLabel(inviteOutcome)}
+                        </Text>
+                      ) : rowBusy ? (
+                        <ActivityIndicator color={colors.fairway} style={styles.inviteRowSpinner} />
+                      ) : (
+                        <View style={styles.inviteButtonsRow}>
+                          <Pressable
+                            style={[styles.inviteActionBtn, styles.inviteClaimBtn]}
+                            onPress={() => void submitInviteAction(round, "claim")}
+                            accessibilityLabel="Claim spot on this round"
+                          >
+                            <Text style={styles.inviteClaimBtnText}>Claim spot</Text>
+                          </Pressable>
+                          <Pressable
+                            style={[styles.inviteActionBtn, styles.inviteDeclineBtn]}
+                            onPress={() => void submitInviteAction(round, "decline")}
+                            accessibilityLabel="Decline this invite"
+                          >
+                            <Text style={styles.inviteDeclineBtnText}>Decline</Text>
+                          </Pressable>
+                        </View>
+                      )}
+                      {inviteRowError[round.id] ? (
+                        <Text style={styles.inviteRowErrorText}>{inviteRowError[round.id]}</Text>
+                      ) : null}
+                    </View>
+                  ) : undefined
+                }
+              />
+            </SwipeableMineRoundRow>
           );
         }}
       />

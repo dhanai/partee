@@ -15,68 +15,68 @@ export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <NotificationBadgeProvider>
-      <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
-          headerShadowVisible: false,
-          contentStyle: { backgroundColor: colors.background },
-        }}
-      >
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="round/[token]"
-          options={{
-            title: "Round",
-            headerBackTitle: "Back",
+        <StatusBar style="dark" />
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: colors.background },
+            headerTintColor: colors.text,
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: colors.background },
           }}
-        />
-        <Stack.Screen
-          name="round/[token]/edit"
-          options={{
-            title: "Edit Round",
-            headerBackTitle: "Round",
-          }}
-        />
-        <Stack.Screen
-          name="profile/[userId]"
-          options={{
-            title: "Profile",
-            headerBackTitle: "Back",
-          }}
-        />
-        <Stack.Screen
-          name="profile/edit"
-          options={{
-            title: "Edit profile",
-            headerBackTitle: "Back",
-          }}
-        />
-        <Stack.Screen
-          name="notifications"
-          options={{
-            title: "Notifications",
-            headerBackTitle: "Back",
-          }}
-        />
-        <Stack.Screen
-          name="settings"
-          options={{
-            title: "Settings",
-            headerBackTitle: "Back",
-          }}
-        />
-        <Stack.Screen
-          name="invite-friends"
-          options={{
-            title: "Invite Friends",
-            headerBackTitle: "Back",
-          }}
-        />
-      </Stack>
+        >
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="round/[token]"
+            options={{
+              title: "Round",
+              headerBackTitle: "Back",
+            }}
+          />
+          <Stack.Screen
+            name="round/[token]/edit"
+            options={{
+              title: "Edit Round",
+              headerBackTitle: "Round",
+            }}
+          />
+          <Stack.Screen
+            name="profile/[userId]"
+            options={{
+              title: "Profile",
+              headerBackTitle: "Back",
+            }}
+          />
+          <Stack.Screen
+            name="profile/edit"
+            options={{
+              title: "Edit profile",
+              headerBackTitle: "Back",
+            }}
+          />
+          <Stack.Screen
+            name="notifications"
+            options={{
+              title: "Notifications",
+              headerBackTitle: "Back",
+            }}
+          />
+          <Stack.Screen
+            name="settings"
+            options={{
+              title: "Settings",
+              headerBackTitle: "Back",
+            }}
+          />
+          <Stack.Screen
+            name="invite-friends"
+            options={{
+              title: "Invite Friends",
+              headerBackTitle: "Back",
+            }}
+          />
+        </Stack>
       </NotificationBadgeProvider>
     </ClerkProvider>
   );
