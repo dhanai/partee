@@ -35,7 +35,10 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     try {
       json = JSON.parse(raw) as T & ApiError;
     } catch {
-      throw new Error(`Unexpected response from server (${res.status}).`);
+      const preview = raw.replace(/\s+/g, " ").trim().slice(0, 240);
+      throw new Error(
+        `Unexpected response from server (${res.status})${preview ? `: ${preview}` : ""}`,
+      );
     }
   }
   if (!res.ok) {

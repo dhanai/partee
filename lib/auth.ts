@@ -1,4 +1,4 @@
-import { auth, currentUser, verifyToken } from "@clerk/nextjs/server";
+import { auth, clerkClient, currentUser, verifyToken } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
@@ -44,17 +44,34 @@ export async function ensureDbUser(req?: Request) {
     return existing;
   }
 
-  const clerkUser = await currentUser();
-  if (!clerkUser) {
-    return null;
-  }
+  // Cookie/session (web): currentUser(). Bearer-only clients (Expo): no session — use Backend API.
+  const sessionUser = await currentUser();
+  let primaryEmail: string | null = null;
+  let derivedName: string;
+  let avatar: string | null = null;
 
-  const primaryEmail = clerkUser.emailAddresses[0]?.emailAddress;
-  const derivedName =
-    clerkUser.fullName ??
-    [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ??
-    primaryEmail ??
-    "Partee golfer";
+  if (sessionUser) {
+    primaryEmail = sessionUser.emailAddresses[0]?.emailAddress ?? null;
+    derivedName =
+      sessionUser.fullName ??
+      [sessionUser.firstName, sessionUser.lastName].filter(Boolean).join(" ") ??
+      primaryEmail ??
+      "Partee golfer";
+    avatar = sessionUser.imageUrl ?? null;
+  } else {
+    try {
+      const u = await clerkClient.users.getUser(clerkId);
+      primaryEmail = u.emailAddresses[0]?.emailAddress ?? null;
+      derivedName =
+        u.fullName ??
+        [u.firstName, u.lastName].filter(Boolean).join(" ") ??
+        primaryEmail ??
+        "Partee golfer";
+      avatar = u.imageUrl ?? null;
+    } catch {
+      return null;
+    }
+  }
 
   const [created] = await db
     .insert(users)
@@ -62,7 +79,7 @@ export async function ensureDbUser(req?: Request) {
       clerkId,
       email: primaryEmail ?? null,
       name: derivedName,
-      avatar: clerkUser.imageUrl ?? null,
+      avatar,
     })
     .returning();
 
