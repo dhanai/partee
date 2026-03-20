@@ -43,11 +43,17 @@ export async function notifyRoundInvites(input: {
     .filter((t): t is string => Boolean(t));
 
   if (tokens.length === 0) {
-    if (process.env.EXPO_DEBUG_PUSH === "1" && input.inviteeUserIds.length > 0) {
-      console.warn(
-        "[notifyRoundInvites] No Expo push tokens on file for invitees; invites were created but no push was sent.",
-        { inviteeCount: input.inviteeUserIds.length },
-      );
+    if (input.inviteeUserIds.length > 0) {
+      const hint =
+        process.env.EXPO_ACCESS_TOKEN && process.env.EXPO_PUSH_DISABLED !== "1"
+          ? "Invitee(s) have no expo_push_token in DB (app never registered push, or permission denied)."
+          : "Set EXPO_ACCESS_TOKEN on the API host to send pushes (or EXPO_PUSH_DISABLED=1 to silence).";
+      if (process.env.EXPO_DEBUG_PUSH === "1") {
+        console.warn("[notifyRoundInvites] No push tokens for invitees.", {
+          inviteeCount: input.inviteeUserIds.length,
+          hint,
+        });
+      }
     }
     return;
   }

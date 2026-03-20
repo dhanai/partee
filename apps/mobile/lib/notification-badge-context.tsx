@@ -49,9 +49,29 @@ export function NotificationBadgeProvider({ children }: { children: ReactNode })
     isSignedInRef.current = isSignedIn;
   }, [isSignedIn]);
 
+  // Clerk can report signed-in before getToken() resolves; retry so /api/users/me/push-token runs.
   useEffect(() => {
     if (!isSignedIn) return;
-    void registerExpoPushTokenWithBackend(() => getTokenRef.current());
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < 12; i++) {
+        if (cancelled) return;
+        const session = await getTokenRef.current();
+        if (session) {
+          await registerExpoPushTokenWithBackend(() => getTokenRef.current());
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 200 + i * 80));
+      }
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.warn(
+          "[Partee] Could not register push token: Clerk session never became available.",
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [isSignedIn]);
 
   const syncAppIconBadge = useCallback(async (next: boolean) => {
@@ -93,6 +113,9 @@ export function NotificationBadgeProvider({ children }: { children: ReactNode })
       appStateRef.current = state;
       if (state === "active") {
         void refreshRef.current();
+        if (isSignedInRef.current) {
+          void registerExpoPushTokenWithBackend(() => getTokenRef.current());
+        }
       }
     });
     return () => sub.remove();

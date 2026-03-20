@@ -13,6 +13,15 @@ On a **physical device**, `http://localhost:3000` is the **phone**, not your Mac
 
 Partee sends **round invite** pushes via **Expo’s service** from your Next API (`lib/notify-user.ts` → `lib/push-expo.ts`). The **invitee’s** app must register an **Expo push token**; the API must have **`EXPO_ACCESS_TOKEN`**.
 
+## No push after an invite? Check these first
+
+1. **Physical device + dev client** — Remote push is unreliable on **iOS Simulator**; use a real phone with an **EAS dev client** or release build (not Expo Go-only workflows for full fidelity).
+2. **`EXPO_ACCESS_TOKEN` on the Next server** — Without it, `sendExpoPushMessages` does nothing. Set it in `.env.local` (local API) or Vercel env (deployed API). Restart `next dev` after changing env.
+3. **Invitee allowed notifications** — iOS Settings → Partee → Notifications. The app registers the token only after permission is granted.
+4. **Invitee signed in on the phone** — Token is POSTed to `/api/users/me/push-token` with a Clerk JWT. Open the app once while logged in (pull-to-refresh / foreground also re-runs registration).
+5. **Same API URL** — Phone app’s `EXPO_PUBLIC_API_BASE_URL` must point at the same Next instance that has `EXPO_ACCESS_TOKEN` and that received the push-token POST.
+6. **Debug logging** — On the API: `EXPO_DEBUG_PUSH=1`. You’ll see warnings when invitees have no stored token or when send is skipped.
+
 ## What you do once (Expo / EAS)
 
 1. **Log in** (local machine):

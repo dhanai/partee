@@ -55,11 +55,25 @@ export async function registerExpoPushTokenWithBackend(
   const finalStatus =
     existing === "granted" ? existing : (await Notifications.requestPermissionsAsync()).status;
 
-  if (finalStatus !== "granted") return;
+  if (finalStatus !== "granted") {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.warn(
+        "[Partee] Notification permission not granted — round invites won’t arrive as pushes.",
+      );
+    }
+    return;
+  }
 
   const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({ projectId });
   const authToken = await getAuthToken();
-  if (!authToken) return;
+  if (!authToken) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.warn(
+        "[Partee] Push token not saved: no Clerk session token yet (will retry on next foreground).",
+      );
+    }
+    return;
+  }
 
   await apiPost("/api/users/me/push-token", { expoPushToken }, authToken);
 }
