@@ -35,7 +35,14 @@ export async function registerExpoPushTokenWithBackend(
   if (Platform.OS === "web") return;
 
   const projectId = resolveExpoProjectId();
-  if (!projectId) return;
+  if (!projectId) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.warn(
+        "[Partee] Push token not registered: add EAS project id (run `eas init` in apps/mobile). See apps/mobile/PUSH-SETUP.md.",
+      );
+    }
+    return;
+  }
 
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("default", {

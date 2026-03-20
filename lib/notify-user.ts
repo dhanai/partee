@@ -42,7 +42,15 @@ export async function notifyRoundInvites(input: {
     .map((r) => r.token?.trim())
     .filter((t): t is string => Boolean(t));
 
-  if (tokens.length === 0) return;
+  if (tokens.length === 0) {
+    if (process.env.EXPO_DEBUG_PUSH === "1" && input.inviteeUserIds.length > 0) {
+      console.warn(
+        "[notifyRoundInvites] No Expo push tokens on file for invitees; invites were created but no push was sent.",
+        { inviteeCount: input.inviteeUserIds.length },
+      );
+    }
+    return;
+  }
 
   await sendExpoPushMessages(
     tokens.map((to) => ({
