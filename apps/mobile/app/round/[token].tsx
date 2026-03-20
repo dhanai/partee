@@ -29,6 +29,7 @@ import {
 } from "../../lib/round-details-cache";
 import {
   applyOptimisticToRoundDetails,
+  emitRoundListsShouldRefresh,
   subscribeRoundListsRefresh,
 } from "../../lib/round-lists-refresh";
 import { colors } from "../../lib/theme";
@@ -345,7 +346,13 @@ export default function RoundDetailsScreen() {
     try {
       const authToken = await getToken();
       await apiDelete<{ ok: boolean }>(`/api/rounds/${token}`, authToken);
-      router.replace("/(tabs)");
+      setDeleteConfirmOpen(false);
+      emitRoundListsShouldRefresh();
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/(tabs)");
+      }
     } catch (deleteError) {
       setError(
         deleteError instanceof Error ? deleteError.message : "Unable to delete round.",
