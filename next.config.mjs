@@ -2,7 +2,11 @@
 const nextConfig = {
   experimental: {
     typedRoutes: true,
-    serverComponentsExternalPackages: ["ws", "@neondatabase/serverless"],
+    serverComponentsExternalPackages: [
+      "ws",
+      "@neondatabase/serverless",
+      "expo-server-sdk",
+    ],
   },
   images: {
     remotePatterns: [

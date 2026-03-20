@@ -1,4 +1,5 @@
 import { Expo, type ExpoPushMessage } from "expo-server-sdk";
+import { isExpoPushToken } from "./expo-push-token";
 
 let client: Expo | null | undefined;
 
@@ -28,7 +29,7 @@ export async function sendExpoPushMessages(messages: ExpoPushMessage[]): Promise
     return;
   }
 
-  const valid = messages.filter((m) => typeof m.to === "string" && Expo.isExpoPushToken(m.to));
+  const valid = messages.filter((m) => typeof m.to === "string" && isExpoPushToken(m.to));
   if (valid.length === 0) {
     if (debugPush()) {
       console.warn("[push] No valid Expo push tokens in message batch.");

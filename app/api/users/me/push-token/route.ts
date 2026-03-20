@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { Expo } from "expo-server-sdk";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { isExpoPushToken } from "@/lib/expo-push-token";
+
+export const runtime = "nodejs";
 
 const bodySchema = z.object({
   expoPushToken: z.string().trim().min(10).max(512).nullable(),
@@ -16,7 +18,7 @@ export async function POST(req: Request) {
     const parsed = bodySchema.parse(await req.json());
 
     const next = parsed.expoPushToken;
-    if (next != null && !Expo.isExpoPushToken(next)) {
+    if (next != null && !isExpoPushToken(next)) {
       return NextResponse.json({ error: "Invalid Expo push token." }, { status: 400 });
     }
 
