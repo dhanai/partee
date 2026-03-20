@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
-import { setCachedMeProfile } from "../../lib/me-profile-cache";
+import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
 import { colors } from "../../lib/theme";
 
@@ -35,7 +35,7 @@ type ProfileNetworkResponse = {
     id: string;
     name: string;
     avatar: string | null;
-    count: number;
+    handicap: string | null;
   }>;
 };
 
@@ -74,9 +74,20 @@ export default function ProfileScreen() {
     });
   }, [navigation, router]);
 
-  async function loadProfile() {
-    setLoading(true);
-    setFriendsLoading(true);
+  function applyMeUser(user: MeResponse["user"]) {
+    setCachedMeProfile(user);
+    setName(user.name ?? "");
+    setHandicap(user.handicap ?? "");
+    setLocation(user.location ?? user.homeCourse ?? "");
+    setAvatar(user.avatar ?? null);
+  }
+
+  async function loadProfile(options?: { silent?: boolean }) {
+    const silent = Boolean(options?.silent);
+    if (!silent) {
+      setLoading(true);
+      setFriendsLoading(true);
+    }
     setError(null);
     try {
       const token = await getTokenRef.current();
@@ -84,11 +95,7 @@ export default function ProfileScreen() {
         apiGet<MeResponse>("/api/users/me", token),
         apiGet<ProfileNetworkResponse>("/api/users/me/network", token),
       ]);
-      setCachedMeProfile(json.user);
-      setName(json.user.name ?? "");
-      setHandicap(json.user.handicap ?? "");
-      setLocation(json.user.location ?? json.user.homeCourse ?? "");
-      setAvatar(json.user.avatar ?? null);
+      applyMeUser(json.user);
       setFriends(network.friends ?? []);
     } catch (profileError) {
       setError(profileError instanceof Error ? profileError.message : "Unable to load profile.");
@@ -98,9 +105,21 @@ export default function ProfileScreen() {
     }
   }
 
-  useEffect(() => {
-    void loadProfile();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const cached = getCachedMeProfile();
+      if (cached) {
+        setName(cached.name ?? "");
+        setHandicap(cached.handicap ?? "");
+        setLocation(cached.location ?? cached.homeCourse ?? "");
+        setAvatar(cached.avatar ?? null);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+      void loadProfile({ silent: Boolean(cached) });
+    }, []),
+  );
 
   const initials = useMemo(() => {
     if (!name.trim()) return "P";
@@ -194,9 +213,11 @@ export default function ProfileScreen() {
                   )}
                   <View style={styles.friendMeta}>
                     <Text style={styles.friendName}>{friend.name}</Text>
-                    <Text style={styles.friendSub}>
-                      Paired {friend.count} time{friend.count === 1 ? "" : "s"}
-                    </Text>
+                    {friend.handicap?.trim() ? (
+                      <Text style={styles.friendSub}>
+                        Handicap {friend.handicap.trim()}
+                      </Text>
+                    ) : null}
                   </View>
                 </Pressable>
               ))

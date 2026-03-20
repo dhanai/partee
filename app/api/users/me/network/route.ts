@@ -36,6 +36,7 @@ export async function GET(req: Request) {
           id: users.id,
           name: users.name,
           avatar: users.avatar,
+          handicap: users.handicap,
         })
         .from(spots)
         .innerJoin(users, eq(users.id, spots.userId))
@@ -50,6 +51,7 @@ export async function GET(req: Request) {
           id: users.id,
           name: users.name,
           avatar: users.avatar,
+          handicap: users.handicap,
         })
         .from(rounds)
         .innerJoin(users, eq(users.id, rounds.hostId))
@@ -59,6 +61,7 @@ export async function GET(req: Request) {
           id: users.id,
           name: users.name,
           avatar: users.avatar,
+          handicap: users.handicap,
         })
         .from(userFollows)
         .innerJoin(
@@ -71,21 +74,35 @@ export async function GET(req: Request) {
         .where(eq(userFollows.status, "accepted")),
     ]);
 
-    const byUser = new Map<string, { id: string; name: string; avatar: string | null; count: number }>();
+    type FriendRow = {
+      id: string;
+      name: string;
+      avatar: string | null;
+      handicap: string | null;
+    };
+
+    function handicapToString(value: string | null | undefined): string | null {
+      if (value == null || value === "") return null;
+      return String(value);
+    }
+
+    const byUser = new Map<string, FriendRow>();
     const allRows = [...peerSpotRows, ...hostRows, ...followRows];
     for (const row of allRows) {
       if (row.id === currentUser.id) continue;
       const existing = byUser.get(row.id);
       if (existing) {
-        existing.count += 1;
-      } else {
-        byUser.set(row.id, { id: row.id, name: row.name, avatar: row.avatar, count: 1 });
+        continue;
       }
+      byUser.set(row.id, {
+        id: row.id,
+        name: row.name,
+        avatar: row.avatar,
+        handicap: handicapToString(row.handicap ?? undefined),
+      });
     }
 
-    const friends = Array.from(byUser.values()).sort((a, b) =>
-      b.count === a.count ? a.name.localeCompare(b.name) : b.count - a.count,
-    );
+    const friends = Array.from(byUser.values()).sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json({ friends });
   } catch (error) {

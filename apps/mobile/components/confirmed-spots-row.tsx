@@ -70,6 +70,9 @@ export function ConfirmedSpotsRow({
           return (
             <Pressable
               key={key}
+              accessibilityLabel={`${player.name}, view profile`}
+              accessibilityRole="button"
+              hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
               onPress={() => onPlayerPress(player)}
               onPressIn={() => onPlayerPressIn?.(player)}
             >

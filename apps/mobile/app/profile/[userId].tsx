@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { apiDelete, apiPost, toAbsoluteUrl } from "../../lib/api";
 import {
@@ -11,25 +11,30 @@ import {
 } from "../../lib/public-profile-cache";
 import { colors } from "../../lib/theme";
 
-export default function PublicProfileScreen() {
-  const { userId, userName, userAvatar } = useLocalSearchParams<{
-    userId: string;
-    userName?: string;
-    userAvatar?: string;
-  }>();
-  const { getToken } = useAuth();
-  const getTokenRef = useRef(getToken);
-  const seededProfile = useMemo<PublicProfile | null>(() => {
-    if (!userId) return null;
-    const seededName = Array.isArray(userName) ? userName[0] : userName;
-    const seededAvatarRaw = Array.isArray(userAvatar) ? userAvatar[0] : userAvatar;
-    const seededAvatar = seededAvatarRaw && seededAvatarRaw.length > 0 ? seededAvatarRaw : null;
-    if (!seededName && !seededAvatar) return null;
+/**
+ * Route params carry the name/avatar from the list row you tapped (fresh).
+ * The in-memory cache can still hold an older profile — prefer params over cache for those fields,
+ * while keeping cached relationship / counts / friends until the network returns.
+ */
+function computeBootstrapProfile(
+  userId: string | undefined,
+  userName: string | string[] | undefined,
+  userAvatar: string | string[] | undefined,
+): PublicProfile | null {
+  if (!userId) return null;
+  const cached = getCachedPublicProfile(userId);
+  const rawName = Array.isArray(userName) ? userName[0] : userName;
+  const rawAvatar = Array.isArray(userAvatar) ? userAvatar[0] : userAvatar;
+  const hasName = typeof rawName === "string" && rawName.trim().length > 0;
+  const hasAvatar = typeof rawAvatar === "string" && rawAvatar.trim().length > 0;
+
+  if (!cached) {
+    if (!hasName && !hasAvatar) return null;
     return {
       user: {
         id: userId,
-        name: seededName ?? "Profile",
-        avatar: seededAvatar,
+        name: hasName ? rawName.trim() : "Profile",
+        avatar: hasAvatar ? rawAvatar.trim() : null,
         handicap: null,
         location: null,
         followVisibility: "public",
@@ -39,12 +44,32 @@ export default function PublicProfileScreen() {
       },
       friends: [],
     };
-  }, [userAvatar, userId, userName]);
-  const cachedProfile = useMemo(() => (userId ? getCachedPublicProfile(userId) : null), [userId]);
-  const [loading, setLoading] = useState(!cachedProfile && !seededProfile);
+  }
+
+  if (!hasName && !hasAvatar) return cached;
+
+  return {
+    ...cached,
+    user: {
+      ...cached.user,
+      ...(hasName ? { name: rawName.trim() } : {}),
+      ...(hasAvatar ? { avatar: rawAvatar.trim() } : {}),
+    },
+  };
+}
+
+export default function PublicProfileScreen() {
+  const { userId, userName, userAvatar } = useLocalSearchParams<{
+    userId: string;
+    userName?: string;
+    userAvatar?: string;
+  }>();
+  const { getToken } = useAuth();
+  const getTokenRef = useRef(getToken);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<PublicProfile | null>(cachedProfile ?? seededProfile);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -66,12 +91,17 @@ export default function PublicProfileScreen() {
     }
   }
 
-  useEffect(() => {
-    const cached = userId ? getCachedPublicProfile(userId) : null;
-    setProfile(cached ?? seededProfile);
-    setLoading(!cached && !seededProfile);
-    void loadProfile({ silent: true });
-  }, [seededProfile, userId]);
+  useLayoutEffect(() => {
+    if (!userId) {
+      setProfile(null);
+      setLoading(true);
+      return;
+    }
+    const next = computeBootstrapProfile(userId, userName, userAvatar);
+    setProfile(next);
+    setLoading(!next);
+    void loadProfile({ silent: Boolean(next) });
+  }, [userId, userName, userAvatar]);
 
   const initials = useMemo(() => {
     const name = profile?.user.name ?? "";
@@ -240,7 +270,9 @@ export default function PublicProfileScreen() {
               )}
               <View style={styles.friendMeta}>
                 <Text style={styles.friendName}>{friend.name}</Text>
-                <Text style={styles.friendSub}>Paired {friend.count} time{friend.count === 1 ? "" : "s"}</Text>
+                {friend.handicap?.trim() ? (
+                  <Text style={styles.friendSub}>Handicap {friend.handicap.trim()}</Text>
+                ) : null}
               </View>
             </View>
           ))

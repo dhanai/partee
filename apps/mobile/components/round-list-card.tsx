@@ -70,56 +70,62 @@ export function RoundListCard({
     <View
       style={[styles.card, mode === "planning" && styles.planningCard, planningTheme?.card]}
     >
-      <Pressable onPress={onPress} style={styles.cardPress}>
-        <View style={styles.cardPressInner}>
-          {mode === "scheduled" ? (
-            <>
-              <Image
-                source={{ uri: toAbsoluteUrl(imageUrl) }}
-                style={styles.cardImage}
-              />
-              <View style={styles.topRow}>
-                <Text style={styles.cardTitle}>{courseName ?? "Course TBD"}</Text>
-                <Text style={styles.badgeMuted}>
-                  {joinPolicy === "instant" ? "Instant" : "Approval"}
-                </Text>
-              </View>
-              <Text style={styles.cardMeta}>{primaryMeta}</Text>
-            </>
-          ) : (
-            <>
-              <View style={styles.topRow}>
-                <Text style={styles.planDate}>
-                  {planningHeaderDate ??
-                    new Date().toLocaleDateString("en-US", {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    })}
-                </Text>
-                <PlanningRoundBadge preferredTimeWindow={preferredTimeWindow} />
-              </View>
-              <Text style={styles.cardMeta}>{planningMetaLine}</Text>
-            </>
-          )}
-          <View style={styles.spotsRow}>
-            <View style={styles.spotsRowMain}>
-              <ConfirmedSpotsRow
-                roundId={roundId}
-                totalSpots={totalSpots}
-                players={confirmedPlayers}
-                size="sm"
-                initialTone="fairway"
-                onPlayerPress={onPlayerPress}
-                onPlayerPressIn={onPlayerPressIn}
-              />
-            </View>
-            {trailingAfterSpots ? (
-              <View style={styles.trailingWrap}>{trailingAfterSpots}</View>
-            ) : null}
+      {/*
+        Spots row lives outside the card Pressable so avatar Pressables receive taps.
+        (Nested pressables often collapse to the parent on iOS.)
+      */}
+      <View style={styles.cardBody}>
+        <Pressable onPress={onPress} style={styles.cardPress}>
+          <View style={styles.cardPressInner}>
+            {mode === "scheduled" ? (
+              <>
+                <Image
+                  source={{ uri: toAbsoluteUrl(imageUrl) }}
+                  style={styles.cardImage}
+                />
+                <View style={styles.topRow}>
+                  <Text style={styles.cardTitle}>{courseName ?? "Course TBD"}</Text>
+                  <Text style={styles.badgeMuted}>
+                    {joinPolicy === "instant" ? "Instant" : "Approval"}
+                  </Text>
+                </View>
+                <Text style={styles.cardMeta}>{primaryMeta}</Text>
+              </>
+            ) : (
+              <>
+                <View style={styles.topRow}>
+                  <Text style={styles.planDate}>
+                    {planningHeaderDate ??
+                      new Date().toLocaleDateString("en-US", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                  </Text>
+                  <PlanningRoundBadge preferredTimeWindow={preferredTimeWindow} />
+                </View>
+                <Text style={styles.cardMeta}>{planningMetaLine}</Text>
+              </>
+            )}
           </View>
+        </Pressable>
+        <View style={styles.spotsRow}>
+          <View style={styles.spotsRowMain}>
+            <ConfirmedSpotsRow
+              roundId={roundId}
+              totalSpots={totalSpots}
+              players={confirmedPlayers}
+              size="sm"
+              initialTone="fairway"
+              onPlayerPress={onPlayerPress}
+              onPlayerPressIn={onPlayerPressIn}
+            />
+          </View>
+          {trailingAfterSpots ? (
+            <View style={styles.trailingWrap}>{trailingAfterSpots}</View>
+          ) : null}
         </View>
-      </Pressable>
+      </View>
       {footer}
     </View>
   );
@@ -136,6 +142,9 @@ const styles = StyleSheet.create({
   },
   planningCard: {
     borderStyle: "dashed",
+  },
+  cardBody: {
+    gap: 8,
   },
   cardPress: {},
   cardPressInner: {

@@ -23,7 +23,7 @@ export type PublicProfile = {
     id: string;
     name: string;
     avatar: string | null;
-    count: number;
+    handicap: string | null;
   }>;
 };
 

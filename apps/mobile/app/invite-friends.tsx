@@ -26,7 +26,7 @@ type NetworkFriend = {
   id: string;
   name: string;
   avatar: string | null;
-  count: number;
+  handicap: string | null;
 };
 
 function useDebounce(value: string, delayMs: number) {

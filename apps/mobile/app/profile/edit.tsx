@@ -1,17 +1,21 @@
+import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { apiBaseUrl, apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { compressImageToMaxBytes } from "../../lib/compress-image-for-upload";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import { colors } from "../../lib/theme";
 
@@ -55,6 +59,7 @@ function useDebounce(value: string, delayMs: number) {
 }
 
 export default function EditProfileScreen() {
+  const navigation = useNavigation();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const cachedMe = useMemo(() => getCachedMeProfile(), []);
@@ -62,7 +67,8 @@ export default function EditProfileScreen() {
   const [meId, setMeId] = useState(cachedMe?.id ?? "");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saveHint, setSaveHint] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const [name, setName] = useState(cachedMe?.name ?? "");
   const [email, setEmail] = useState(cachedMe?.email ?? "");
   const [handicap, setHandicap] = useState(cachedMe?.handicap ?? "");
@@ -85,6 +91,40 @@ export default function EditProfileScreen() {
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
+
+  useLayoutEffect(() => {
+    const show = !loading && !uploading && (profileSaving || saveNote != null);
+    const label = profileSaving ? "Saving…" : (saveNote ?? "");
+    const pill = (
+      <View style={styles.headerSavePill}>
+        <Text style={styles.headerSavePillText} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    );
+
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        headerRight: undefined,
+        headerRightContainerStyle: { paddingRight: 6 },
+        unstable_headerRightItems: show
+          ? () => [
+              {
+                type: "custom" as const,
+                element: pill,
+                hidesSharedBackground: true,
+              },
+            ]
+          : () => [],
+      });
+    } else {
+      navigation.setOptions({
+        unstable_headerRightItems: undefined,
+        headerRightContainerStyle: { paddingRight: 10, justifyContent: "center" },
+        headerRight: () => (show ? pill : null),
+      });
+    }
+  }, [navigation, loading, uploading, profileSaving, saveNote]);
 
   useEffect(() => {
     let active = true;
@@ -144,8 +184,16 @@ export default function EditProfileScreen() {
     try {
       const token = await getTokenRef.current();
       const asset = result.assets[0];
-      const imageResponse = await fetch(asset.uri);
-      const imageBlob = await imageResponse.blob();
+      const maxBytes = 3 * 1024 * 1024;
+      const imageBlob = await compressImageToMaxBytes(
+        asset.uri,
+        maxBytes,
+        asset.width,
+        asset.height,
+      );
+      if (imageBlob.size > maxBytes) {
+        throw new Error("Could not reduce photo under 3 MB. Try a different image.");
+      }
       const formData = new FormData();
       formData.append("file", imageBlob, "profile-image.jpg");
 
@@ -213,12 +261,14 @@ export default function EditProfileScreen() {
     const nextSnapshot = snapshotFromFields({ name, handicap, location, avatar });
     if (nextSnapshot === lastSavedSnapshotRef.current) return;
     if (location.trim().length > 0 && !locationIsValidated) {
-      setSaveHint("Select a location suggestion to save.");
+      setSaveNote(null);
+      setProfileSaving(false);
       return;
     }
+    setSaveNote(null);
     const timer = setTimeout(async () => {
       setError(null);
-      setSaveHint("Saving...");
+      setProfileSaving(true);
       try {
         const token = await getTokenRef.current();
         await apiPatch<MeResponse>(
@@ -242,10 +292,12 @@ export default function EditProfileScreen() {
           homeCourse: location.trim() || null,
           avatar: avatar ?? null,
         });
-        setSaveHint("Saved");
+        setProfileSaving(false);
+        setSaveNote("Saved");
       } catch (saveError) {
         setError(saveError instanceof Error ? saveError.message : "Unable to auto-save profile.");
-        setSaveHint("Save failed");
+        setProfileSaving(false);
+        setSaveNote("Save failed");
       }
     }, 650);
     return () => clearTimeout(timer);
@@ -263,32 +315,53 @@ export default function EditProfileScreen() {
   ]);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <Text style={styles.saveHint}>{loading ? "Loading..." : saveHint}</Text>
-        </View>
-          <View style={styles.avatarWrap}>
+          {/*
+            Avatar tap target: visuals use pointerEvents="none" so they don't steal touches from
+            TouchableOpacity — but if *all* children opt out, iOS can collapse the touchable's hit
+            rect (only the camera badge seemed tappable). A nearly-invisible full-bleed layer on top
+            restores a reliable hit surface. If iOS Simulator still flakes, verify on device; see TODO below.
+          */}
+          <TouchableOpacity
+            style={[styles.avatarWrap, uploading && styles.disabled]}
+            activeOpacity={0.88}
+            delayPressIn={0}
+            onPress={() => void handleUploadAvatar()}
+            disabled={uploading}
+            accessibilityLabel="Change profile photo"
+            accessibilityRole="button"
+          >
             {avatar ? (
-              <Image source={{ uri: toAbsoluteUrl(avatar) }} style={styles.avatar} />
+              <View style={styles.avatar} pointerEvents="none">
+                <Image
+                  source={{ uri: toAbsoluteUrl(avatar) }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                />
+              </View>
             ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]}>
+              <View
+                style={[styles.avatar, styles.avatarPlaceholder]}
+                pointerEvents="none"
+              >
                 <Text style={styles.avatarInitial}>P</Text>
               </View>
             )}
-            <Pressable
-              style={[styles.avatarCameraButton, uploading && styles.disabled]}
-              onPress={() => void handleUploadAvatar()}
-              disabled={uploading}
-              accessibilityLabel="Upload profile photo"
-            >
+            <View style={styles.avatarCameraBadge} pointerEvents="none">
               <Ionicons
                 name={uploading ? "hourglass-outline" : "camera-outline"}
                 size={18}
                 color={colors.text}
               />
-            </Pressable>
-          </View>
+            </View>
+            {/* default pointerEvents — participates in layout so the touchable keeps a full 104×104 rect */}
+            <View style={styles.avatarHitCatcher} collapsable={false} />
+          </TouchableOpacity>
 
           <Text style={styles.fieldLabel}>Name</Text>
           <TextInput
@@ -361,6 +434,21 @@ export default function EditProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, gap: 12, paddingBottom: 32 },
+  headerSavePill: {
+    alignSelf: "center",
+    backgroundColor: colors.fairwaySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    maxWidth: 120,
+  },
+  headerSavePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.fairway,
+  },
   card: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -369,20 +457,29 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: colors.surface,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  saveHint: { color: colors.muted, fontSize: 12, fontWeight: "600" },
   avatarWrap: {
     alignSelf: "center",
     width: 104,
     height: 104,
     position: "relative",
     marginBottom: 2,
+    borderRadius: 999,
+    /* overflow hidden on the touchable can break hit testing on iOS; clip on inner .avatar */
   },
-  avatar: { width: 104, height: 104, borderRadius: 999, backgroundColor: "#dfe6df" },
+  /** Full-bleed touch surface above visuals (opaque to hits, ~invisible). */
+  avatarHitCatcher: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  avatar: {
+    width: 104,
+    height: 104,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "#dfe6df",
+  },
   avatarPlaceholder: {
     alignItems: "center",
     justifyContent: "center",
@@ -409,10 +506,11 @@ const styles = StyleSheet.create({
     color: colors.muted,
     backgroundColor: "#f5f3ef",
   },
-  avatarCameraButton: {
+  avatarCameraBadge: {
     position: "absolute",
     right: 2,
     bottom: 2,
+    zIndex: 2,
     width: 30,
     height: 30,
     borderRadius: 999,
