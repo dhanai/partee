@@ -17,7 +17,7 @@ const MIME_EXTENSION: Record<string, string> = {
 export async function POST(req: Request) {
   try {
     const user = await requireDbUser(req);
-    const formData = await req.formData();
+    const formData = (await req.formData()) as unknown as globalThis.FormData;
     const file = formData.get("file");
 
     if (!(file instanceof File)) {

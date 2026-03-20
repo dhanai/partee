@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { rounds, spots, userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
