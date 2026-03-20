@@ -1,56 +1,109 @@
 import { nanoid } from "nanoid";
 import { NextResponse } from "next/server";
-import { eq, gte, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
-const createRoundSchema = z.object({
-  courseId: z.string().uuid(),
-  teeTime: z.string().datetime(),
-  totalSpots: z.number().int().min(2).max(4),
-  visibility: z.enum(["private", "public"]),
-  joinPolicy: z.enum(["instant", "approval"]).default("instant"),
-  customImageUrl: z
-    .string()
-    .trim()
-    .max(2048)
-    .refine(
-      (value) =>
-        value.length === 0 ||
-        value.startsWith("/") ||
-        /^https?:\/\/.+/i.test(value),
-      {
-        message: "customImageUrl must be a valid URL or app-relative path.",
-      },
-    )
-    .optional()
-    .nullable(),
-  inviteeUserIds: z.array(z.string().uuid()).max(30).default([]),
-});
+const createRoundSchema = z
+  .object({
+    planningMode: z.boolean().default(false),
+    preferredTimeWindow: z.enum(["morning", "afternoon", "twilight"]).optional(),
+    courseId: z.string().uuid().optional(),
+    teeTime: z.string().datetime().optional(),
+    targetDate: z.string().datetime().optional(),
+    totalSpots: z.number().int().min(2).max(4),
+    visibility: z.enum(["private", "public"]),
+    joinPolicy: z.enum(["instant", "approval"]).default("instant"),
+    customImageUrl: z
+      .string()
+      .trim()
+      .max(2048)
+      .refine(
+        (value) =>
+          value.length === 0 ||
+          value.startsWith("/") ||
+          /^https?:\/\/.+/i.test(value),
+        {
+          message: "customImageUrl must be a valid URL or app-relative path.",
+        },
+      )
+      .optional()
+      .nullable(),
+    inviteeUserIds: z.array(z.string().uuid()).max(30).default([]),
+  })
+  .superRefine((payload, ctx) => {
+    if (payload.planningMode) {
+      if (!payload.targetDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["targetDate"],
+          message: "Target date is required for planning rounds.",
+        });
+      }
+      return;
+    }
+    if (payload.preferredTimeWindow) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["preferredTimeWindow"],
+        message: "preferredTimeWindow is only valid for planning rounds.",
+      });
+    }
+
+    if (!payload.courseId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["courseId"],
+        message: "Course is required for scheduled rounds.",
+      });
+    }
+    if (!payload.teeTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["teeTime"],
+        message: "Tee time is required for scheduled rounds.",
+      });
+    }
+  });
 
 export async function POST(req: Request) {
   try {
-    const user = await requireDbUser();
+    const user = await requireDbUser(req);
     const parsed = createRoundSchema.parse(await req.json());
-    const teeTime = new Date(parsed.teeTime);
+    const now = Date.now();
+    let teeTime: Date | null = null;
+    let targetDate: Date;
+    let course: typeof courses.$inferSelect | null = null;
 
-    if (teeTime.getTime() < Date.now()) {
-      return NextResponse.json(
-        { error: "Tee time must be in the future." },
-        { status: 400 },
-      );
-    }
+    if (parsed.planningMode) {
+      targetDate = new Date(parsed.targetDate as string);
+      if (targetDate.getTime() < now) {
+        return NextResponse.json(
+          { error: "Target date must be in the future." },
+          { status: 400 },
+        );
+      }
+    } else {
+      teeTime = new Date(parsed.teeTime as string);
+      if (teeTime.getTime() < now) {
+        return NextResponse.json(
+          { error: "Tee time must be in the future." },
+          { status: 400 },
+        );
+      }
 
-    const [course] = await db
-      .select()
-      .from(courses)
-      .where(eq(courses.id, parsed.courseId));
-
-    if (!course) {
-      return NextResponse.json({ error: "Course not found." }, { status: 404 });
+      const [selectedCourse] = await db
+        .select()
+        .from(courses)
+        .where(eq(courses.id, parsed.courseId as string));
+      if (!selectedCourse) {
+        return NextResponse.json({ error: "Course not found." }, { status: 404 });
+      }
+      course = selectedCourse;
+      targetDate = teeTime;
     }
 
     const dedupedInviteeIds = [
@@ -63,9 +116,14 @@ export async function POST(req: Request) {
         .insert(rounds)
         .values({
           hostId: user.id,
-          courseId: course.id,
-          courseName: course.name,
+          mode: parsed.planningMode ? "planning" : "scheduled",
+          courseId: course?.id ?? null,
+          courseName: course?.name ?? null,
           teeTime,
+          targetDate,
+          preferredTimeWindow: parsed.planningMode
+            ? (parsed.preferredTimeWindow ?? null)
+            : null,
           totalSpots: parsed.totalSpots,
           visibility: parsed.visibility,
           joinPolicy: parsed.joinPolicy,
@@ -132,15 +190,18 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    await requireDbUser();
+    await requireDbUser(req);
     const now = new Date();
 
     const upcoming = await db
       .select({
         id: rounds.id,
+        mode: rounds.mode,
+        preferredTimeWindow: rounds.preferredTimeWindow,
         courseName: rounds.courseName,
+        targetDate: rounds.targetDate,
         customImageUrl: rounds.customImageUrl,
         courseMetadata: courses.metadata,
         teeTime: rounds.teeTime,
@@ -152,24 +213,44 @@ export async function GET() {
           ),
       })
       .from(rounds)
-      .innerJoin(courses, eq(courses.id, rounds.courseId))
+      .leftJoin(courses, eq(courses.id, rounds.courseId))
       .leftJoin(spots, eq(spots.roundId, rounds.id))
-      .where(gte(rounds.teeTime, now))
       .groupBy(rounds.id, courses.metadata)
-      .orderBy(rounds.teeTime);
+      .orderBy(rounds.targetDate);
 
     return NextResponse.json({
-      rounds: upcoming.map((round) => ({
+      rounds: upcoming
+        .map((round) => {
+          const effectiveDate = round.teeTime ?? round.targetDate;
+          return {
+            id: round.id,
+            mode: round.mode,
+            preferredTimeWindow: round.preferredTimeWindow,
+            courseName: round.courseName ?? "Course TBD",
+            targetDate: round.targetDate,
+            teeTime: round.teeTime,
+            visibility: round.visibility,
+            totalSpots: round.totalSpots,
+            confirmedCount: round.confirmedCount,
+            effectiveDate,
+            imageUrl: resolveRoundImageUrl({
+              customImageUrl: round.customImageUrl,
+              courseMetadata: round.courseMetadata,
+            }),
+          };
+        })
+        .filter((round) => new Date(round.effectiveDate) >= now)
+        .map((round) => ({
         id: round.id,
+        mode: round.mode,
+        preferredTimeWindow: round.preferredTimeWindow,
         courseName: round.courseName,
+        targetDate: round.targetDate,
         teeTime: round.teeTime,
         visibility: round.visibility,
         totalSpots: round.totalSpots,
         confirmedCount: round.confirmedCount,
-        imageUrl: resolveRoundImageUrl({
-          customImageUrl: round.customImageUrl,
-          courseMetadata: round.courseMetadata,
-        }),
+        imageUrl: round.imageUrl,
       })),
     });
   } catch (error) {

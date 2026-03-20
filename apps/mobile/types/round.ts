@@ -1,0 +1,64 @@
+export type DiscoverRound = {
+  id: string;
+  inviteToken: string;
+  mode: "scheduled" | "planning";
+  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  courseName: string;
+  teeTime: string | null;
+  targetDate: string;
+  effectiveDate: string;
+  hostName: string;
+  hostAvatar: string | null;
+  totalSpots: number;
+  spotsRemaining: number;
+  distanceMiles: number | null;
+  joinPolicy: "instant" | "approval";
+  imageUrl: string;
+};
+
+export type RoundDetails = {
+  id: string;
+  inviteToken: string;
+  mode: "scheduled" | "planning";
+  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  courseId?: string | null;
+  courseName: string;
+  teeTime: string | null;
+  targetDate: string;
+  visibility: "private" | "public";
+  totalSpots: number;
+  status: "forming" | "confirmed" | "completed";
+  joinPolicy: "instant" | "approval";
+  hostName: string;
+  hostAvatar: string | null;
+  customImageUrl?: string | null;
+  imageUrl: string;
+  confirmedCount: number;
+  confirmedPlayers: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+  }>;
+  spotsRemaining: number;
+  isHost: boolean;
+  currentUserSpotStatus: string | null;
+};
+
+export type MineRound = {
+  id: string;
+  inviteToken: string;
+  courseName: string | null;
+  teeTime: string | null;
+  targetDate: string;
+  mode: "scheduled" | "planning";
+  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  status: "forming" | "confirmed" | "completed";
+  totalSpots?: number;
+  confirmedCount?: number;
+  confirmedPlayers?: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+  }>;
+  spotStatus?: "invited" | "confirmed" | "declined" | "requested";
+};

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { haversineMiles } from "@/lib/utils";
@@ -12,28 +12,25 @@ export async function GET(req: Request) {
   const lng = searchParams.get("lng");
   const distanceMiles = Number(searchParams.get("distanceMiles") ?? "9999");
 
-  const filters = [eq(rounds.visibility, "public")];
-
-  if (date) {
-    const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${date}T23:59:59.999Z`);
-    filters.push(gte(rounds.teeTime, dayStart));
-    filters.push(lte(rounds.teeTime, dayEnd));
-  } else {
-    filters.push(gte(rounds.teeTime, new Date()));
-  }
+  const now = new Date();
+  const dayStart = date ? new Date(`${date}T00:00:00.000Z`) : null;
+  const dayEnd = date ? new Date(`${date}T23:59:59.999Z`) : null;
 
   const rows = await db
     .select({
       id: rounds.id,
       inviteToken: rounds.inviteToken,
+      mode: rounds.mode,
+      preferredTimeWindow: rounds.preferredTimeWindow,
       courseName: rounds.courseName,
       customImageUrl: rounds.customImageUrl,
       courseMetadata: courses.metadata,
       teeTime: rounds.teeTime,
+      targetDate: rounds.targetDate,
       totalSpots: rounds.totalSpots,
       joinPolicy: rounds.joinPolicy,
       hostName: users.name,
+      hostAvatar: users.avatar,
       lat: courses.lat,
       lng: courses.lng,
       confirmedCount:
@@ -43,18 +40,28 @@ export async function GET(req: Request) {
     })
     .from(rounds)
     .innerJoin(users, eq(users.id, rounds.hostId))
-    .innerJoin(courses, eq(courses.id, rounds.courseId))
+    .leftJoin(courses, eq(courses.id, rounds.courseId))
     .leftJoin(spots, eq(spots.roundId, rounds.id))
-    .where(and(...filters))
-    .groupBy(rounds.id, users.name, courses.lat, courses.lng, courses.metadata)
-    .orderBy(asc(rounds.teeTime));
+    .where(eq(rounds.visibility, "public"))
+    .groupBy(
+      rounds.id,
+      users.name,
+      users.avatar,
+      courses.lat,
+      courses.lng,
+      courses.metadata,
+    )
+    .orderBy(asc(rounds.targetDate));
 
   const withRemaining = rows
     .map((row) => {
-      const rowLat = Number(row.lat);
-      const rowLng = Number(row.lng);
+      const effectiveDate = row.teeTime ?? row.targetDate;
+      const rowLat = row.lat ? Number(row.lat) : null;
+      const rowLng = row.lng ? Number(row.lng) : null;
       const distance =
-        lat && lng ? haversineMiles(Number(lat), Number(lng), rowLat, rowLng) : null;
+        lat && lng && rowLat !== null && rowLng !== null
+          ? haversineMiles(Number(lat), Number(lng), rowLat, rowLng)
+          : null;
       const imageUrl = resolveRoundImageUrl({
         customImageUrl: row.customImageUrl,
         courseMetadata: row.courseMetadata,
@@ -62,17 +69,29 @@ export async function GET(req: Request) {
       return {
         id: row.id,
         inviteToken: row.inviteToken,
-        courseName: row.courseName,
+        mode: row.mode,
+        preferredTimeWindow: row.preferredTimeWindow,
+        courseName: row.courseName ?? "Course TBD",
         teeTime: row.teeTime,
+        targetDate: row.targetDate,
+        effectiveDate,
         totalSpots: row.totalSpots,
         joinPolicy: row.joinPolicy,
         hostName: row.hostName,
+        hostAvatar: row.hostAvatar,
         lat: rowLat,
         lng: rowLng,
         distanceMiles: distance,
         spotsRemaining: Math.max(0, row.totalSpots - row.confirmedCount),
         imageUrl,
       };
+    })
+    .filter((row) => {
+      const when = new Date(row.effectiveDate);
+      if (dayStart && dayEnd) {
+        return when >= dayStart && when <= dayEnd;
+      }
+      return when >= now;
     })
     .filter((row) => row.spotsRemaining > 0)
     .filter((row) =>

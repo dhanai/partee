@@ -7,8 +7,12 @@ import Link from "next/link";
 type DiscoverRound = {
   id: string;
   inviteToken: string;
+  mode: "scheduled" | "planning";
+  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
   courseName: string;
-  teeTime: string;
+  teeTime: string | null;
+  targetDate: string;
+  effectiveDate: string;
   hostName: string;
   spotsRemaining: number;
   distanceMiles: number | null;
@@ -54,6 +58,13 @@ export default function DiscoverPage() {
   function clearDate() {
     setDate("");
     loadRounds();
+  }
+
+  function formatPlanningWindow(
+    value: "morning" | "afternoon" | "twilight" | null | undefined,
+  ) {
+    if (!value) return "Time TBD";
+    return value.charAt(0).toUpperCase() + value.slice(1);
   }
 
   return (
@@ -119,16 +130,17 @@ export default function DiscoverPage() {
                     {round.courseName}
                   </p>
                   <p className="text-base text-charcoal-400">
-                    {new Date(round.teeTime).toLocaleDateString("en-US", {
+                    {new Date(round.effectiveDate).toLocaleDateString("en-US", {
                       weekday: "short",
                       month: "short",
                       day: "numeric",
                     })}{" "}
-                    at{" "}
-                    {new Date(round.teeTime).toLocaleTimeString("en-US", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+                    {round.mode === "planning"
+                      ? `• ${formatPlanningWindow(round.preferredTimeWindow)}`
+                      : `at ${new Date(round.teeTime as string).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}`}
                   </p>
                   <p className="text-sm text-charcoal-300">Hosted by {round.hostName}</p>
                 </div>
@@ -137,9 +149,11 @@ export default function DiscoverPage() {
                     {round.spotsRemaining} spot{round.spotsRemaining !== 1 ? "s" : ""}
                   </span>
                   <span className="rounded-full bg-cream-200 px-3 py-1 text-xs font-medium text-charcoal-400">
-                    {round.joinPolicy === "instant"
-                      ? "Instant claim"
-                      : "Host approval"}
+                    {round.mode === "planning"
+                      ? "Planning round"
+                      : round.joinPolicy === "instant"
+                        ? "Instant claim"
+                        : "Host approval"}
                   </span>
                 </div>
               </div>

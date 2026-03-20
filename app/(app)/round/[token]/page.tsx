@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 
 type RoundDetails = {
   id: string;
   inviteToken: string;
+  mode: "scheduled" | "planning";
+  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
   courseName: string;
-  teeTime: string;
+  teeTime: string | null;
+  targetDate: string;
   visibility: "private" | "public";
   totalSpots: number;
   status: "forming" | "confirmed" | "completed";
@@ -22,31 +25,123 @@ type RoundDetails = {
   currentUserSpotStatus: string | null;
 };
 
+type CourseSearchResult = {
+  id: string;
+  name: string;
+  address: string;
+};
+
+function useDebounce(value: string, delayMs: number): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+function toDateTimeLocalValue(input: string) {
+  const date = new Date(input);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export default function RoundInvitePage({
   params,
 }: {
   params: { token: string };
 }) {
+  function formatPlanningWindow(
+    value: "morning" | "afternoon" | "twilight" | null | undefined,
+  ) {
+    if (!value) return "Time TBD";
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [rsvpBusy, setRsvpBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  const [finalizeQuery, setFinalizeQuery] = useState("");
+  const [finalizeResults, setFinalizeResults] = useState<CourseSearchResult[]>([]);
+  const [showFinalizeResults, setShowFinalizeResults] = useState(false);
+  const [selectedFinalizeCourse, setSelectedFinalizeCourse] =
+    useState<CourseSearchResult | null>(null);
+  const [finalizeTeeTime, setFinalizeTeeTime] = useState("");
+  const [loadingFinalizeCourses, setLoadingFinalizeCourses] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const finalizeDropdownRef = useRef<HTMLDivElement>(null);
+  const debouncedFinalizeQuery = useDebounce(finalizeQuery, 300);
 
-  useEffect(() => {
-    async function loadRound() {
-      const response = await fetch(`/api/rounds/${params.token}`);
-      const json = (await response.json()) as { round?: RoundDetails; error?: string };
-      if (!response.ok) {
-        setError(json.error ?? "Round not found.");
-        return;
-      }
-      setRound(json.round ?? null);
+  const loadRound = useCallback(async () => {
+    const response = await fetch(`/api/rounds/${params.token}`);
+    const json = (await response.json()) as { round?: RoundDetails; error?: string };
+    if (!response.ok) {
+      setError(json.error ?? "Round not found.");
+      return;
     }
-    void loadRound();
+    setRound(json.round ?? null);
+    if (json.round?.mode === "planning") {
+      setFinalizeTeeTime(toDateTimeLocalValue(json.round.targetDate));
+    }
   }, [params.token]);
 
+  useEffect(() => {
+    void loadRound();
+  }, [loadRound]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (
+        finalizeDropdownRef.current &&
+        !finalizeDropdownRef.current.contains(e.target as Node)
+      ) {
+        setShowFinalizeResults(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const searchFinalizeCourses = useCallback(async (q: string) => {
+    if (!round || round.mode !== "planning") return;
+    if (q.trim().length < 2) {
+      setFinalizeResults([]);
+      return;
+    }
+
+    setLoadingFinalizeCourses(true);
+    try {
+      const res = await fetch("/api/courses/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q }),
+      });
+      const json = (await res.json()) as {
+        courses: CourseSearchResult[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Failed to search courses.");
+      setFinalizeResults(json.courses);
+      setShowFinalizeResults(true);
+    } catch (searchError) {
+      setFinalizeError(
+        searchError instanceof Error ? searchError.message : "Search failed.",
+      );
+    } finally {
+      setLoadingFinalizeCourses(false);
+    }
+  }, [round]);
+
+  useEffect(() => {
+    void searchFinalizeCourses(debouncedFinalizeQuery);
+  }, [debouncedFinalizeQuery, searchFinalizeCourses]);
+
   async function rsvp(action: "claim" | "decline") {
-    setBusy(true);
+    setRsvpBusy(true);
     setMessage(null);
     setError(null);
     const response = await fetch(`/api/rounds/${params.token}/join`, {
@@ -76,7 +171,43 @@ export default function RoundInvitePage({
         });
       }
     }
-    setBusy(false);
+    setRsvpBusy(false);
+  }
+
+  async function finalizeRound() {
+    if (!selectedFinalizeCourse) {
+      setFinalizeError("Select a course first.");
+      return;
+    }
+    if (!finalizeTeeTime) {
+      setFinalizeError("Select tee time.");
+      return;
+    }
+
+    setFinalizing(true);
+    setFinalizeError(null);
+    setMessage(null);
+    setError(null);
+
+    const response = await fetch(`/api/rounds/${params.token}/finalize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        courseId: selectedFinalizeCourse.id,
+        teeTime: new Date(finalizeTeeTime).toISOString(),
+      }),
+    });
+    const json = (await response.json()) as { error?: string };
+
+    if (!response.ok) {
+      setFinalizeError(json.error ?? "Unable to finalize round.");
+      setFinalizing(false);
+      return;
+    }
+
+    await loadRound();
+    setMessage("Round finalized. Everyone can now see the course and tee time.");
+    setFinalizing(false);
   }
 
   if (error && !round) {
@@ -96,7 +227,7 @@ export default function RoundInvitePage({
       <div className="partee-card">
         <Image
           src={round.imageUrl}
-          alt={round.courseName}
+          alt={round.courseName ?? "Round image"}
           width={1200}
           height={700}
           className="h-44 w-full rounded-2xl object-cover"
@@ -118,13 +249,22 @@ export default function RoundInvitePage({
           <div>
             <p className="partee-label">Date</p>
             <p className="text-sm font-medium text-charcoal">
-              {new Date(round.teeTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+              {new Date(round.teeTime ?? round.targetDate).toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+              })}
             </p>
           </div>
           <div>
-            <p className="partee-label">Tee time</p>
+            <p className="partee-label">{round.mode === "planning" ? "Status" : "Tee time"}</p>
             <p className="text-sm font-medium text-charcoal">
-              {new Date(round.teeTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+              {round.mode === "planning"
+                ? formatPlanningWindow(round.preferredTimeWindow)
+                : new Date(round.teeTime as string).toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
             </p>
           </div>
         </div>
@@ -151,12 +291,83 @@ export default function RoundInvitePage({
       {round.isHost && (
         <div className="partee-card border border-fairway-100 bg-fairway-50">
           <p className="font-semibold text-fairway">You&apos;re hosting</p>
-          <p className="mt-1 text-sm text-charcoal-400">Share the link to invite more players.</p>
+          <p className="mt-1 text-sm text-charcoal-400">
+            {round.mode === "planning"
+              ? "Share now, then finalize course and tee time once your group is in."
+              : "Share the link to invite more players."}
+          </p>
           <div className="mt-3 rounded-xl bg-white px-4 py-2.5">
             <p className="text-xs font-medium text-charcoal-300 select-all break-all">
               {typeof window !== "undefined" ? window.location.href : `/round/${round.inviteToken}`}
             </p>
           </div>
+
+          {round.mode === "planning" && (
+            <div className="mt-4 space-y-3 rounded-xl border border-fairway-100 bg-white p-4">
+              <p className="text-sm font-semibold text-charcoal">Finalize details</p>
+
+              <div ref={finalizeDropdownRef} className="relative">
+                <input
+                  value={finalizeQuery}
+                  onChange={(e) => {
+                    setFinalizeQuery(e.target.value);
+                    setSelectedFinalizeCourse(null);
+                  }}
+                  onFocus={() => finalizeResults.length > 0 && setShowFinalizeResults(true)}
+                  className="partee-input"
+                  placeholder="Search golf course..."
+                />
+                {loadingFinalizeCourses && (
+                  <span className="absolute right-4 top-3.5 text-xs text-charcoal-300">
+                    Searching...
+                  </span>
+                )}
+
+                {showFinalizeResults && finalizeResults.length > 0 && (
+                  <ul className="absolute z-20 mt-2 max-h-52 w-full overflow-auto rounded-2xl bg-white shadow-lg">
+                    {finalizeResults.map((course) => (
+                      <li key={course.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedFinalizeCourse(course);
+                            setFinalizeQuery(course.name);
+                            setShowFinalizeResults(false);
+                          }}
+                          className="w-full px-4 py-3 text-left transition hover:bg-cream-100"
+                        >
+                          <span className="block text-sm font-semibold text-charcoal">
+                            {course.name}
+                          </span>
+                          <span className="block text-xs text-charcoal-300">
+                            {course.address}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <input
+                type="datetime-local"
+                value={finalizeTeeTime}
+                onChange={(e) => setFinalizeTeeTime(e.target.value)}
+                className="partee-input"
+              />
+
+              {finalizeError && <p className="text-sm text-red-600">{finalizeError}</p>}
+
+              <button
+                type="button"
+                onClick={() => void finalizeRound()}
+                disabled={finalizing}
+                className="partee-btn-primary w-full disabled:opacity-40"
+              >
+                {finalizing ? "Finalizing..." : "Finalize round"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -188,15 +399,21 @@ export default function RoundInvitePage({
               {(!hasResponded || round.currentUserSpotStatus === "invited" || round.currentUserSpotStatus === "declined") && (
                 <div className={`flex gap-3 ${message || error ? "mt-4" : ""}`}>
                   {!isFull && (
-                    <button onClick={() => rsvp("claim")} disabled={busy} className="partee-btn-primary flex-1 disabled:opacity-40">
-                      {busy ? "Updating..." : round.joinPolicy === "approval" ? "Request to join" : "Claim spot"}
+                    <button onClick={() => rsvp("claim")} disabled={rsvpBusy} className="partee-btn-primary flex-1 disabled:opacity-40">
+                      {rsvpBusy
+                        ? "Updating..."
+                        : round.mode === "planning"
+                          ? "I'm in"
+                          : round.joinPolicy === "approval"
+                            ? "Request to join"
+                            : "Claim spot"}
                     </button>
                   )}
                   {isFull && !hasResponded && (
                     <p className="text-sm text-charcoal-300">This round is full.</p>
                   )}
                   {round.currentUserSpotStatus !== "declined" && (
-                    <button onClick={() => rsvp("decline")} disabled={busy} className="partee-btn-secondary flex-1 disabled:opacity-40">
+                    <button onClick={() => rsvp("decline")} disabled={rsvpBusy} className="partee-btn-secondary flex-1 disabled:opacity-40">
                       Decline
                     </button>
                   )}

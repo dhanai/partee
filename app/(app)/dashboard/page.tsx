@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { and, asc, eq, gte, ne } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, rounds, spots } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
@@ -14,53 +14,66 @@ export default async function DashboardPage() {
   const hosting = await db
     .select({
       id: rounds.id,
+      mode: rounds.mode,
+      preferredTimeWindow: rounds.preferredTimeWindow,
       courseName: rounds.courseName,
       teeTime: rounds.teeTime,
+      targetDate: rounds.targetDate,
       inviteToken: rounds.inviteToken,
       customImageUrl: rounds.customImageUrl,
       courseMetadata: courses.metadata,
     })
     .from(rounds)
-    .innerJoin(courses, eq(courses.id, rounds.courseId))
-    .where(and(eq(rounds.hostId, user.id), gte(rounds.teeTime, now)))
-    .orderBy(asc(rounds.teeTime));
+    .leftJoin(courses, eq(courses.id, rounds.courseId))
+    .where(eq(rounds.hostId, user.id))
+    .orderBy(asc(rounds.targetDate));
 
   const joined = await db
     .select({
       id: rounds.id,
+      mode: rounds.mode,
+      preferredTimeWindow: rounds.preferredTimeWindow,
       courseName: rounds.courseName,
       teeTime: rounds.teeTime,
+      targetDate: rounds.targetDate,
       inviteToken: rounds.inviteToken,
       customImageUrl: rounds.customImageUrl,
       courseMetadata: courses.metadata,
     })
     .from(spots)
     .innerJoin(rounds, eq(rounds.id, spots.roundId))
-    .innerJoin(courses, eq(courses.id, rounds.courseId))
+    .leftJoin(courses, eq(courses.id, rounds.courseId))
     .where(
       and(
         eq(spots.userId, user.id),
         ne(rounds.hostId, user.id),
-        gte(rounds.teeTime, now),
       ),
     )
-    .orderBy(asc(rounds.teeTime));
+    .orderBy(asc(rounds.targetDate));
 
   const hostingWithImages = hosting.map((round) => ({
     ...round,
+    mode: round.mode,
+    courseName: round.courseName ?? "Course TBD",
+    effectiveDate: round.teeTime ?? round.targetDate,
     imageUrl: resolveRoundImageUrl({
       customImageUrl: round.customImageUrl,
       courseMetadata: round.courseMetadata,
     }),
-  }));
+  }))
+  .filter((round) => new Date(round.effectiveDate) >= now);
 
   const joinedWithImages = joined.map((round) => ({
     ...round,
+    mode: round.mode,
+    courseName: round.courseName ?? "Course TBD",
+    effectiveDate: round.teeTime ?? round.targetDate,
     imageUrl: resolveRoundImageUrl({
       customImageUrl: round.customImageUrl,
       courseMetadata: round.courseMetadata,
     }),
-  }));
+  }))
+  .filter((round) => new Date(round.effectiveDate) >= now);
 
   return (
     <section className="space-y-8">
@@ -89,12 +102,21 @@ function RoundSection({
   label: string;
   rounds: Array<{
     id: string;
+    mode: "scheduled" | "planning";
+    preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
     courseName: string;
-    teeTime: Date;
+    effectiveDate: Date;
     inviteToken: string;
     imageUrl: string;
   }>;
 }) {
+  function formatPlanningWindow(
+    value: "morning" | "afternoon" | "twilight" | null | undefined,
+  ) {
+    if (!value) return "Time TBD";
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
   return (
     <section>
       <p className="partee-label">{label}</p>
@@ -120,7 +142,9 @@ function RoundSection({
                 <div>
                   <p className="font-semibold text-charcoal">{round.courseName}</p>
                   <p className="mt-0.5 text-sm text-charcoal-400">
-                    {formatDateTime(round.teeTime)}
+                    {round.mode === "planning"
+                      ? `${new Date(round.effectiveDate).toLocaleDateString()} (${formatPlanningWindow(round.preferredTimeWindow)})`
+                      : formatDateTime(round.effectiveDate)}
                   </p>
                 </div>
                 <span className="ml-auto text-charcoal-300">&rsaquo;</span>

@@ -1,0 +1,10 @@
+export const colors = {
+  background: "#faf8f5",
+  surface: "#ffffff",
+  text: "#1c1c1e",
+  muted: "#6e6e6e",
+  border: "#ece8e1",
+  fairway: "#1a3c2a",
+  fairwaySoft: "#edf4ef",
+  danger: "#b42318",
+};

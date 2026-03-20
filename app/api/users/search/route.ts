@@ -6,7 +6,7 @@ import { requireDbUser } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
-    const currentUser = await requireDbUser();
+    const currentUser = await requireDbUser(req);
     const { searchParams } = new URL(req.url);
     const q = searchParams.get("q")?.trim() ?? "";
 

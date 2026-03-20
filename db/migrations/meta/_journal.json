@@ -22,6 +22,20 @@
       "when": 1773976917443,
       "tag": "0002_flawless_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1773977597287,
+      "tag": "0003_black_kronos",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774058400000,
+      "tag": "0004_silent_hobgoblin",
+      "breakpoints": true
     }
   ]
 }

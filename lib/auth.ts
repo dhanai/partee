@@ -1,9 +1,29 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser, verifyToken } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 
-export async function getCurrentClerkId(): Promise<string | null> {
+export async function getCurrentClerkId(req?: Request): Promise<string | null> {
+  if (req) {
+    const authHeader = req.headers.get("authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length).trim()
+      : null;
+
+    if (bearerToken) {
+      try {
+        const payload = await verifyToken(bearerToken, {
+          secretKey: process.env.CLERK_SECRET_KEY,
+        });
+        if (payload.sub) {
+          return payload.sub;
+        }
+      } catch {
+        // Fall through to cookie/session auth.
+      }
+    }
+  }
+
   const { userId } = auth();
   return userId ?? null;
 }
@@ -13,8 +33,8 @@ export async function getDbUserByClerkId(clerkId: string) {
   return user ?? null;
 }
 
-export async function ensureDbUser() {
-  const clerkId = await getCurrentClerkId();
+export async function ensureDbUser(req?: Request) {
+  const clerkId = await getCurrentClerkId(req);
   if (!clerkId) {
     return null;
   }
@@ -49,8 +69,8 @@ export async function ensureDbUser() {
   return created ?? null;
 }
 
-export async function requireDbUser() {
-  const user = await ensureDbUser();
+export async function requireDbUser(req?: Request) {
+  const user = await ensureDbUser(req);
   if (!user) {
     throw new Error("Unauthorized");
   }

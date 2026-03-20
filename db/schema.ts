@@ -29,6 +29,12 @@ export const spotStatusEnum = pgEnum("spot_status", [
   "requested",
 ]);
 export const joinPolicyEnum = pgEnum("join_policy", ["instant", "approval"]);
+export const roundModeEnum = pgEnum("round_mode", ["scheduled", "planning"]);
+export const planningTimeWindowEnum = pgEnum("planning_time_window", [
+  "morning",
+  "afternoon",
+  "twilight",
+]);
 
 export const users = pgTable(
   "users",
@@ -76,11 +82,16 @@ export const rounds = pgTable(
     hostId: uuid("host_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    courseId: uuid("course_id")
+    mode: roundModeEnum("mode").notNull().default("scheduled"),
+    courseId: uuid("course_id").references(() => courses.id, {
+      onDelete: "restrict",
+    }),
+    courseName: text("course_name"),
+    teeTime: timestamp("tee_time", { withTimezone: true }),
+    targetDate: timestamp("target_date", { withTimezone: true })
       .notNull()
-      .references(() => courses.id, { onDelete: "restrict" }),
-    courseName: text("course_name").notNull(),
-    teeTime: timestamp("tee_time", { withTimezone: true }).notNull(),
+      .defaultNow(),
+    preferredTimeWindow: planningTimeWindowEnum("preferred_time_window"),
     totalSpots: integer("total_spots").notNull(),
     visibility: roundVisibilityEnum("visibility").notNull(),
     status: roundStatusEnum("status").notNull().default("forming"),

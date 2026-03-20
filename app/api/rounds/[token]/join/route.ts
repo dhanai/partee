@@ -26,7 +26,7 @@ function desiredStatus(action: z.infer<typeof joinSchema>["action"], joinPolicy:
 
 export async function POST(req: Request, { params }: RouteContext) {
   try {
-    const user = await requireDbUser();
+    const user = await requireDbUser(req);
     const parsed = joinSchema.parse(await req.json());
 
     const [round] = await db

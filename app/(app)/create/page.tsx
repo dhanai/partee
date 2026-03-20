@@ -32,6 +32,11 @@ export default function CreateRoundPage() {
   const friendRef = useRef<HTMLDivElement>(null);
 
   const [teeTime, setTeeTime] = useState("");
+  const [targetDate, setTargetDate] = useState("");
+  const [planningMode, setPlanningMode] = useState(false);
+  const [preferredTimeWindow, setPreferredTimeWindow] = useState<
+    "morning" | "afternoon" | "twilight"
+  >("morning");
   const [totalSpots, setTotalSpots] = useState(4);
   const [visibility, setVisibility] = useState<"private" | "public">("private");
   const [joinPolicy, setJoinPolicy] = useState<"instant" | "approval">("instant");
@@ -45,8 +50,11 @@ export default function CreateRoundPage() {
   const debouncedCourse = useDebounce(query, 300);
   const debouncedFriend = useDebounce(friendQuery, 300);
   const canSubmit = useMemo(
-    () => Boolean(selectedCourse && teeTime && !submitting && !uploadingImage),
-    [selectedCourse, teeTime, submitting, uploadingImage],
+    () =>
+      planningMode
+        ? Boolean(targetDate && !submitting && !uploadingImage)
+        : Boolean(selectedCourse && teeTime && !submitting && !uploadingImage),
+    [planningMode, selectedCourse, teeTime, targetDate, submitting, uploadingImage],
   );
 
   const searchCourses = useCallback(async (q: string) => {
@@ -120,15 +128,21 @@ export default function CreateRoundPage() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!selectedCourse) { setError("Select a course."); return; }
+    if (!planningMode && !selectedCourse) { setError("Select a course."); return; }
+    if (planningMode && !targetDate) { setError("Pick a target date."); return; }
     setSubmitting(true); setError(null); setCreatedInvitePath(null); setCreatedInvitedCount(0);
     try {
       const res = await fetch("/api/rounds", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          courseId: selectedCourse.id,
-          teeTime: new Date(teeTime).toISOString(),
+          planningMode,
+          preferredTimeWindow: planningMode ? preferredTimeWindow : undefined,
+          courseId: planningMode ? undefined : selectedCourse?.id,
+          teeTime: planningMode ? undefined : new Date(teeTime).toISOString(),
+          targetDate: planningMode
+            ? new Date(`${targetDate}T12:00:00`).toISOString()
+            : undefined,
           totalSpots,
           visibility,
           joinPolicy,
@@ -152,6 +166,34 @@ export default function CreateRoundPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="partee-card space-y-5">
+        <div>
+          <p className="partee-label">Flow</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setPlanningMode(true)}
+              className={`rounded-xl py-2.5 text-sm font-semibold transition ${
+                planningMode
+                  ? "bg-fairway text-white"
+                  : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"
+              }`}
+            >
+              Plan first
+            </button>
+            <button
+              type="button"
+              onClick={() => setPlanningMode(false)}
+              className={`rounded-xl py-2.5 text-sm font-semibold transition ${
+                !planningMode
+                  ? "bg-fairway text-white"
+                  : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"
+              }`}
+            >
+              Set details now
+            </button>
+          </div>
+        </div>
+
         <div>
           <p className="partee-label">Event image (optional)</p>
           <label className="partee-input flex cursor-pointer items-center justify-between">
@@ -192,46 +234,89 @@ export default function CreateRoundPage() {
           )}
         </div>
 
-        {/* Course */}
-        <div ref={courseRef} className="relative">
-          <p className="partee-label">Course</p>
-          <div className="relative">
+        {planningMode ? (
+          <div>
+            <p className="partee-label">Target date</p>
             <input
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); if (selectedCourse) setSelectedCourse(null); }}
-              onFocus={() => results.length > 0 && setShowCourseResults(true)}
+              type="date"
+              value={targetDate}
+              onChange={(e) => setTargetDate(e.target.value)}
               className="partee-input"
-              placeholder="Search golf courses..."
+              required
             />
-            {loadingCourses && <span className="absolute right-4 top-3.5 text-xs text-charcoal-300">Searching...</span>}
-          </div>
-
-          {showCourseResults && results.length > 0 && (
-            <ul className="absolute z-20 mt-2 max-h-52 w-full overflow-auto rounded-2xl bg-white shadow-lg">
-              {results.map((c) => (
-                <li key={c.id}>
-                  <button type="button" onClick={() => selectCourse(c)} className="w-full px-4 py-3 text-left transition hover:bg-cream-100">
-                    <span className="block text-sm font-semibold text-charcoal">{c.name}</span>
-                    <span className="block text-xs text-charcoal-300">{c.address}</span>
-                  </button>
-                </li>
+            <p className="mt-2 text-xs text-charcoal-300">
+              You can choose course and tee time after players join.
+            </p>
+            <p className="partee-label mt-3">Preferred time</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: "morning", label: "Morning" },
+                { value: "afternoon", label: "Afternoon" },
+                { value: "twilight", label: "Twilight" },
+              ].map((slot) => (
+                <button
+                  key={slot.value}
+                  type="button"
+                  onClick={() =>
+                    setPreferredTimeWindow(
+                      slot.value as "morning" | "afternoon" | "twilight",
+                    )
+                  }
+                  className={`rounded-xl py-2.5 text-sm font-semibold transition ${
+                    preferredTimeWindow === slot.value
+                      ? "bg-fairway text-white"
+                      : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"
+                  }`}
+                >
+                  {slot.label}
+                </button>
               ))}
-            </ul>
-          )}
-
-          {selectedCourse && (
-            <div className="mt-2 flex items-center justify-between rounded-xl bg-fairway-50 px-4 py-2.5">
-              <span className="text-sm font-semibold text-fairway">{selectedCourse.name}</span>
-              <button type="button" onClick={clearCourse} className="text-xs font-medium text-fairway-400 hover:text-fairway">Change</button>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            {/* Course */}
+            <div ref={courseRef} className="relative">
+              <p className="partee-label">Course</p>
+              <div className="relative">
+                <input
+                  value={query}
+                  onChange={(e) => { setQuery(e.target.value); if (selectedCourse) setSelectedCourse(null); }}
+                  onFocus={() => results.length > 0 && setShowCourseResults(true)}
+                  className="partee-input"
+                  placeholder="Search golf courses..."
+                />
+                {loadingCourses && <span className="absolute right-4 top-3.5 text-xs text-charcoal-300">Searching...</span>}
+              </div>
 
-        {/* Tee time */}
-        <div>
-          <p className="partee-label">Tee time</p>
-          <input type="datetime-local" value={teeTime} onChange={(e) => setTeeTime(e.target.value)} className="partee-input" required />
-        </div>
+              {showCourseResults && results.length > 0 && (
+                <ul className="absolute z-20 mt-2 max-h-52 w-full overflow-auto rounded-2xl bg-white shadow-lg">
+                  {results.map((c) => (
+                    <li key={c.id}>
+                      <button type="button" onClick={() => selectCourse(c)} className="w-full px-4 py-3 text-left transition hover:bg-cream-100">
+                        <span className="block text-sm font-semibold text-charcoal">{c.name}</span>
+                        <span className="block text-xs text-charcoal-300">{c.address}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {selectedCourse && (
+                <div className="mt-2 flex items-center justify-between rounded-xl bg-fairway-50 px-4 py-2.5">
+                  <span className="text-sm font-semibold text-fairway">{selectedCourse.name}</span>
+                  <button type="button" onClick={clearCourse} className="text-xs font-medium text-fairway-400 hover:text-fairway">Change</button>
+                </div>
+              )}
+            </div>
+
+            {/* Tee time */}
+            <div>
+              <p className="partee-label">Tee time</p>
+              <input type="datetime-local" value={teeTime} onChange={(e) => setTeeTime(e.target.value)} className="partee-input" required />
+            </div>
+          </>
+        )}
 
         {/* Friends */}
         <div ref={friendRef} className="relative">
