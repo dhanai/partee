@@ -1,29 +1,20 @@
-import Link from "next/link";
-
 export default function MarketingPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-fairway px-6">
-      <div className="max-w-md text-center">
-        <p className="mb-4 text-sm font-semibold uppercase tracking-widest text-fairway-300">
-          Partee
-        </p>
-        <h1 className="mb-3 text-4xl font-bold tracking-tightest text-white sm:text-5xl">
-          Golf rounds,
-          <br />
-          made social.
-        </h1>
-        <p className="mb-10 text-base leading-relaxed text-fairway-200">
-          Create a round, blast invites to your crew, and let the first to
-          claim lock in their spot. Simple as that.
-        </p>
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-          <Link href="/dashboard" className="partee-btn bg-white text-fairway font-semibold hover:bg-cream-200">
-            Open dashboard
-          </Link>
-          <Link href="/discover" className="partee-btn border border-white/20 text-white hover:bg-white/10">
-            Discover rounds
-          </Link>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-[#0f2418] px-6">
+      <div className="max-w-lg text-center">
+        {/* Matches Expo <ParteeLogo tone="light" size="large" /> */}
+        <div className="mb-5 flex items-center justify-center gap-2.5">
+          <span
+            className="h-[13px] w-[13px] shrink-0 rounded-full bg-[#c9a227]"
+            aria-hidden
+          />
+          <span className="text-[24px] font-bold tracking-[-0.03em] text-[#f4f1ea]">
+            Partee
+          </span>
         </div>
+        <p className="text-balance text-3xl font-medium leading-[1.15] tracking-[-0.02em] text-[#f8f6f1] sm:text-[2.5rem] sm:leading-[1.12] [text-shadow:0_1px_10px_rgba(0,0,0,0.25)]">
+          Golf plans without the group text chaos.
+        </p>
       </div>
     </main>
   );

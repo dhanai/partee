@@ -15,7 +15,10 @@ import {
   View,
 } from "react-native";
 import { apiBaseUrl, apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../../lib/api";
-import { compressImageToMaxBytes } from "../../lib/compress-image-for-upload";
+import {
+  compressImageToJpegUriForUpload,
+  compressImageToMaxBytes,
+} from "../../lib/compress-image-for-upload";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import { colors } from "../../lib/theme";
 
@@ -185,17 +188,35 @@ export default function EditProfileScreen() {
       const token = await getTokenRef.current();
       const asset = result.assets[0];
       const maxBytes = 3 * 1024 * 1024;
-      const imageBlob = await compressImageToMaxBytes(
-        asset.uri,
-        maxBytes,
-        asset.width,
-        asset.height,
-      );
-      if (imageBlob.size > maxBytes) {
-        throw new Error("Could not reduce photo under 3 MB. Try a different image.");
-      }
       const formData = new FormData();
-      formData.append("file", imageBlob, "profile-image.jpg");
+      if (Platform.OS === "web") {
+        const imageBlob = await compressImageToMaxBytes(
+          asset.uri,
+          maxBytes,
+          asset.width,
+          asset.height,
+        );
+        if (imageBlob.size > maxBytes) {
+          throw new Error("Could not reduce photo under 3 MB. Try a different image.");
+        }
+        formData.append("file", imageBlob, "profile-image.jpg");
+      } else {
+        const fileUri = await compressImageToJpegUriForUpload(
+          asset.uri,
+          maxBytes,
+          asset.width,
+          asset.height,
+        );
+        const sizeCheck = await (await fetch(fileUri)).blob();
+        if (sizeCheck.size > maxBytes) {
+          throw new Error("Could not reduce photo under 3 MB. Try a different image.");
+        }
+        formData.append("file", {
+          uri: fileUri,
+          name: "profile-image.jpg",
+          type: "image/jpeg",
+        } as unknown as Blob);
+      }
 
       const response = await fetch(`${apiBaseUrl}/api/uploads/event-image`, {
         method: "POST",

@@ -10,16 +10,14 @@ async function ensureJpegBlob(blob: Blob): Promise<Blob> {
 }
 
 /**
- * JPEG re-encode with resize + quality steps until the file is under maxBytes (or limits hit).
- * Image manipulator is loaded on demand so the app can boot even if the dev client was built
- * before this native module was added (rebuild with `npx expo run:ios` to enable compression).
+ * Returns a `file://` JPEG URI under maxBytes (same logic for native FormData `{ uri, name, type }`).
  */
-export async function compressImageToMaxBytes(
+export async function compressImageToJpegUriForUpload(
   uri: string,
   maxBytes: number,
   naturalWidth?: number,
   naturalHeight?: number,
-): Promise<Blob> {
+): Promise<string> {
   const ImageManipulator = await import("expo-image-manipulator");
 
   let targetWidth =
@@ -46,7 +44,7 @@ export async function compressImageToMaxBytes(
     currentUri = nextUri;
     const blob = await ensureJpegBlob(await (await fetch(currentUri)).blob());
     if (blob.size <= maxBytes) {
-      return blob;
+      return currentUri;
     }
     if (quality > 0.38) {
       quality = Math.max(0.25, quality - 0.09);
@@ -55,5 +53,25 @@ export async function compressImageToMaxBytes(
     }
   }
 
-  return ensureJpegBlob(await (await fetch(currentUri)).blob());
+  return currentUri;
+}
+
+/**
+ * JPEG re-encode with resize + quality steps until the file is under maxBytes (or limits hit).
+ * Prefer {@link compressImageToJpegUriForUpload} + native FormData `uri` on iOS/Android — Hermes
+ * often mishandles `Blob` in multipart bodies.
+ */
+export async function compressImageToMaxBytes(
+  uri: string,
+  maxBytes: number,
+  naturalWidth?: number,
+  naturalHeight?: number,
+): Promise<Blob> {
+  const fileUri = await compressImageToJpegUriForUpload(
+    uri,
+    maxBytes,
+    naturalWidth,
+    naturalHeight,
+  );
+  return ensureJpegBlob(await (await fetch(fileUri)).blob());
 }
