@@ -16,6 +16,10 @@ type ClerkWebhookPayload = {
 };
 
 export async function POST(req: Request) {
+  if (!env.server.CLERK_WEBHOOK_SECRET) {
+    return NextResponse.json({ error: "Webhook secret not configured." }, { status: 503 });
+  }
+
   const headerStore = headers();
   const svixId = headerStore.get("svix-id");
   const svixTimestamp = headerStore.get("svix-timestamp");

@@ -37,7 +37,7 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     } catch {
       const preview = raw.replace(/\s+/g, " ").trim().slice(0, 240);
       throw new Error(
-        `Unexpected response from server (${res.status})${preview ? `: ${preview}` : ""}`,
+        `Unexpected response from server (${res.status}) for ${path}${preview ? `: ${preview}` : ""}`,
       );
     }
   }
