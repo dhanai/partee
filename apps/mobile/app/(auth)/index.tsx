@@ -1,88 +1,123 @@
 import { Redirect, router } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { useAuth } from "@clerk/clerk-expo";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AuthLandingBackground } from "../../components/auth-landing-background";
 import { ParteeLogo } from "../../components/partee-logo";
-import { colors } from "../../lib/theme";
+import { AUTH_LOGO_EXTRA_TOP } from "../../lib/auth-form-styles";
 
 export default function AuthWelcomeScreen() {
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
+  const insets = useSafeAreaInsets();
+
+  if (!isLoaded) {
+    return (
+      <AuthLandingBackground style={styles.gradient}>
+        <StatusBar style="light" />
+        <View style={[styles.splash, { paddingTop: insets.top }]}>
+          <ActivityIndicator color="#f4f1ea" size="large" />
+        </View>
+      </AuthLandingBackground>
+    );
+  }
 
   if (isSignedIn) {
     return <Redirect href="/(tabs)" />;
   }
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.hero}>
-        <ParteeLogo />
-        <Text style={styles.title}>Golf plans without the group text chaos.</Text>
-        <Text style={styles.subtitle}>
-          Create rounds, invite friends, and discover games nearby in seconds.
-        </Text>
-      </View>
+    <AuthLandingBackground style={styles.gradient}>
+      <StatusBar style="light" />
+      <View
+        style={[
+          styles.screen,
+          {
+            paddingTop: insets.top + 8,
+            paddingBottom: Math.max(insets.bottom, 20) + 8,
+          },
+        ]}
+      >
+        <View style={styles.bottomStack}>
+          <View style={styles.heroBlock}>
+            <ParteeLogo tone="light" size="large" />
+            <Text style={styles.title}>Golf plans without the group text chaos.</Text>
+          </View>
 
-      <View style={styles.actions}>
-        <Pressable style={styles.primaryBtn} onPress={() => router.push("/(auth)/sign-up")}>
-          <Text style={styles.primaryBtnText}>Get started</Text>
-        </Pressable>
-
-        <Pressable style={styles.linkBtn} onPress={() => router.push("/(auth)/sign-in")}>
-          <Text style={styles.linkBtnText}>Log in</Text>
-        </Pressable>
+          <View style={styles.actions}>
+            <Pressable
+              style={({ pressed }) => [styles.primaryBtn, pressed && styles.primaryBtnPressed]}
+              onPress={() => router.push({ pathname: "/(auth)/account", params: { mode: "signUp" } })}
+            >
+              <Text style={styles.primaryBtnText}>Get started</Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
-    </View>
+    </AuthLandingBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
+  splash: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   screen: {
     flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: 18,
-    paddingTop: 72,
-    paddingBottom: 24,
-    justifyContent: "space-between",
+    paddingHorizontal: 22,
   },
-  hero: {
-    gap: 12,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 20,
-    padding: 18,
+  bottomStack: {
+    flex: 1,
+    justifyContent: "flex-end",
+    alignItems: "stretch",
+    gap: 22,
+    width: "100%",
+    paddingBottom: 4,
+  },
+  heroBlock: {
+    alignItems: "flex-start",
+    gap: 14,
+    width: "100%",
+    paddingTop: AUTH_LOGO_EXTRA_TOP,
   },
   title: {
-    color: colors.text,
-    fontSize: 33,
-    lineHeight: 38,
-    fontWeight: "700",
-    letterSpacing: -0.8,
-  },
-  subtitle: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
+    color: "#f8f6f1",
+    fontSize: 40,
+    lineHeight: 46,
+    fontWeight: "500",
+    letterSpacing: -0.85,
+    textAlign: "left",
+    textShadowColor: "rgba(0,0,0,0.25)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 10,
   },
   actions: {
-    gap: 10,
+    width: "100%",
   },
   primaryBtn: {
-    backgroundColor: colors.fairway,
-    borderRadius: 14,
-    paddingVertical: 14,
+    backgroundColor: "#f4f1ea",
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  primaryBtnPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.99 }],
   },
   primaryBtnText: {
-    color: "#fff",
+    color: "#0f2418",
     fontWeight: "700",
-    fontSize: 16,
-  },
-  linkBtn: {
-    paddingVertical: 6,
-    alignItems: "center",
-  },
-  linkBtnText: {
-    color: colors.fairway,
-    fontWeight: "600",
+    fontSize: 17,
+    letterSpacing: -0.2,
   },
 });

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
+import { router } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { apiGet, apiPatch, apiPost } from "../lib/api";
 import { colors } from "../lib/theme";
@@ -68,6 +69,7 @@ export default function SettingsScreen() {
 
   async function handleSignOut() {
     setSigningOut(true);
+    setError(null);
     try {
       const token = await getTokenRef.current();
       if (token) {
@@ -78,6 +80,11 @@ export default function SettingsScreen() {
         }
       }
       await signOut();
+      // Settings sits on the root stack above (tabs); tabs' Redirect does not unmount this screen.
+      router.dismissAll();
+      router.replace("/(auth)");
+    } catch (signOutErr) {
+      setError(signOutErr instanceof Error ? signOutErr.message : "Couldn't sign out.");
     } finally {
       setSigningOut(false);
     }

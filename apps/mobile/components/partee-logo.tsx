@@ -3,13 +3,37 @@ import { colors } from "../lib/theme";
 
 type ParteeLogoProps = {
   compact?: boolean;
+  tone?: "default" | "light";
+  size?: "default" | "large";
 };
 
-export function ParteeLogo({ compact = false }: ParteeLogoProps) {
+export function ParteeLogo({
+  compact = false,
+  tone = "default",
+  size = "default",
+}: ParteeLogoProps) {
+  const light = tone === "light";
+  const large = size === "large";
   return (
-    <View style={styles.row}>
-      <View style={[styles.dot, compact && styles.dotCompact]} />
-      <Text style={[styles.wordmark, compact && styles.wordmarkCompact]}>Partee</Text>
+    <View style={[styles.row, large && styles.rowLarge]}>
+      <View
+        style={[
+          styles.dot,
+          compact && styles.dotCompact,
+          large && styles.dotLarge,
+          light && styles.dotLight,
+        ]}
+      />
+      <Text
+        style={[
+          styles.wordmark,
+          compact && styles.wordmarkCompact,
+          large && styles.wordmarkLarge,
+          light && styles.wordmarkLight,
+        ]}
+      >
+        Partee
+      </Text>
     </View>
   );
 }
@@ -20,11 +44,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  rowLarge: {
+    gap: 10,
+  },
   dot: {
     width: 12,
     height: 12,
     borderRadius: 999,
     backgroundColor: "#c4a35a",
+  },
+  dotLarge: {
+    width: 13,
+    height: 13,
   },
   dotCompact: {
     width: 10,
@@ -38,5 +69,15 @@ const styles = StyleSheet.create({
   },
   wordmarkCompact: {
     fontSize: 18,
+  },
+  wordmarkLarge: {
+    fontSize: 24,
+    letterSpacing: -0.68,
+  },
+  dotLight: {
+    backgroundColor: colors.mustard,
+  },
+  wordmarkLight: {
+    color: "#f4f1ea",
   },
 });

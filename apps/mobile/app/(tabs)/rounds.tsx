@@ -89,6 +89,12 @@ export default function MyRoundsScreen() {
     joined: false,
     invited: false,
   });
+  /** Ignore stale `finally` from overlapping fetches for the same tab (focus + subscription + tab effect). */
+  const fetchSeqRef = useRef<Record<MineTab, number>>({
+    hosting: 0,
+    joined: 0,
+    invited: 0,
+  });
   const underlineX = useRef(new Animated.Value(0)).current;
   const underlineW = useRef(new Animated.Value(0)).current;
 
@@ -209,6 +215,8 @@ export default function MyRoundsScreen() {
       const existingCount =
         tab === "hosting" ? hosting.length : tab === "joined" ? joined.length : invited.length;
       if (!reset && (!hasMore || loadingMore)) return;
+      fetchSeqRef.current[tab] += 1;
+      const seq = fetchSeqRef.current[tab];
       try {
         setError(null);
         if (reset && existingCount === 0) {
@@ -256,9 +264,11 @@ export default function MyRoundsScreen() {
           tabLoadedRef.current[tab] = true;
         }
       } finally {
-        setLoading(false);
-        setRefreshing(false);
-        setLoadingMore(false);
+        if (fetchSeqRef.current[tab] === seq) {
+          setLoading(false);
+          setRefreshing(false);
+          setLoadingMore(false);
+        }
       }
     },
     [
@@ -332,6 +342,10 @@ export default function MyRoundsScreen() {
 
   const activeRounds =
     activeTab === "hosting" ? hosting : activeTab === "joined" ? joined : invited;
+  /** Avoid empty-state flash when switching tabs before global `loading` flips true. */
+  const tabHasLoadedOnce = tabLoadedRef.current[activeTab];
+  const showEmptyListLoader =
+    activeRounds.length === 0 && (loading || refreshing || !tabHasLoadedOnce);
   const emptyTitle =
     activeTab === "hosting"
       ? "No hosted rounds yet"
@@ -408,7 +422,7 @@ export default function MyRoundsScreen() {
         keyExtractor={(item) => item.id}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
-          loading ? (
+          showEmptyListLoader ? (
             <View style={styles.inlineLoadingWrap}>
               <ActivityIndicator color={colors.fairway} />
             </View>
@@ -450,7 +464,7 @@ export default function MyRoundsScreen() {
           )
         }
         ListFooterComponent={
-          loadingMore && !loading && activeRounds.length > 0 ? (
+          loadingMore && !loading && !refreshing && activeRounds.length > 0 ? (
             <ActivityIndicator color={colors.fairway} style={styles.loadingMore} />
           ) : null
         }
@@ -639,7 +653,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   emptyCtaText: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  inlineLoadingWrap: { paddingVertical: 20, alignItems: "center" },
+  inlineLoadingWrap: {
+    paddingTop: 44,
+    paddingBottom: 20,
+    alignItems: "center",
+  },
   headerBellBtn: {
     position: "relative",
     width: 30,

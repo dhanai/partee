@@ -5,6 +5,7 @@ export const colors = {
   muted: "#6e6e6e",
   border: "#ece8e1",
   fairway: "#1a3c2a",
+  authLandingBackground: "#0f2418",
   fairwaySoft: "#edf4ef",
   danger: "#b42318",
   /** Accent for notification / attention dots */
