@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
-import { useAuth, useSSO, useSignIn, useSignUp } from "@clerk/clerk-expo";
+import {
+  isClerkAPIResponseError,
+  useAuth,
+  useSSO,
+  useSignIn,
+  useSignUp,
+} from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { StatusBar } from "expo-status-bar";
@@ -24,6 +30,58 @@ import { AUTH_LOGO_EXTRA_TOP, authFormStyles } from "../../lib/auth-form-styles"
 import { colors } from "../../lib/theme";
 
 WebBrowser.maybeCompleteAuthSession();
+
+function formatClerkError(err: unknown): string {
+  if (isClerkAPIResponseError(err)) {
+    const first = err.errors[0];
+    return first?.longMessage ?? first?.message ?? "Request failed.";
+  }
+  if (err instanceof Error) return err.message;
+  return "Something went wrong.";
+}
+
+type SecondFactorStep =
+  | {
+      strategy: "email_code";
+      emailAddressId: string;
+      safeIdentifier?: string;
+    }
+  | {
+      strategy: "phone_code";
+      phoneNumberId: string;
+      safeIdentifier?: string;
+    }
+  | { strategy: "totp" }
+  | { strategy: "backup_code" };
+
+function pickSecondFactor(factors: unknown): SecondFactorStep | null {
+  if (!Array.isArray(factors) || factors.length === 0) return null;
+  const order = ["email_code", "phone_code", "totp", "backup_code"] as const;
+  for (const strat of order) {
+    const raw = factors.find(
+      (x): x is Record<string, unknown> =>
+        typeof x === "object" && x !== null && x.strategy === strat,
+    );
+    if (!raw) continue;
+    if (strat === "email_code" && typeof raw.emailAddressId === "string") {
+      return {
+        strategy: "email_code",
+        emailAddressId: raw.emailAddressId,
+        safeIdentifier: typeof raw.safeIdentifier === "string" ? raw.safeIdentifier : undefined,
+      };
+    }
+    if (strat === "phone_code" && typeof raw.phoneNumberId === "string") {
+      return {
+        strategy: "phone_code",
+        phoneNumberId: raw.phoneNumberId,
+        safeIdentifier: typeof raw.safeIdentifier === "string" ? raw.safeIdentifier : undefined,
+      };
+    }
+    if (strat === "totp") return { strategy: "totp" };
+    if (strat === "backup_code") return { strategy: "backup_code" };
+  }
+  return null;
+}
 
 function maxSheetScrollHeight(): number {
   return Math.round(Dimensions.get("window").height * 0.78);
@@ -155,15 +213,24 @@ function SignInFields({
   const { startSSOFlow } = useSSO();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [secondFactor, setSecondFactor] = useState<SecondFactorStep | null>(null);
+  const [secondFactorCode, setSecondFactorCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
   const canSubmitSignIn =
     identifier.trim().length > 0 && password.length > 0;
+  const canSubmitSecondFactor = secondFactorCode.trim().length > 0;
+
+  function backToCredentials() {
+    setSecondFactor(null);
+    setSecondFactorCode("");
+    setError(null);
+  }
 
   async function onSignIn() {
-    if (!isLoaded || !canSubmitSignIn) return;
+    if (!isLoaded || !signIn || !canSubmitSignIn) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -171,14 +238,101 @@ function SignInFields({
         identifier: identifier.trim(),
         password,
       });
-      if (result.status === "complete") {
+      if (result.status === "complete" && result.createdSessionId) {
         await setActive({ session: result.createdSessionId });
         router.replace("/(tabs)");
-      } else {
-        setError("Additional verification required. Complete sign-in on web.");
+        return;
       }
+      if (result.status === "needs_new_password") {
+        setError(
+          "You need to set a new password. Finish on the web or use Google sign-in.",
+        );
+        return;
+      }
+      if (result.status === "needs_first_factor") {
+        setError("This account needs an extra sign-in step. Try Google or sign in on the web.");
+        return;
+      }
+      if (result.status === "needs_second_factor") {
+        const factors = result.supportedSecondFactors ?? signIn.supportedSecondFactors;
+        const step = pickSecondFactor(factors);
+        if (!step) {
+          setError(
+            "This verification method isn’t available in the app yet. Try Google or sign in on the web.",
+          );
+          return;
+        }
+        if (step.strategy === "email_code") {
+          await signIn.prepareSecondFactor({
+            strategy: "email_code",
+            emailAddressId: step.emailAddressId,
+          });
+        } else if (step.strategy === "phone_code") {
+          await signIn.prepareSecondFactor({
+            strategy: "phone_code",
+            phoneNumberId: step.phoneNumberId,
+          });
+        }
+        setSecondFactor(step);
+        setSecondFactorCode("");
+        return;
+      }
+      setError("Sign-in could not be completed. Try again or use Google.");
     } catch (signInError) {
-      setError(signInError instanceof Error ? signInError.message : "Unable to sign in.");
+      setError(formatClerkError(signInError));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onVerifySecondFactor() {
+    if (!isLoaded || !signIn || !secondFactor || !canSubmitSecondFactor) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const code = secondFactorCode.trim();
+      let updated = signIn;
+      if (secondFactor.strategy === "email_code") {
+        updated = await signIn.attemptSecondFactor({ strategy: "email_code", code });
+      } else if (secondFactor.strategy === "phone_code") {
+        updated = await signIn.attemptSecondFactor({ strategy: "phone_code", code });
+      } else if (secondFactor.strategy === "totp") {
+        updated = await signIn.attemptSecondFactor({ strategy: "totp", code });
+      } else {
+        updated = await signIn.attemptSecondFactor({ strategy: "backup_code", code });
+      }
+      if (updated.status === "complete" && updated.createdSessionId) {
+        await setActive({ session: updated.createdSessionId });
+        router.replace("/(tabs)");
+        return;
+      }
+      setError("That code didn’t work. Try again or request a new one.");
+    } catch (verifyError) {
+      setError(formatClerkError(verifyError));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onResendSecondFactor() {
+    if (!isLoaded || !signIn || !secondFactor) return;
+    if (secondFactor.strategy !== "email_code" && secondFactor.strategy !== "phone_code") return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (secondFactor.strategy === "email_code") {
+        await signIn.prepareSecondFactor({
+          strategy: "email_code",
+          emailAddressId: secondFactor.emailAddressId,
+        });
+      } else {
+        await signIn.prepareSecondFactor({
+          strategy: "phone_code",
+          phoneNumberId: secondFactor.phoneNumberId,
+        });
+      }
+    } catch (resendError) {
+      setError(formatClerkError(resendError));
     } finally {
       setSubmitting(false);
     }
@@ -209,63 +363,119 @@ function SignInFields({
     }
   }
 
+  const secondFactorSubtitle =
+    secondFactor?.strategy === "email_code"
+      ? `Enter the code we sent${secondFactor.safeIdentifier ? ` to ${secondFactor.safeIdentifier}` : ""}.`
+      : secondFactor?.strategy === "phone_code"
+        ? `Enter the code we sent${secondFactor.safeIdentifier ? ` to ${secondFactor.safeIdentifier}` : ""}.`
+        : secondFactor?.strategy === "totp"
+          ? "Enter the code from your authenticator app."
+          : secondFactor?.strategy === "backup_code"
+            ? "Enter one of your backup codes."
+            : "";
+
   return (
     <View style={{ gap: 12, paddingBottom: 4 }}>
-      <Text style={authFormStyles.title}>Sign in</Text>
-      <Text style={authFormStyles.subtitle}>Use the same account you use on web.</Text>
-      <TextInput
-        value={identifier}
-        onChangeText={setIdentifier}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        placeholder="Email"
-        placeholderTextColor={colors.muted}
-        style={authFormStyles.input}
-      />
-      <TextInput
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        placeholder="Password"
-        placeholderTextColor={colors.muted}
-        style={authFormStyles.input}
-      />
-      {error ? <Text style={authFormStyles.error}>{error}</Text> : null}
-      <Pressable
-        style={[
-          authFormStyles.button,
-          (submitting || !canSubmitSignIn) && authFormStyles.buttonDisabled,
-        ]}
-        onPress={() => void onSignIn()}
-        disabled={submitting || googleSubmitting || !canSubmitSignIn}
-      >
-        <Text style={authFormStyles.buttonText}>
-          {submitting ? "Signing in..." : "Sign in"}
-        </Text>
-      </Pressable>
-      <View style={authFormStyles.dividerRow}>
-        <View style={authFormStyles.dividerLine} />
-        <Text style={authFormStyles.dividerText}>or</Text>
-        <View style={authFormStyles.dividerLine} />
-      </View>
-      <Pressable
-        style={[
-          authFormStyles.buttonSecondary,
-          googleSubmitting && authFormStyles.buttonDisabled,
-        ]}
-        onPress={() => void onGoogleSignIn()}
-        disabled={googleSubmitting || submitting}
-      >
-        <View style={authFormStyles.buttonSecondaryRow}>
-          <GoogleLogo size={20} />
-          <Text style={authFormStyles.buttonSecondaryText}>
-            {googleSubmitting ? "Opening Google..." : "Continue with Google"}
-          </Text>
-        </View>
-      </Pressable>
-      <Pressable style={authFormStyles.switchRow} onPress={onGoSignUp}>
-        <Text style={authFormStyles.switchText}>Need an account? Sign up</Text>
-      </Pressable>
+      {secondFactor ? (
+        <>
+          <Text style={authFormStyles.title}>{"Verify it's you"}</Text>
+          <Text style={authFormStyles.subtitle}>{secondFactorSubtitle}</Text>
+          <TextInput
+            value={secondFactorCode}
+            onChangeText={setSecondFactorCode}
+            autoCapitalize="none"
+            keyboardType={
+              secondFactor.strategy === "backup_code" ? "default" : "number-pad"
+            }
+            placeholder="Verification code"
+            placeholderTextColor={colors.muted}
+            style={authFormStyles.input}
+          />
+          {error ? <Text style={authFormStyles.error}>{error}</Text> : null}
+          <Pressable
+            style={[
+              authFormStyles.button,
+              (submitting || !canSubmitSecondFactor) && authFormStyles.buttonDisabled,
+            ]}
+            onPress={() => void onVerifySecondFactor()}
+            disabled={submitting || googleSubmitting || !canSubmitSecondFactor}
+          >
+            <Text style={authFormStyles.buttonText}>
+              {submitting ? "Verifying..." : "Continue"}
+            </Text>
+          </Pressable>
+          {secondFactor.strategy === "email_code" || secondFactor.strategy === "phone_code" ? (
+            <Pressable
+              style={authFormStyles.switchRow}
+              onPress={() => void onResendSecondFactor()}
+              disabled={submitting || googleSubmitting}
+            >
+              <Text style={authFormStyles.switchText}>Resend code</Text>
+            </Pressable>
+          ) : null}
+          <Pressable style={authFormStyles.switchRow} onPress={backToCredentials}>
+            <Text style={authFormStyles.switchText}>{"Back to email & password"}</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <Text style={authFormStyles.title}>Sign in</Text>
+          <Text style={authFormStyles.subtitle}>Use the same account you use on web.</Text>
+          <TextInput
+            value={identifier}
+            onChangeText={setIdentifier}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholder="Email"
+            placeholderTextColor={colors.muted}
+            style={authFormStyles.input}
+          />
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholder="Password"
+            placeholderTextColor={colors.muted}
+            style={authFormStyles.input}
+          />
+          {error ? <Text style={authFormStyles.error}>{error}</Text> : null}
+          <Pressable
+            style={[
+              authFormStyles.button,
+              (submitting || !canSubmitSignIn) && authFormStyles.buttonDisabled,
+            ]}
+            onPress={() => void onSignIn()}
+            disabled={submitting || googleSubmitting || !canSubmitSignIn}
+          >
+            <Text style={authFormStyles.buttonText}>
+              {submitting ? "Signing in..." : "Sign in"}
+            </Text>
+          </Pressable>
+          <View style={authFormStyles.dividerRow}>
+            <View style={authFormStyles.dividerLine} />
+            <Text style={authFormStyles.dividerText}>or</Text>
+            <View style={authFormStyles.dividerLine} />
+          </View>
+          <Pressable
+            style={[
+              authFormStyles.buttonSecondary,
+              googleSubmitting && authFormStyles.buttonDisabled,
+            ]}
+            onPress={() => void onGoogleSignIn()}
+            disabled={googleSubmitting || submitting}
+          >
+            <View style={authFormStyles.buttonSecondaryRow}>
+              <GoogleLogo size={20} />
+              <Text style={authFormStyles.buttonSecondaryText}>
+                {googleSubmitting ? "Opening Google..." : "Continue with Google"}
+              </Text>
+            </View>
+          </Pressable>
+          <Pressable style={authFormStyles.switchRow} onPress={onGoSignUp}>
+            <Text style={authFormStyles.switchText}>Need an account? Sign up</Text>
+          </Pressable>
+        </>
+      )}
     </View>
   );
 }
