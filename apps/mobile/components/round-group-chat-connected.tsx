@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
@@ -48,6 +49,7 @@ export function RoundGroupChatConnected({
   onComposerFocus,
   variant = "inline",
 }: RoundGroupChatProps) {
+  const insets = useSafeAreaInsets();
   const [expanded, setExpanded] = useState(true);
   const isFullscreen = variant === "fullscreen";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -371,7 +373,16 @@ export function RoundGroupChatConnected({
   );
 
   if (isFullscreen) {
-    return <View style={styles.fullscreenRoot}>{chatBody}</View>;
+    return (
+      <View
+        style={[
+          styles.fullscreenRoot,
+          { paddingBottom: insets.bottom + 10 },
+        ]}
+      >
+        {chatBody}
+      </View>
+    );
   }
 
   return (
