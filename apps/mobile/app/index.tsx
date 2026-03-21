@@ -9,7 +9,7 @@ export default function IndexGate() {
   if (!isLoaded) {
     return (
       <View style={styles.splash}>
-        <ActivityIndicator color={colors.fairway} />
+        <ActivityIndicator color={colors.mustard} />
       </View>
     );
   }
@@ -26,6 +26,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.background,
+    /** Matches native splash (`expo-splash-screen`) so handoff isn’t a blank/cream flash. */
+    backgroundColor: colors.fairway,
   },
 });

@@ -1,13 +1,35 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { ClerkProvider } from "@clerk/clerk-expo";
+import * as SplashScreen from "expo-splash-screen";
+import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
+import { useEffect } from "react";
 import { BuildConfigMissingScreen } from "../components/build-config-missing-screen";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
 import { colors } from "../lib/theme";
 
 const CLERK_PUBLISHABLE_ENV = "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY";
+
+void SplashScreen.preventAutoHideAsync();
+
+function HideSplashOnMount() {
+  useEffect(() => {
+    void SplashScreen.hideAsync();
+  }, []);
+  return null;
+}
+
+/** Hides native splash once Clerk is ready (any initial route, including deep links). */
+function ClerkLoadedSplashSync() {
+  const { isLoaded } = useAuth();
+  useEffect(() => {
+    if (isLoaded) {
+      void SplashScreen.hideAsync();
+    }
+  }, [isLoaded]);
+  return null;
+}
 
 export default function RootLayout() {
   const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim();
@@ -18,11 +40,17 @@ export default function RootLayout() {
         `Missing ${CLERK_PUBLISHABLE_ENV} in mobile env. For EAS builds, set project secrets and rebuild.`,
       );
     }
-    return <BuildConfigMissingScreen missingEnv={CLERK_PUBLISHABLE_ENV} />;
+    return (
+      <>
+        <HideSplashOnMount />
+        <BuildConfigMissingScreen missingEnv={CLERK_PUBLISHABLE_ENV} />
+      </>
+    );
   }
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <ClerkLoadedSplashSync />
       <NotificationBadgeProvider>
         <NotificationDeepLinkEffects />
         <StatusBar style="dark" />

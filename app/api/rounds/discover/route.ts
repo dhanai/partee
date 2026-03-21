@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { ensureDbUser } from "@/lib/auth";
@@ -82,7 +82,23 @@ export async function GET(req: Request) {
     .leftJoin(spots, eq(spots.roundId, rounds.id))
     .where(
       currentUser
-        ? or(eq(rounds.visibility, "public"), eq(rounds.hostId, currentUser.id))
+        ? or(
+            eq(rounds.visibility, "public"),
+            eq(rounds.hostId, currentUser.id),
+            /** Private invite-only rounds: show on Discover for anyone with an active spot. */
+            exists(
+              db
+                .select()
+                .from(spots)
+                .where(
+                  and(
+                    eq(spots.roundId, rounds.id),
+                    eq(spots.userId, currentUser.id),
+                    inArray(spots.status, ["invited", "confirmed", "requested"]),
+                  ),
+                ),
+            ),
+          )
         : eq(rounds.visibility, "public"),
     )
     .groupBy(
