@@ -5,6 +5,7 @@ import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { useEffect } from "react";
 import { BuildConfigMissingScreen } from "../components/build-config-missing-screen";
+import { ParfadeAppRealtimeGate } from "../components/parfade-app-realtime";
 import { AblyChatProviders } from "../lib/ably-chat-context";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
@@ -52,8 +53,9 @@ export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoadedSplashSync />
-      <AblyChatProviders>
-        <NotificationBadgeProvider>
+      <NotificationBadgeProvider>
+        <AblyChatProviders>
+          <ParfadeAppRealtimeGate />
           <NotificationDeepLinkEffects />
           <StatusBar style="dark" />
           <Stack
@@ -138,8 +140,8 @@ export default function RootLayout() {
               }}
             />
           </Stack>
-        </NotificationBadgeProvider>
-      </AblyChatProviders>
+        </AblyChatProviders>
+      </NotificationBadgeProvider>
     </ClerkProvider>
   );
 }

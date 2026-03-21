@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useNavigation } from "@react-navigation/native";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -13,8 +13,10 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { ParfadeProfileLiveRefresh } from "../../../components/parfade-profile-live-refresh";
 import { claimRsvpButtonStyles as btn } from "../../../lib/claim-rsvp-button-styles";
 import { formatProfileNavTitle } from "../../../lib/format-profile-nav-title";
+import { useAblyChatMounted } from "../../../lib/ably-chat-context";
 import { apiDelete, apiPost, toAbsoluteUrl } from "../../../lib/api";
 import {
   fetchPublicProfileAndCache,
@@ -84,6 +86,7 @@ export default function PublicProfileScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
+  const ablyChatMounted = useAblyChatMounted();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +98,7 @@ export default function PublicProfileScreen() {
     getTokenRef.current = getToken;
   }, [getToken]);
 
-  async function loadProfile(options?: { silent?: boolean }) {
+  const loadProfile = useCallback(async (options?: { silent?: boolean }) => {
     if (!userId) return;
     const silent = options?.silent ?? false;
     if (!silent) setLoading(true);
@@ -109,7 +112,11 @@ export default function PublicProfileScreen() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }
+  }, [userId]);
+
+  const onRemoteProfileUpdate = useCallback(() => {
+    void loadProfile({ silent: true });
+  }, [loadProfile]);
 
   useEffect(() => {
     if (!userId) {
@@ -121,8 +128,7 @@ export default function PublicProfileScreen() {
     setProfile(next);
     setLoading(!next);
     void loadProfile({ silent: Boolean(next) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on route param identity only
-  }, [userId, userName, userAvatar]);
+  }, [userId, userName, userAvatar, loadProfile]);
 
   useLayoutEffect(() => {
     const title = loading ? "Profile" : formatProfileNavTitle(profile?.user.name ?? "");
@@ -237,7 +243,11 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <>
+      {ablyChatMounted && userId ? (
+        <ParfadeProfileLiveRefresh profileUserId={userId} onProfileMaybeUpdated={onRemoteProfileUpdate} />
+      ) : null}
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={[styles.avatarShadowOuter, { width: avatarSize, height: avatarSize }]}>
         <View style={[styles.avatarClip, { width: avatarSize, height: avatarSize }]}>
           {profile.user.avatar ? (
@@ -313,6 +323,7 @@ export default function PublicProfileScreen() {
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </ScrollView>
+    </>
   );
 }
 

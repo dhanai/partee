@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { publishAfterProfileUpdated } from "@/lib/parfade-ably-publish";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 
 const updateSchema = z.object({
@@ -161,6 +162,8 @@ export async function PATCH(req: Request) {
         followVisibility: users.followVisibility,
         hideHostedRoundsFromDiscover: users.hideHostedRoundsFromDiscover,
       });
+
+    publishAfterProfileUpdated(user.id);
 
     return NextResponse.json({ user: updated });
   } catch (error) {

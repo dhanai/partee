@@ -2,19 +2,30 @@ import type { capabilityOp } from "ably";
 import Ably from "ably";
 import { NextResponse } from "next/server";
 import { requireDbUser } from "@/lib/auth";
+import {
+  parfadeDiscoverChannel,
+  parfadeProfileChannelsCapabilityPattern,
+  parfadeUserInboxChannel,
+} from "@/lib/parfade-ably-channels";
 
-/** Chat + pub/sub ops Ably Chat needs for rooms under our app. */
-const CHAT_CAPABILITY: { [key: string]: capabilityOp[] | ["*"] } = {
-  "*": [
-    "publish",
-    "subscribe",
-    "history",
-    "presence",
-    "channel-metadata",
-    "annotation-publish",
-    "annotation-subscribe",
-  ],
-};
+const CHAT_OPS: capabilityOp[] = [
+  "publish",
+  "subscribe",
+  "history",
+  "presence",
+  "channel-metadata",
+  "annotation-publish",
+  "annotation-subscribe",
+];
+
+function clientCapability(userId: string): { [key: string]: capabilityOp[] } {
+  return {
+    "round:*": CHAT_OPS,
+    [parfadeDiscoverChannel()]: ["subscribe"],
+    [parfadeUserInboxChannel(userId)]: ["subscribe"],
+    [parfadeProfileChannelsCapabilityPattern()]: ["subscribe"],
+  };
+}
 
 /**
  * Mint a short-lived Ably token for the signed-in user (clientId = DB user id).
@@ -34,7 +45,7 @@ export async function POST(req: Request) {
     const rest = new Ably.Rest(key);
     const tokenRequest = await rest.auth.createTokenRequest({
       clientId: user.id,
-      capability: CHAT_CAPABILITY,
+      capability: clientCapability(user.id),
       ttl: 60 * 60 * 1000,
     });
 

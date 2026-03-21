@@ -7,6 +7,7 @@ import { courses, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { notifyRoundInvites } from "@/lib/notify-user";
+import { publishAfterRoundCreated } from "@/lib/parfade-ably-publish";
 import { buildRoundInvitePushBody } from "@/lib/round-invite-push-message";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
@@ -203,14 +204,16 @@ export async function POST(req: Request) {
       return [newRound];
     });
 
+    let inviteeUserIds: string[] = [];
     if (invitedCount > 0) {
       const invitedRows = await db
         .select({ userId: spots.userId })
         .from(spots)
         .where(and(eq(spots.roundId, createdRound.id), eq(spots.status, "invited")));
+      inviteeUserIds = invitedRows.map((r) => r.userId);
       void notifyRoundInvites({
         inviteToken: createdRound.inviteToken,
-        inviteeUserIds: invitedRows.map((r) => r.userId),
+        inviteeUserIds,
         body: buildRoundInvitePushBody({
           inviterDisplayName: user.name,
           teeTime: createdRound.teeTime,
@@ -221,6 +224,12 @@ export async function POST(req: Request) {
         }),
       });
     }
+
+    publishAfterRoundCreated({
+      visibility: createdRound.visibility,
+      hostId: user.id,
+      inviteeUserIds,
+    });
 
     return NextResponse.json({
       round: createdRound,
