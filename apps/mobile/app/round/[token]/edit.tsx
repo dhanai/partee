@@ -687,15 +687,15 @@ export default function EditRoundScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.label}>Spots</Text>
+        <Text style={styles.label}>Looking for</Text>
         <View style={styles.row}>
-          {[2, 3, 4].map((n) => (
+          {([1, 2, 3] as const).map((n) => (
             <Pressable
               key={n}
-              style={[styles.pill, totalSpots === n && styles.pillActive]}
-              onPress={() => setTotalSpots(n)}
+              style={[styles.pill, totalSpots === n + 1 && styles.pillActive]}
+              onPress={() => setTotalSpots(n + 1)}
             >
-              <Text style={[styles.pillText, totalSpots === n && styles.pillTextActive]}>
+              <Text style={[styles.pillText, totalSpots === n + 1 && styles.pillTextActive]}>
                 {n}
               </Text>
             </Pressable>

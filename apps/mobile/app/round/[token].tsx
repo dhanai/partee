@@ -37,6 +37,7 @@ import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calend
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
 import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
+import { RoundGroupChat } from "../../components/round-group-chat";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
@@ -456,6 +457,7 @@ export default function RoundDetailsScreen() {
   }
 
   const canInviteUsers = round.isHost || round.currentUserSpotStatus === "confirmed";
+  const canUseGroupChat = round.isHost || round.currentUserSpotStatus === "confirmed";
   const showRsvpActions =
     !round.isHost &&
     (!round.currentUserSpotStatus ||
@@ -584,6 +586,16 @@ export default function RoundDetailsScreen() {
           </View>
         </View>
       ) : null}
+
+      {canUseGroupChat && token ? (
+        <RoundGroupChat inviteToken={token} getToken={() => getTokenRef.current()} />
+      ) : (
+        <View style={styles.chatTeaser}>
+          <Text style={styles.chatTeaserText}>
+            Group chat is for the host and players who have claimed a spot.
+          </Text>
+        </View>
+      )}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {message ? <Text style={styles.successText}>{message}</Text> : null}
@@ -891,6 +903,15 @@ const styles = StyleSheet.create({
   },
   declinedAvatar: { width: 22, height: 22, borderRadius: 999 },
   declinedName: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  chatTeaser: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#f5f3ef",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chatTeaserText: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   actions: { flexDirection: "row", gap: 10, marginTop: 16 },
   button: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
   inviteCard: {

@@ -26,6 +26,17 @@ type FollowRequestsResponse = {
   }>;
 };
 
+type ActivityNotificationsResponse = {
+  items: Array<{
+    id: string;
+    type: "round_rsvp_accepted" | "round_rsvp_declined";
+    title: string;
+    body: string;
+    inviteToken: string;
+    createdAt: string;
+  }>;
+};
+
 export default function NotificationsScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
@@ -35,6 +46,7 @@ export default function NotificationsScreen() {
   const getTokenRef = useRef(getToken);
   const [loading, setLoading] = useState(true);
   const [inviteNotifications, setInviteNotifications] = useState<MineRound[]>([]);
+  const [activityItems, setActivityItems] = useState<ActivityNotificationsResponse["items"]>([]);
   const [followRequestNotifications, setFollowRequestNotifications] = useState<
     FollowRequestsResponse["requests"]
   >([]);
@@ -54,12 +66,13 @@ export default function NotificationsScreen() {
         setError(null);
         try {
           const authToken = await getTokenRef.current();
-          const [roundData, followData] = await Promise.all([
+          const [roundData, followData, activityData] = await Promise.all([
             apiGet<MineTabResponse>(
               "/api/rounds/mine?tab=joined&limit=50&includeInvited=1",
               authToken,
             ),
             apiGet<FollowRequestsResponse>("/api/users/me/follow-requests", authToken),
+            apiGet<ActivityNotificationsResponse>("/api/users/me/activity-notifications", authToken),
           ]);
           if (cancelled) return;
           setInviteNotifications(
@@ -68,6 +81,7 @@ export default function NotificationsScreen() {
             ),
           );
           setFollowRequestNotifications(followData.requests ?? []);
+          setActivityItems(activityData.items ?? []);
           await markSeenRef.current();
         } catch (loadError) {
           if (!cancelled) {
@@ -131,7 +145,7 @@ export default function NotificationsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.sub}>Invites, follow requests, and updates.</Text>
+      <Text style={styles.sub}>Invites, follow requests, and round updates.</Text>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       {loading ? (
@@ -140,6 +154,38 @@ export default function NotificationsScreen() {
         </View>
       ) : (
         <>
+          {activityItems.length > 0 ? (
+            <View style={styles.notificationsList}>
+              <Text style={styles.sectionMiniTitle}>Round updates</Text>
+              {activityItems.map((item) => (
+                <Pressable
+                  key={`activity-${item.id}`}
+                  style={styles.notificationCard}
+                  onPressIn={() =>
+                    prefetchRoundOpen(item.inviteToken, "", () => getTokenRef.current())
+                  }
+                  onPress={() =>
+                    router.push({
+                      pathname: "/round/[token]",
+                      params: { token: item.inviteToken },
+                    })
+                  }
+                >
+                  <Text style={styles.notificationTitle}>{item.title}</Text>
+                  <Text style={styles.notificationMeta}>{item.body}</Text>
+                  <Text
+                    style={[
+                      styles.notificationPill,
+                      item.type === "round_rsvp_declined" && styles.notificationPillMuted,
+                    ]}
+                  >
+                    {item.type === "round_rsvp_declined" ? "Declined" : "RSVP"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
           {followRequestNotifications.length > 0 ? (
             <View style={styles.notificationsList}>
               <Text style={styles.sectionMiniTitle}>Follow requests</Text>
@@ -211,13 +257,17 @@ export default function NotificationsScreen() {
             </View>
           ) : null}
 
-          {inviteNotifications.length === 0 && followRequestNotifications.length === 0 ? (
+          {inviteNotifications.length === 0 &&
+          followRequestNotifications.length === 0 &&
+          activityItems.length === 0 ? (
             <View style={styles.emptyCard}>
               <View style={styles.emptyIconWrap}>
                 <Ionicons name="notifications-off-outline" size={18} color={colors.fairway} />
               </View>
               <Text style={styles.emptyTitle}>All caught up</Text>
-              <Text style={styles.emptyText}>No new invites or follow requests right now.</Text>
+              <Text style={styles.emptyText}>
+                No invites, follow requests, or round updates right now.
+              </Text>
               <View style={styles.emptyActionsRow}>
                 <Pressable style={styles.emptySecondaryBtn} onPress={() => router.push("/(tabs)")}>
                   <Text style={styles.emptySecondaryBtnText}>Browse Discover</Text>
@@ -329,6 +379,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     overflow: "hidden",
+  },
+  notificationPillMuted: {
+    backgroundColor: "#ece8e1",
+    color: colors.muted,
   },
   notificationActionsRow: { flexDirection: "row", gap: 8, marginTop: 2 },
   requestBtn: {

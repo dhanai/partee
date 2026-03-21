@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { rounds, spots } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { recordHostRoundRsvpAndMaybePush } from "@/lib/notify-user";
 import { delay } from "@/lib/utils";
 
 const joinSchema = z.object({
@@ -81,6 +82,15 @@ export async function POST(req: Request, { params }: RouteContext) {
           .returning({ id: spots.id });
 
         if (updated.length > 0) {
+          void recordHostRoundRsvpAndMaybePush({
+            hostId: round.hostId,
+            guestId: user.id,
+            guestName: user.name,
+            roundId: round.id,
+            inviteToken: round.inviteToken,
+            courseName: round.courseName,
+            spotStatus: targetStatus,
+          }).catch((err) => console.error("[join] host RSVP notify", err));
           return NextResponse.json({
             ok: true,
             status: targetStatus,
@@ -94,6 +104,15 @@ export async function POST(req: Request, { params }: RouteContext) {
             userId: user.id,
             status: targetStatus,
           });
+          void recordHostRoundRsvpAndMaybePush({
+            hostId: round.hostId,
+            guestId: user.id,
+            guestName: user.name,
+            roundId: round.id,
+            inviteToken: round.inviteToken,
+            courseName: round.courseName,
+            spotStatus: targetStatus,
+          }).catch((err) => console.error("[join] host RSVP notify", err));
           return NextResponse.json({
             ok: true,
             status: targetStatus,

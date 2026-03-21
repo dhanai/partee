@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
+import { RoundChatPanel } from "./round-chat-panel";
 
 type RoundDetails = {
   id: string;
@@ -291,6 +292,16 @@ export default function RoundInvitePage({
           </p>
         </div>
       </div>
+
+      <SignedIn>
+        {round.isHost || round.currentUserSpotStatus === "confirmed" ? (
+          <RoundChatPanel inviteToken={params.token} />
+        ) : (
+          <div className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-3 text-sm text-charcoal-400">
+            Group chat is for the host and players who have claimed a spot.
+          </div>
+        )}
+      </SignedIn>
 
       {round.isHost && (
         <div className="partee-card border border-fairway-100 bg-fairway-50">

@@ -473,14 +473,14 @@ export default function CreateRoundPage() {
 
         {/* Spots + settings */}
         <div>
-          <p className="partee-label">Spots</p>
+          <p className="partee-label">Looking for</p>
           <div className="flex gap-2">
-            {[2, 3, 4].map((n) => (
+            {([1, 2, 3] as const).map((n) => (
               <button
                 key={n}
                 type="button"
-                onClick={() => setTotalSpots(n)}
-                className={`flex-1 rounded-xl py-3 text-sm font-semibold transition ${totalSpots === n ? "bg-fairway text-white" : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"}`}
+                onClick={() => setTotalSpots(n + 1)}
+                className={`flex-1 rounded-xl py-3 text-sm font-semibold transition ${totalSpots === n + 1 ? "bg-fairway text-white" : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"}`}
               >
                 {n}
               </button>

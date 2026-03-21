@@ -37,6 +37,10 @@ export const planningTimeWindowEnum = pgEnum("planning_time_window", [
 ]);
 export const followVisibilityEnum = pgEnum("follow_visibility", ["public", "private"]);
 export const followStatusEnum = pgEnum("follow_status", ["requested", "accepted"]);
+export const notificationEventEnum = pgEnum("notification_event_type", [
+  "round_rsvp_accepted",
+  "round_rsvp_declined",
+]);
 
 export const users = pgTable(
   "users",
@@ -63,6 +67,35 @@ export const users = pgTable(
   (table) => ({
     clerkIdUnique: uniqueIndex("users_clerk_id_unique").on(table.clerkId),
     emailUnique: uniqueIndex("users_email_unique").on(table.email),
+  }),
+);
+
+/** Host-facing feed: invitee RSVP (in-app always; push only on accept). */
+export const inAppNotifications = pgTable(
+  "in_app_notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipientUserId: uuid("recipient_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: notificationEventEnum("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    data: jsonb("data")
+      .$type<{
+        roundId: string;
+        inviteToken: string;
+        actorUserId: string;
+      }>()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    recipientIdx: index("in_app_notifications_recipient_user_id_idx").on(table.recipientUserId),
+    recipientCreatedIdx: index("in_app_notifications_recipient_created_idx").on(
+      table.recipientUserId,
+      table.createdAt,
+    ),
   }),
 );
 
@@ -152,6 +185,29 @@ export const spots = pgTable(
   }),
 );
 
+/** Group chat: host + confirmed players only (enforced in API). */
+export const roundMessages = pgTable(
+  "round_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => rounds.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    roundCreatedIdx: index("round_messages_round_id_created_at_idx").on(
+      table.roundId,
+      table.createdAt,
+    ),
+    roundIdIdx: index("round_messages_round_id_idx").on(table.roundId),
+  }),
+);
+
 export const userFollows = pgTable(
   "user_follows",
   {
@@ -187,3 +243,5 @@ export type Round = typeof rounds.$inferSelect;
 export type Spot = typeof spots.$inferSelect;
 export type Course = typeof courses.$inferSelect;
 export type UserFollow = typeof userFollows.$inferSelect;
+export type InAppNotification = typeof inAppNotifications.$inferSelect;
+export type RoundMessage = typeof roundMessages.$inferSelect;

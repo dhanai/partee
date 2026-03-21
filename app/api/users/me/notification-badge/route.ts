@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq, inArray, max, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { rounds, spots, userFollows, users } from "@/db/schema";
+import { inAppNotifications, rounds, spots, userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 
 export async function GET(req: Request) {
@@ -33,9 +33,15 @@ export async function GET(req: Request) {
         ),
       );
 
+    const [activityAgg] = await db
+      .select({ latest: max(inAppNotifications.createdAt) })
+      .from(inAppNotifications)
+      .where(eq(inAppNotifications.recipientUserId, viewer.id));
+
     const followLatest = followAgg?.latest ?? null;
     const spotLatest = spotAgg?.latest ?? null;
-    const times = [followLatest, spotLatest].filter((t): t is Date => t != null);
+    const activityLatest = activityAgg?.latest ?? null;
+    const times = [followLatest, spotLatest, activityLatest].filter((t): t is Date => t != null);
     const maxActivity =
       times.length === 0 ? null : new Date(Math.max(...times.map((d) => d.getTime())));
 

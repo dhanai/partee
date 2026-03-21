@@ -1,7 +1,83 @@
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { inAppNotifications, users } from "@/db/schema";
 import { sendExpoPushMessages } from "@/lib/push-expo";
+
+/**
+ * When an invitee RSVPs, record an in-app notification for the host.
+ * Push is sent only for accept paths (confirmed / requested), not for decline.
+ */
+export async function recordHostRoundRsvpAndMaybePush(input: {
+  hostId: string;
+  guestId: string;
+  guestName: string;
+  roundId: string;
+  inviteToken: string;
+  courseName: string | null;
+  spotStatus: "confirmed" | "requested" | "declined";
+}): Promise<void> {
+  if (input.hostId === input.guestId) return;
+
+  const accepted = input.spotStatus !== "declined";
+  const type = accepted ? "round_rsvp_accepted" : "round_rsvp_declined";
+  const course = input.courseName?.trim() || "your round";
+
+  const title = accepted
+    ? input.spotStatus === "requested"
+      ? "Join request"
+      : "Spot claimed"
+    : "Invite declined";
+
+  const body = accepted
+    ? input.spotStatus === "requested"
+      ? `${input.guestName} requested to join ${course}.`
+      : `${input.guestName} claimed a spot for ${course}.`
+    : `${input.guestName} declined your invite to ${course}.`;
+
+  await db.insert(inAppNotifications).values({
+    recipientUserId: input.hostId,
+    type,
+    title,
+    body,
+    data: {
+      roundId: input.roundId,
+      inviteToken: input.inviteToken,
+      actorUserId: input.guestId,
+    },
+  });
+
+  if (!accepted) return;
+
+  const [row] = await db
+    .select({ token: users.expoPushToken })
+    .from(users)
+    .where(eq(users.id, input.hostId))
+    .limit(1);
+
+  const token = row?.token?.trim();
+  if (!token) {
+    if (process.env.EXPO_DEBUG_PUSH === "1") {
+      console.warn("[recordHostRoundRsvpAndMaybePush] Host has no expo_push_token.", {
+        hostId: input.hostId,
+      });
+    }
+    return;
+  }
+
+  await sendExpoPushMessages([
+    {
+      to: token,
+      sound: "default",
+      title,
+      body,
+      data: {
+        type: "round_rsvp",
+        inviteToken: input.inviteToken,
+        spotStatus: input.spotStatus,
+      },
+    },
+  ]);
+}
 
 export async function notifyFollowRequest(input: {
   followedUserId: string;
