@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { claimRsvpButtonStyles as btn } from "../../../lib/claim-rsvp-button-styles";
 import { apiDelete, apiPost, toAbsoluteUrl } from "../../../lib/api";
 import {
   fetchPublicProfileAndCache,
@@ -254,14 +255,13 @@ export default function PublicProfileScreen() {
         </View>
       </View>
 
-      <View style={styles.identityBlock}>
-        <Text style={styles.profileName}>{profile.user.name}</Text>
-        {locationDisplay ? (
+      {locationDisplay ? (
+        <View style={styles.identityBlock}>
           <Text style={styles.profileLocation} numberOfLines={2}>
             {locationDisplay}
           </Text>
-        ) : null}
-      </View>
+        </View>
+      ) : null}
 
       <View style={styles.statsGrid}>
         <View style={styles.statCell}>
@@ -294,18 +294,18 @@ export default function PublicProfileScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.actionRow}>
+      <View style={btn.actions}>
         {profile.user.relationship !== "self" ? (
           <Pressable
-            style={[styles.primaryAction, busy && styles.disabledButton]}
+            style={[btn.button, btn.primaryButton, busy && styles.disabledButton]}
             onPress={() => void handleFollowAction()}
             disabled={busy}
           >
-            <Text style={styles.primaryActionText}>{followButtonText()}</Text>
+            <Text style={btn.primaryText}>{followButtonText()}</Text>
           </Pressable>
         ) : null}
-        <Pressable style={styles.secondaryAction} onPress={() => void handleShareProfile()}>
-          <Text style={styles.secondaryActionText}>Share profile</Text>
+        <Pressable style={[btn.button, btn.secondaryButton]} onPress={() => void handleShareProfile()}>
+          <Text style={btn.secondaryText}>Share profile</Text>
         </Pressable>
       </View>
 
@@ -358,17 +358,9 @@ const styles = StyleSheet.create({
   },
   identityBlock: {
     alignItems: "center",
-    paddingTop: 20,
+    paddingTop: 16,
     paddingHorizontal: 8,
-    gap: 6,
     width: "100%",
-  },
-  profileName: {
-    color: colors.text,
-    fontWeight: "800",
-    fontSize: 26,
-    textAlign: "center",
-    letterSpacing: -0.3,
   },
   profileLocation: {
     color: colors.muted,
@@ -405,33 +397,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
-  actionRow: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-    marginTop: 20,
-    alignSelf: "stretch",
-  },
-  primaryAction: {
-    flex: 1,
-    backgroundColor: colors.fairway,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryActionText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  secondaryAction: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  secondaryActionText: { color: colors.text, fontWeight: "800", fontSize: 16 },
   errorText: { color: colors.danger, marginTop: 12, textAlign: "center" },
   disabledButton: { opacity: 0.6 },
 });

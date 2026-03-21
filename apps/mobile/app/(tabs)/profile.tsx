@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import { colors } from "../../lib/theme";
@@ -209,12 +210,12 @@ export default function ProfileScreen() {
             </View>
           ) : null}
 
-          <View style={styles.actionRow}>
-            <Pressable style={styles.actionPrimary} onPress={() => router.push("/profile/edit")}>
-              <Text style={styles.actionPrimaryText}>Edit profile</Text>
+          <View style={btn.actions}>
+            <Pressable style={[btn.button, btn.primaryButton]} onPress={() => router.push("/profile/edit")}>
+              <Text style={btn.primaryText}>Edit profile</Text>
             </Pressable>
-            <Pressable style={styles.actionSecondary} onPress={() => void handleShareProfile()}>
-              <Text style={styles.actionSecondaryText}>Share profile</Text>
+            <Pressable style={[btn.button, btn.secondaryButton]} onPress={() => void handleShareProfile()}>
+              <Text style={btn.secondaryText}>Share profile</Text>
             </Pressable>
           </View>
 
@@ -315,32 +316,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
-  actionRow: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-    marginTop: 20,
-  },
-  actionPrimary: {
-    flex: 1,
-    backgroundColor: colors.fairway,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionPrimaryText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  actionSecondary: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  actionSecondaryText: { color: colors.text, fontWeight: "800", fontSize: 16 },
   errorText: { color: colors.danger, marginTop: 12, textAlign: "center" },
   headerSettingsBtn: {
     width: 30,

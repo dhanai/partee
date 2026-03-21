@@ -37,6 +37,7 @@ import {
   subscribeRoundListsRefresh,
 } from "../../lib/round-lists-refresh";
 import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calendar";
+import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-last-initial";
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
@@ -618,6 +619,27 @@ export default function RoundDetailsScreen() {
         </View>
       ) : null}
 
+      {showRsvpActions ? (
+        <View style={btn.actions}>
+          <Pressable
+            style={[btn.button, btn.primaryButton, busy && styles.disabledButton]}
+            onPress={() => void rsvp("claim")}
+            disabled={busy}
+          >
+            <Text style={btn.primaryText}>
+              {busy ? "Updating..." : round.mode === "planning" ? "I'm in" : "Claim spot"}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[btn.button, btn.secondaryButton, busy && styles.disabledButton]}
+            onPress={() => void rsvp("decline")}
+            disabled={busy}
+          >
+            <Text style={btn.secondaryText}>Decline</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       {canUseGroupChat && token ? (
         <Pressable
           style={({ pressed }) => [
@@ -644,13 +666,7 @@ export default function RoundDetailsScreen() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.muted} />
         </Pressable>
-      ) : (
-        <View style={styles.chatTeaser}>
-          <Text style={styles.chatTeaserText}>
-            Group chat is for the host and players who have claimed a spot.
-          </Text>
-        </View>
-      )}
+      ) : null}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {message ? <Text style={styles.successText}>{message}</Text> : null}
@@ -739,11 +755,11 @@ export default function RoundDetailsScreen() {
           </View>
           {finalizeError ? <Text style={styles.errorText}>{finalizeError}</Text> : null}
           <Pressable
-            style={[styles.button, styles.primaryButton, finalizeBusy && styles.disabledButton]}
+            style={[btn.button, btn.primaryButton, finalizeBusy && styles.disabledButton]}
             onPress={() => void finalizeRound()}
             disabled={finalizeBusy}
           >
-            <Text style={styles.primaryText}>
+            <Text style={btn.primaryText}>
               {finalizeBusy ? "Finalizing..." : "Finalize round"}
             </Text>
           </Pressable>
@@ -758,8 +774,8 @@ export default function RoundDetailsScreen() {
           expanded={inviteExpanded}
           onToggle={() => setInviteExpanded((e) => !e)}
         >
-          <Pressable style={[styles.button, styles.secondaryButton]} onPress={openInviteFriends}>
-            <Text style={styles.secondaryText}>Select friends</Text>
+          <Pressable style={[btn.button, btn.secondaryButton]} onPress={openInviteFriends}>
+            <Text style={btn.secondaryText}>Select friends</Text>
           </Pressable>
           {selectedFriends.map((friend) => (
             <View key={friend.id} style={styles.selectedRow}>
@@ -790,49 +806,28 @@ export default function RoundDetailsScreen() {
               </Pressable>
             </View>
           ))}
-          <View style={styles.actions}>
+          <View style={btn.actions}>
             <Pressable
               style={[
-                styles.button,
-                styles.primaryButton,
+                btn.button,
+                btn.primaryButton,
                 (inviteBusy || selectedFriends.length === 0) && styles.disabledButton,
               ]}
               onPress={() => void sendInvites()}
               disabled={inviteBusy || selectedFriends.length === 0}
             >
-              <Text style={styles.primaryText}>
+              <Text style={btn.primaryText}>
                 {inviteBusy ? "Sending..." : "Send invites"}
               </Text>
             </Pressable>
             <Pressable
-              style={[styles.button, styles.secondaryButton]}
+              style={[btn.button, btn.secondaryButton]}
               onPress={() => void shareInviteLink()}
             >
-              <Text style={styles.secondaryText}>Share link</Text>
+              <Text style={btn.secondaryText}>Share link</Text>
             </Pressable>
           </View>
         </RoundDetailSection>
-      ) : null}
-
-      {showRsvpActions ? (
-        <View style={styles.actions}>
-          <Pressable
-            style={[styles.button, styles.primaryButton, busy && styles.disabledButton]}
-            onPress={() => void rsvp("claim")}
-            disabled={busy}
-          >
-            <Text style={styles.primaryText}>
-              {busy ? "Updating..." : round.mode === "planning" ? "I'm in" : "Claim spot"}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.button, styles.secondaryButton, busy && styles.disabledButton]}
-            onPress={() => void rsvp("decline")}
-            disabled={busy}
-          >
-            <Text style={styles.secondaryText}>Decline</Text>
-          </Pressable>
-        </View>
       ) : null}
       <DatePickerModal
         visible={calendarOpen}
@@ -852,13 +847,13 @@ export default function RoundDetailsScreen() {
             </Text>
             <View style={styles.inlineRow}>
               <Pressable
-                style={[styles.button, styles.secondaryButton]}
+                style={[btn.button, btn.secondaryButton]}
                 onPress={() => setDeleteConfirmOpen(false)}
               >
-                <Text style={styles.secondaryText}>Cancel</Text>
+                <Text style={btn.secondaryText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[styles.button, styles.hostDeleteButton, deleteBusy && styles.disabledButton]}
+                style={[btn.button, styles.hostDeleteButton, deleteBusy && styles.disabledButton]}
                 onPress={() => {
                   setDeleteConfirmOpen(false);
                   void deleteRound();
@@ -982,15 +977,6 @@ const styles = StyleSheet.create({
   },
   declinedAvatar: { width: 22, height: 22, borderRadius: 999 },
   declinedName: { color: colors.muted, fontSize: 12, fontWeight: "600" },
-  chatTeaser: {
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: "#f5f3ef",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  chatTeaserText: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   chatPreviewRow: {
     marginTop: 10,
     flexDirection: "row",
@@ -1014,8 +1000,6 @@ const styles = StyleSheet.create({
   chatPreviewTextCol: { flex: 1, minWidth: 0, gap: 4 },
   chatPreviewTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
   chatPreviewSubtitle: { fontSize: 13, color: colors.muted, lineHeight: 18 },
-  actions: { flexDirection: "row", gap: 10, marginTop: 16 },
-  button: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
   selectedRow: {
     backgroundColor: colors.fairwaySoft,
     borderRadius: 12,
@@ -1058,16 +1042,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryButton: { backgroundColor: colors.fairway },
-  secondaryButton: { backgroundColor: "#ece8e1" },
   hostDeleteButton: {
     backgroundColor: "#fee4e2",
     borderWidth: 1,
     borderColor: "#fbc6c2",
   },
   disabledButton: { opacity: 0.5 },
-  primaryText: { color: "#fff", fontWeight: "700" },
-  secondaryText: { color: colors.text, fontWeight: "700" },
   hostDeleteText: { color: colors.danger, fontWeight: "700" },
   errorText: {
     color: colors.danger,
