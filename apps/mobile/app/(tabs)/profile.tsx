@@ -16,6 +16,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { ProfileHeroOverlays } from "../../components/profile-hero-overlays";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import { colors } from "../../lib/theme";
@@ -173,8 +174,7 @@ export default function ProfileScreen() {
                 style={styles.heroImage}
                 imageStyle={styles.heroImageInner}
               >
-                <View style={styles.heroTopScrim} pointerEvents="none" />
-                <View style={styles.heroScrim} />
+                <ProfileHeroOverlays />
                 <View style={styles.heroTextBlock}>
                   <Text style={styles.heroName}>{name || "Your profile"}</Text>
                   {locationDisplay ? (
@@ -186,9 +186,8 @@ export default function ProfileScreen() {
               </ImageBackground>
             ) : (
               <View style={[styles.heroImage, styles.heroPlaceholder]}>
-                <View style={styles.heroTopScrim} pointerEvents="none" />
+                <ProfileHeroOverlays placeholder />
                 <Text style={styles.heroInitialsLarge}>{initials}</Text>
-                <View style={styles.heroScrim} />
                 <View style={styles.heroTextBlock}>
                   <Text style={styles.heroName}>{name || "Your profile"}</Text>
                   {locationDisplay ? (
@@ -271,14 +270,6 @@ const styles = StyleSheet.create({
   heroImageInner: {
     resizeMode: "cover",
   },
-  heroTopScrim: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 140,
-    backgroundColor: "rgba(0,0,0,0.28)",
-  },
   heroPlaceholder: {
     backgroundColor: colors.fairwaySoft,
     alignItems: "center",
@@ -290,17 +281,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 72,
     letterSpacing: -2,
-  },
-  heroScrim: {
-    ...StyleSheet.absoluteFillObject,
-    top: "45%",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    zIndex: 1,
   },
   heroTextBlock: {
     paddingHorizontal: 20,
     paddingBottom: 24,
     paddingTop: 12,
     gap: 6,
+    zIndex: 2,
   },
   heroName: {
     color: "#fff",

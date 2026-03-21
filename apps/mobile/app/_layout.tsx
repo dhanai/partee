@@ -89,31 +89,6 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
-              name="profile/[userId]"
-              options={{
-                title: "",
-                headerBackTitle: "Back",
-                headerTransparent: true,
-                headerShadowVisible: false,
-                headerStyle: { backgroundColor: "transparent" },
-                headerTintColor: "#ffffff",
-              }}
-            />
-            <Stack.Screen
-              name="profile/[userId]/followers"
-              options={{
-                title: "Followers",
-                headerBackTitle: "Back",
-              }}
-            />
-            <Stack.Screen
-              name="profile/[userId]/following"
-              options={{
-                title: "Following",
-                headerBackTitle: "Back",
-              }}
-            />
-            <Stack.Screen
               name="profile/edit"
               options={{
                 title: "Edit profile",
