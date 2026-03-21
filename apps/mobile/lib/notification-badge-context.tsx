@@ -65,7 +65,7 @@ export function NotificationBadgeProvider({ children }: { children: ReactNode })
       }
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         console.warn(
-          "[Partee] Could not register push token: Clerk session never became available.",
+          "[Parfade] Could not register push token: Clerk session never became available.",
         );
       }
     })();

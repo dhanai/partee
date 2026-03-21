@@ -8,9 +8,16 @@ function openNotificationData(
 ) {
   const type = data.type;
   const inviteToken = typeof data.inviteToken === "string" ? data.inviteToken.trim() : "";
+  if (inviteToken.length > 0 && type === "round_chat") {
+    router.push({
+      pathname: "/round/[token]/chat",
+      params: { token: inviteToken },
+    });
+    return;
+  }
   if (
     inviteToken.length > 0 &&
-    (type === "round_invite" || type === "round_rsvp" || type === "round_chat")
+    (type === "round_invite" || type === "round_rsvp")
   ) {
     router.push(`/round/${inviteToken}`);
     return;
@@ -21,7 +28,8 @@ function openNotificationData(
 }
 
 /**
- * Handles notification taps: round-related pushes open the round screen; follow requests open Notifications.
+ * Handles notification taps: chat pushes open fullscreen group chat; invite/RSVP open round detail;
+ * follow requests open Notifications.
  * Renders nothing; mount once inside the root layout (inside Expo Router).
  */
 export function NotificationDeepLinkEffects() {

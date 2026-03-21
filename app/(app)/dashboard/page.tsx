@@ -84,7 +84,7 @@ export default async function DashboardPage() {
           </h1>
           <p className="mt-1 text-sm text-charcoal-400">Your upcoming rounds.</p>
         </div>
-        <Link href="/create" className="partee-btn-primary">
+        <Link href="/create" className="parfade-btn-primary">
           + New round
         </Link>
       </div>
@@ -119,9 +119,9 @@ function RoundSection({
 
   return (
     <section>
-      <p className="partee-label">{label}</p>
+      <p className="parfade-label">{label}</p>
       {rounds.length === 0 ? (
-        <div className="partee-card text-center text-sm text-charcoal-300">
+        <div className="parfade-card text-center text-sm text-charcoal-300">
           No {label.toLowerCase()} rounds yet.
         </div>
       ) : (
@@ -130,7 +130,7 @@ function RoundSection({
             <li key={round.id}>
               <Link
                 href={`/round/${round.inviteToken}`}
-                className="partee-card flex items-center gap-4 transition hover:shadow-md"
+                className="parfade-card flex items-center gap-4 transition hover:shadow-md"
               >
                 <Image
                   src={round.imageUrl}

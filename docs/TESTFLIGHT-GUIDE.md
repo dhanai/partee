@@ -1,4 +1,4 @@
-# TestFlight launch guide (Partee mobile)
+# TestFlight launch guide (Parfade mobile)
 
 Step-by-step checklist for shipping the Expo app to **TestFlight**. Do sections in order where dependencies exist (e.g. API URL before you test the build).
 
@@ -9,7 +9,7 @@ Step-by-step checklist for shipping the Expo app to **TestFlight**. Do sections 
 | Step | What to do |
 |------|------------|
 | 1.1 | **Apple Developer Program** membership active (paid). |
-| 1.2 | **App Store Connect**: create an app record for Partee (or confirm the existing one) with the **same bundle ID** you will use in `app.json` (see §4). |
+| 1.2 | **App Store Connect**: create an app record for Parfade (or confirm the existing one) with the **same bundle ID** you will use in `app.json` (see §4). |
 | 1.3 | **Expo**: logged in (`npx eas-cli whoami`); project linked (`apps/mobile/app.json` → `extra.eas.projectId`). |
 
 ---
@@ -20,7 +20,7 @@ The mobile app calls your Next.js API using **`EXPO_PUBLIC_API_BASE_URL`** (see 
 
 | Step | What to do |
 |------|------------|
-| 2.1 | Deploy the **Next.js app** (repo root) to production; note the **HTTPS** origin, e.g. `https://partee.vercel.app` (no trailing slash). |
+| 2.1 | Deploy the **Next.js app** (repo root) to production; note the **HTTPS** origin (your custom domain or e.g. `https://your-app.vercel.app`, no trailing slash). |
 | 2.2 | In the host’s **environment variables**, set at least: |
 
 **Required for core app**
@@ -80,9 +80,9 @@ Most often **`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` was not set for the EAS build**
 
 | Step | What to do |
 |------|------------|
-| 4.1 | In **`apps/mobile/app.json`**, set `expo.ios.bundleIdentifier` to your **final** ID (e.g. `com.yourcompany.partee`). It must match **App Store Connect** and **Clerk** (below). Today the repo may still show a placeholder like `com.anonymous.partee-mobile` — change before public TestFlight. |
+| 4.1 | In **`apps/mobile/app.json`**, set `expo.ios.bundleIdentifier` to your **final** ID (e.g. `com.yourcompany.partee`). It must match **App Store Connect** and **Clerk** (below). The repo may show a placeholder like `com.anonymous.partee-mobile` — change before public TestFlight. |
 | 4.2 | Bump **`expo.version`** (marketing version) and ensure **build number** increments each App Store upload (`expo.ios.buildNumber` or EAS `autoIncrement` — configure in `eas.json` if you want). |
-| 4.3 | **`scheme`**: `partee` — used for deep links; any Clerk redirect URLs must allow this scheme. |
+| 4.3 | **`scheme`**: `partee` — used for deep links; any Clerk redirect URLs must allow this scheme (unchanged from TestFlight even if the app display name is Parfade). |
 | 4.4 | Any **new native module** (e.g. `expo-calendar`) requires a **new native build**, not only an OTA update. |
 
 ---

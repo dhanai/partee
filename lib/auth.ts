@@ -56,7 +56,7 @@ export async function ensureDbUser(req?: Request) {
       sessionUser.fullName ??
       [sessionUser.firstName, sessionUser.lastName].filter(Boolean).join(" ") ??
       primaryEmail ??
-      "Partee golfer";
+      "Parfade golfer";
     avatar = sessionUser.imageUrl ?? null;
   } else {
     try {
@@ -66,7 +66,7 @@ export async function ensureDbUser(req?: Request) {
         u.fullName ??
         [u.firstName, u.lastName].filter(Boolean).join(" ") ??
         primaryEmail ??
-        "Partee golfer";
+        "Parfade golfer";
       avatar = u.imageUrl ?? null;
     } catch {
       return null;

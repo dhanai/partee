@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Partee",
+    "name": "Parfade",
     "slug": "partee",
     "scheme": "partee",
     "version": "1.0.0",
@@ -12,12 +12,12 @@
       "bundleIdentifier": "com.anonymous.partee-mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCalendarsUsageDescription": "Partee can add rounds you host or join to your calendar when you tap Add to calendar.",
-        "NSCalendarsFullAccessUsageDescription": "Partee can add rounds you host or join to your calendar when you tap Add to calendar.",
-        "NSRemindersUsageDescription": "Partee uses this only as required by iOS when saving round events to your calendar.",
-        "NSRemindersFullAccessUsageDescription": "Partee uses this only as required by iOS when saving round events to your calendar."
+        "NSCalendarsUsageDescription": "Parfade can add rounds you host or join to your calendar when you tap Add to calendar.",
+        "NSCalendarsFullAccessUsageDescription": "Parfade can add rounds you host or join to your calendar when you tap Add to calendar.",
+        "NSRemindersUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar.",
+        "NSRemindersFullAccessUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar."
       },
-      "buildNumber": "6"
+      "buildNumber": "7"
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -51,15 +51,15 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "Partee can add rounds you host or join to your calendar when you tap Add to calendar.",
-          "remindersPermission": "Partee uses this only as required by iOS when saving round events to your calendar."
+          "calendarPermission": "Parfade can add rounds you host or join to your calendar when you tap Add to calendar.",
+          "remindersPermission": "Parfade uses this only as required by iOS when saving round events to your calendar."
         }
       ],
       "@react-native-community/datetimepicker",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Partee uses your location to show nearby rounds."
+          "locationWhenInUsePermission": "Parfade uses your location to show nearby rounds."
         }
       ],
       "expo-image"

@@ -34,7 +34,7 @@ function buildUser(index: number) {
   const label = `${n}`.padStart(3, "0");
   return {
     clerkId: `${DEV_PREFIX}${label}`,
-    email: `dev.user.${label}@partee.local`,
+    email: `dev.user.${label}@parfade.local`,
     name: `Dev Golfer ${label}`,
     avatar: null as string | null,
     homeCourse: "Los Angeles, CA",

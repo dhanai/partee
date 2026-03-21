@@ -1,17 +1,17 @@
 import { StyleSheet, Text, View } from "react-native";
 import { colors } from "../lib/theme";
 
-type ParteeLogoProps = {
+type ParfadeLogoProps = {
   compact?: boolean;
   tone?: "default" | "light";
   size?: "default" | "large";
 };
 
-export function ParteeLogo({
+export function ParfadeLogo({
   compact = false,
   tone = "default",
   size = "default",
-}: ParteeLogoProps) {
+}: ParfadeLogoProps) {
   const light = tone === "light";
   const large = size === "large";
   return (
@@ -32,7 +32,7 @@ export function ParteeLogo({
           light && styles.wordmarkLight,
         ]}
       >
-        Partee
+        Parfade
       </Text>
     </View>
   );

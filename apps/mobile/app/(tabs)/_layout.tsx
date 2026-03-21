@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { NotificationMustardDot } from "../../components/notification-mustard-dot";
-import { ParteeLogo } from "../../components/partee-logo";
+import { ParfadeLogo } from "../../components/parfade-logo";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
 import { colors } from "../../lib/theme";
 
@@ -106,7 +106,7 @@ export default function TabsLayout() {
           headerTitleContainerStyle: {
             paddingLeft: 0,
           },
-          headerTitle: () => <ParteeLogo compact />,
+          headerTitle: () => <ParfadeLogo compact />,
           tabBarActiveTintColor: colors.fairway,
           tabBarInactiveTintColor: colors.muted,
           tabBarShowLabel: true,

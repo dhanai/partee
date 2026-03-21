@@ -7,12 +7,12 @@ export default function AppLayout({
   return (
     <main className="min-h-screen bg-cream">
       <header className="sticky top-0 z-30 bg-cream/80 backdrop-blur-lg">
-        <div className="partee-shell flex items-center justify-between py-4">
+        <div className="parfade-shell flex items-center justify-between py-4">
           <Link
             href="/dashboard"
             className="text-xl font-bold tracking-tightest text-fairway"
           >
-            Partee
+            Parfade
           </Link>
           <nav className="flex items-center gap-5">
             <Link
@@ -39,7 +39,7 @@ export default function AppLayout({
         </div>
         <div className="mx-5 h-px bg-gradient-to-r from-transparent via-charcoal-100 to-transparent" />
       </header>
-      <div className="partee-shell">{children}</div>
+      <div className="parfade-shell">{children}</div>
     </main>
   );
 }

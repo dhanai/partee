@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AuthLandingBackground } from "../../components/auth-landing-background";
-import { ParteeLogo } from "../../components/partee-logo";
+import { ParfadeLogo } from "../../components/parfade-logo";
 import { AUTH_LOGO_EXTRA_TOP } from "../../lib/auth-form-styles";
 
 export default function AuthWelcomeScreen() {
@@ -40,7 +40,7 @@ export default function AuthWelcomeScreen() {
       >
         <View style={styles.bottomStack}>
           <View style={styles.heroBlock}>
-            <ParteeLogo tone="light" size="large" />
+            <ParfadeLogo tone="light" size="large" />
             <Text style={styles.title}>Golf plans without the group text chaos.</Text>
           </View>
 

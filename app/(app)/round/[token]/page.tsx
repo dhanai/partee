@@ -213,7 +213,7 @@ export default function RoundInvitePage({
   }
 
   if (error && !round) {
-    return <p className="partee-card text-sm text-red-600">{error}</p>;
+    return <p className="parfade-card text-sm text-red-600">{error}</p>;
   }
 
   if (!round) {
@@ -226,7 +226,7 @@ export default function RoundInvitePage({
 
   return (
     <section className="space-y-4">
-      <div className="partee-card">
+      <div className="parfade-card">
         <Image
           src={round.imageUrl}
           alt={round.courseName ?? "Round image"}
@@ -234,7 +234,7 @@ export default function RoundInvitePage({
           height={700}
           className="h-44 w-full rounded-2xl object-cover"
         />
-        <p className="partee-label mt-4">Round invite</p>
+        <p className="parfade-label mt-4">Round invite</p>
         <h1 className="text-2xl font-bold tracking-tightest text-charcoal">{round.courseName}</h1>
 
         <div className="mt-4 flex items-center gap-3">
@@ -249,7 +249,7 @@ export default function RoundInvitePage({
 
         <div className="mt-4 flex gap-6">
           <div>
-            <p className="partee-label">Date</p>
+            <p className="parfade-label">Date</p>
             <p className="text-sm font-medium text-charcoal">
               {new Date(round.teeTime ?? round.targetDate).toLocaleDateString("en-US", {
                 weekday: "short",
@@ -259,7 +259,7 @@ export default function RoundInvitePage({
             </p>
           </div>
           <div>
-            <p className="partee-label">{round.mode === "planning" ? "Status" : "Tee time"}</p>
+            <p className="parfade-label">{round.mode === "planning" ? "Status" : "Tee time"}</p>
             <p className="text-sm font-medium text-charcoal">
               {round.mode === "planning"
                 ? formatPlanningWindow(round.preferredTimeWindow)
@@ -276,7 +276,7 @@ export default function RoundInvitePage({
 
         {/* Spots visual */}
         <div className="mt-5">
-          <p className="partee-label">Spots</p>
+          <p className="parfade-label">Spots</p>
           <div className="flex gap-2">
             {spotsArray.map((filled, i) => (
               <div
@@ -304,7 +304,7 @@ export default function RoundInvitePage({
       </SignedIn>
 
       {round.isHost && (
-        <div className="partee-card border border-fairway-100 bg-fairway-50">
+        <div className="parfade-card border border-fairway-100 bg-fairway-50">
           <p className="font-semibold text-fairway">You&apos;re hosting</p>
           <p className="mt-1 text-sm text-charcoal-400">
             {round.mode === "planning"
@@ -329,7 +329,7 @@ export default function RoundInvitePage({
                     setSelectedFinalizeCourse(null);
                   }}
                   onFocus={() => finalizeResults.length > 0 && setShowFinalizeResults(true)}
-                  className="partee-input"
+                  className="parfade-input"
                   placeholder="Search golf course..."
                 />
                 {loadingFinalizeCourses && (
@@ -368,7 +368,7 @@ export default function RoundInvitePage({
                 type="datetime-local"
                 value={finalizeTeeTime}
                 onChange={(e) => setFinalizeTeeTime(e.target.value)}
-                className="partee-input"
+                className="parfade-input"
               />
 
               {finalizeError && <p className="text-sm text-red-600">{finalizeError}</p>}
@@ -377,7 +377,7 @@ export default function RoundInvitePage({
                 type="button"
                 onClick={() => void finalizeRound()}
                 disabled={finalizing}
-                className="partee-btn-primary w-full disabled:opacity-40"
+                className="parfade-btn-primary w-full disabled:opacity-40"
               >
                 {finalizing ? "Finalizing..." : "Finalize round"}
               </button>
@@ -389,16 +389,16 @@ export default function RoundInvitePage({
       {!round.isHost && (
         <>
           <SignedOut>
-            <div className="partee-card text-center">
+            <div className="parfade-card text-center">
               <p className="text-sm text-charcoal-400">Sign in to RSVP for this round.</p>
               <SignInButton mode="modal">
-                <button className="partee-btn-primary mt-4">Sign in</button>
+                <button className="parfade-btn-primary mt-4">Sign in</button>
               </SignInButton>
             </div>
           </SignedOut>
 
           <SignedIn>
-            <div className="partee-card">
+            <div className="parfade-card">
               {hasResponded && !message ? (
                 <div className="flex items-center gap-2">
                   <span className={`h-2 w-2 rounded-full ${round.currentUserSpotStatus === "confirmed" ? "bg-fairway" : round.currentUserSpotStatus === "declined" ? "bg-red-400" : "bg-gold"}`} />
@@ -414,7 +414,7 @@ export default function RoundInvitePage({
               {(!hasResponded || round.currentUserSpotStatus === "invited" || round.currentUserSpotStatus === "declined") && (
                 <div className={`flex gap-3 ${message || error ? "mt-4" : ""}`}>
                   {!isFull && (
-                    <button onClick={() => rsvp("claim")} disabled={rsvpBusy} className="partee-btn-primary flex-1 disabled:opacity-40">
+                    <button onClick={() => rsvp("claim")} disabled={rsvpBusy} className="parfade-btn-primary flex-1 disabled:opacity-40">
                       {rsvpBusy
                         ? "Updating..."
                         : round.mode === "planning"
@@ -428,7 +428,7 @@ export default function RoundInvitePage({
                     <p className="text-sm text-charcoal-300">This round is full.</p>
                   )}
                   {round.currentUserSpotStatus !== "declined" && (
-                    <button onClick={() => rsvp("decline")} disabled={rsvpBusy} className="partee-btn-secondary flex-1 disabled:opacity-40">
+                    <button onClick={() => rsvp("decline")} disabled={rsvpBusy} className="parfade-btn-secondary flex-1 disabled:opacity-40">
                       Decline
                     </button>
                   )}

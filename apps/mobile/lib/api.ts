@@ -26,7 +26,7 @@ function normalizeApiBaseUrl(raw: string): string {
   if (/\/api$/i.test(s)) {
     if (typeof __DEV__ !== "undefined" && __DEV__) {
       console.warn(
-        "[Partee] EXPO_PUBLIC_API_BASE_URL should not end with /api (paths add /api/...). Stripping trailing /api.",
+        "[Parfade] EXPO_PUBLIC_API_BASE_URL should not end with /api (paths add /api/...). Stripping trailing /api.",
       );
     }
     s = s.replace(/\/api$/i, "");

@@ -53,7 +53,7 @@ function buildCalendarEventData(round: RoundDetails): CalendarEventInput {
     return {
       title: `Golf — ${round.courseName}`,
       location: round.courseName,
-      notes: `Partee round · Host: ${round.hostName}`,
+      notes: `Parfade round · Host: ${round.hostName}`,
       startDate: start,
       endDate: end,
       allDay: false,
@@ -74,13 +74,13 @@ function buildCalendarEventData(round: RoundDetails): CalendarEventInput {
   const isPlanning = round.mode === "planning";
   const notesLines = isPlanning
     ? [
-        "Partee round (planning — tee time may change when finalized).",
+        "Parfade round (planning — tee time may change when finalized).",
         `Preferred: ${windowLabel}`,
         loc ? `Where: ${loc}` : null,
         `Host: ${round.hostName}`,
       ]
     : [
-        "Partee round (tee time not set in calendar — check the app for the exact tee time).",
+        "Parfade round (tee time not set in calendar — check the app for the exact tee time).",
         `Host: ${round.hostName}`,
       ];
 

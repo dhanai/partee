@@ -25,7 +25,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AuthLandingBackground } from "../../components/auth-landing-background";
 import { GoogleLogo } from "../../components/google-logo";
-import { ParteeLogo } from "../../components/partee-logo";
+import { ParfadeLogo } from "../../components/parfade-logo";
 import { AUTH_LOGO_EXTRA_TOP, authFormStyles } from "../../lib/auth-form-styles";
 import { colors } from "../../lib/theme";
 
@@ -421,7 +421,7 @@ function SignInFields({
         <>
           <Text style={authFormStyles.title}>Sign in</Text>
           <Text style={authFormStyles.subtitle}>
-            Welcome back—use the email and password for your Partee account.
+            Welcome back—use the email and password for your Parfade account.
           </Text>
           <TextInput
             value={identifier}
@@ -586,7 +586,7 @@ function SignUpFields({
       </Text>
       <Text style={authFormStyles.subtitle}>
         {step === "create"
-          ? "Create your Partee account to host rounds, join invites, and chat with your group."
+          ? "Create your Parfade account to host rounds, join invites, and chat with your group."
           : "Enter the verification code sent to your email."}
       </Text>
       {step === "create" ? (
@@ -731,7 +731,7 @@ export default function AuthAccountScreen() {
             },
           ]}
         >
-          <ParteeLogo tone="light" />
+          <ParfadeLogo tone="light" />
         </View>
         <KeyboardAvoidingView
           style={authFormStyles.keyboardFill}

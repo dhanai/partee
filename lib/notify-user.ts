@@ -4,8 +4,8 @@ import { inAppNotifications, users } from "@/db/schema";
 import { listRoundChatPushRecipientUserIds } from "@/lib/round-chat-access";
 import {
   buildHostRsvpNotificationCopy,
+  formatChatPushTitleLine,
   formatInviterFirstLastInitial,
-  formatRoundShortLabel,
 } from "@/lib/round-invite-push-message";
 import { sendExpoPushMessages } from "@/lib/push-expo";
 
@@ -103,7 +103,7 @@ export async function notifyFollowRequest(input: {
       to: token,
       sound: "default",
       title: "New follow request",
-      body: `${input.followerName} wants to follow you on Partee.`,
+      body: `${input.followerName} wants to follow you on Parfade.`,
       data: { type: "follow_request" },
     },
   ]);
@@ -170,6 +170,9 @@ export async function notifyRoundChatMessagePushes(input: {
   messageBody: string;
   courseName: string | null;
   planningLocation: string | null;
+  mode: "planning" | "scheduled";
+  teeTime: Date | null;
+  targetDate: Date;
 }): Promise<void> {
   const recipientIds = await listRoundChatPushRecipientUserIds(
     input.roundId,
@@ -188,15 +191,17 @@ export async function notifyRoundChatMessagePushes(input: {
 
   if (tokens.length === 0) return;
 
-  const roundLabel = formatRoundShortLabel({
+  const title = formatChatPushTitleLine({
     courseName: input.courseName,
     planningLocation: input.planningLocation,
+    mode: input.mode,
+    teeTime: input.teeTime,
+    targetDate: input.targetDate,
   });
   const who = formatInviterFirstLastInitial(input.senderName);
   const raw = input.messageBody.trim();
   const preview =
     raw.length > CHAT_PREVIEW_MAX ? `${raw.slice(0, CHAT_PREVIEW_MAX - 1)}…` : raw;
-  const title = `Group chat · ${roundLabel}`;
   const body = `${who}: ${preview}`;
 
   const data = {

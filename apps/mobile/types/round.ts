@@ -56,6 +56,12 @@ export type RoundDetails = {
   spotsRemaining: number;
   isHost: boolean;
   currentUserSpotStatus: string | null;
+  /** Present when the viewer may use group chat; null = no messages yet. */
+  lastChatMessage?: {
+    body: string;
+    senderName: string;
+    createdAt: string;
+  } | null;
 };
 
 export type MineRound = {

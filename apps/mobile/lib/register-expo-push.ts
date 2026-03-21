@@ -38,7 +38,7 @@ export async function registerExpoPushTokenWithBackend(
   if (!projectId) {
     if (typeof __DEV__ !== "undefined" && __DEV__) {
       console.warn(
-        "[Partee] Push token not registered: add EAS project id (run `eas init` in apps/mobile). See apps/mobile/PUSH-SETUP.md.",
+        "[Parfade] Push token not registered: add EAS project id (run `eas init` in apps/mobile). See apps/mobile/PUSH-SETUP.md.",
       );
     }
     return;
@@ -58,7 +58,7 @@ export async function registerExpoPushTokenWithBackend(
   if (finalStatus !== "granted") {
     if (typeof __DEV__ !== "undefined" && __DEV__) {
       console.warn(
-        "[Partee] Notification permission not granted — round invites won’t arrive as pushes.",
+        "[Parfade] Notification permission not granted — round invites won’t arrive as pushes.",
       );
     }
     return;
@@ -69,7 +69,7 @@ export async function registerExpoPushTokenWithBackend(
   if (!authToken) {
     if (typeof __DEV__ !== "undefined" && __DEV__) {
       console.warn(
-        "[Partee] Push token not saved: no Clerk session token yet (will retry on next foreground).",
+        "[Parfade] Push token not saved: no Clerk session token yet (will retry on next foreground).",
       );
     }
     return;

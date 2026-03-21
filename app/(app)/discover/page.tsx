@@ -119,7 +119,7 @@ export default function DiscoverPage() {
           type="date"
           value={date}
           onChange={(e) => handleDateChange(e.target.value)}
-          className="partee-input w-full sm:max-w-[190px]"
+          className="parfade-input w-full sm:max-w-[190px]"
         />
         {date && (
           <button
@@ -162,7 +162,7 @@ export default function DiscoverPage() {
       )}
 
       {error && (
-        <p className="partee-card text-sm text-red-600">{error}</p>
+        <p className="parfade-card text-sm text-red-600">{error}</p>
       )}
 
       {loading && (
@@ -170,7 +170,7 @@ export default function DiscoverPage() {
       )}
 
       {!loading && rounds.length === 0 && (
-        <div className="partee-card text-center text-sm text-charcoal-300">
+        <div className="parfade-card text-center text-sm text-charcoal-300">
           No open rounds{date ? ` on ${date}` : ""} right now.
         </div>
       )}
@@ -180,7 +180,7 @@ export default function DiscoverPage() {
           <li key={round.id}>
             <Link
               href={`/round/${round.inviteToken}`}
-              className="partee-card block p-4 transition hover:shadow-md sm:p-5"
+              className="parfade-card block p-4 transition hover:shadow-md sm:p-5"
             >
               <div className="space-y-3">
                 <Image

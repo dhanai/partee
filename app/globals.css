@@ -15,35 +15,35 @@
 }
 
 @layer components {
-  .partee-shell {
+  .parfade-shell {
     @apply mx-auto w-full max-w-lg px-5 py-6 sm:max-w-2xl;
   }
 
-  .partee-card {
+  .parfade-card {
     @apply rounded-2xl bg-white p-5 shadow-sm;
   }
 
-  .partee-input {
+  .parfade-input {
     @apply w-full rounded-xl border-0 bg-cream-200 px-4 py-3 text-sm text-charcoal placeholder:text-charcoal-300 focus:outline-none focus:ring-2 focus:ring-fairway-400 transition-shadow;
   }
 
-  .partee-select {
+  .parfade-select {
     @apply w-full rounded-xl border-0 bg-cream-200 px-4 py-3 text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-fairway-400 transition-shadow appearance-none;
   }
 
-  .partee-btn {
+  .parfade-btn {
     @apply inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm font-semibold tracking-tight transition-all active:scale-[0.98];
   }
 
-  .partee-btn-primary {
-    @apply partee-btn bg-fairway text-white hover:bg-fairway-600;
+  .parfade-btn-primary {
+    @apply parfade-btn bg-fairway text-white hover:bg-fairway-600;
   }
 
-  .partee-btn-secondary {
-    @apply partee-btn bg-cream-200 text-charcoal hover:bg-cream-300;
+  .parfade-btn-secondary {
+    @apply parfade-btn bg-cream-200 text-charcoal hover:bg-cream-300;
   }
 
-  .partee-label {
+  .parfade-label {
     @apply block text-xs font-semibold uppercase tracking-wider text-charcoal-400 mb-2;
   }
 }

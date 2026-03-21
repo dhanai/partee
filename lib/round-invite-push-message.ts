@@ -35,6 +35,86 @@ export function formatRoundShortLabel(input: {
   return "Round";
 }
 
+/**
+ * Strip trailing venue boilerplate for compact push copy, e.g.
+ * "Alhambra Golf Course" → "Alhambra", "Augusta National Golf Club" → "Augusta National".
+ * If stripping would leave nothing, returns the original trimmed string.
+ */
+export function simplifyVenueNameForPush(name: string): string {
+  const original = name.trim().replace(/\s+/g, " ");
+  if (!original) return original;
+
+  const trailingPatterns = [
+    /\s+golf\s+&\s+country\s+club$/i,
+    /\s+golf\s+and\s+country\s+club$/i,
+    /\s+country\s+club$/i,
+    /\s+golf\s+course$/i,
+    /\s+golf\s+club$/i,
+    /\s+golf\s+links$/i,
+    /\s+municipal\s+golf\s+course$/i,
+    /\s+public\s+golf\s+course$/i,
+    /\s+golf\s+center$/i,
+    /\s+golf\s+resort$/i,
+    /\s+driving\s+range$/i,
+    /\s+g\.c\.?$/i,
+    /\s+gc$/i,
+    /\s+cc$/i,
+  ];
+
+  let s = original;
+  let prev = "";
+  while (s !== prev) {
+    prev = s;
+    for (const re of trailingPatterns) {
+      s = s.replace(re, "").trim();
+    }
+    s = s.replace(/\s*,\s*$/, "").trim();
+  }
+
+  const noLeadingThe = s.replace(/^(the)\s+/i, "").trim();
+  if (noLeadingThe.length > 0) s = noLeadingThe;
+
+  return s.length > 0 ? s : original;
+}
+
+/** e.g. "Mar 22"; adds year when not the current calendar year. */
+export function formatChatPushDateShort(
+  teeTime: Date | null,
+  targetDate: Date,
+  mode: "planning" | "scheduled",
+): string {
+  const d = mode === "scheduled" && teeTime != null ? teeTime : targetDate;
+  const date = d instanceof Date ? d : new Date(d);
+  const now = new Date();
+  const sameYear = date.getFullYear() === now.getFullYear();
+  const monthDay = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (sameYear) return monthDay;
+  return `${monthDay} ${date.getFullYear()}`;
+}
+
+/** One-line context for chat pushes, e.g. "Alhambra Mar 22" or "Scottsdale Mar 22". */
+export function formatChatPushTitleLine(input: {
+  courseName: string | null;
+  planningLocation: string | null;
+  mode: "planning" | "scheduled";
+  teeTime: Date | null;
+  targetDate: Date;
+}): string {
+  const datePart = formatChatPushDateShort(input.teeTime, input.targetDate, input.mode);
+  const c = input.courseName?.trim();
+  if (c) {
+    const venue = simplifyVenueNameForPush(c);
+    return `${venue} ${datePart}`.trim();
+  }
+  const p = input.planningLocation?.trim();
+  if (p) {
+    const comma = p.indexOf(",");
+    const venue = comma > 0 ? p.slice(0, comma).trim().replace(/\s+/g, " ") : p;
+    return `${venue} ${datePart}`.trim();
+  }
+  return `Chat ${datePart}`.trim();
+}
+
 /** Short date for push copy, e.g. "Thu, Mar 21" (adds year if not this year). */
 export function formatRoundInviteDateForPush(
   teeTime: Date | null,

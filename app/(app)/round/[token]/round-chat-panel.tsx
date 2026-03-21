@@ -157,13 +157,13 @@ export function RoundChatPanel({ inviteToken }: { inviteToken: string }) {
   }
 
   return (
-    <div className="partee-card">
+    <div className="parfade-card">
       <button
         type="button"
         className="flex w-full items-center justify-between text-left"
         onClick={() => setExpanded((e) => !e)}
       >
-        <p className="partee-label mb-0">Group chat</p>
+        <p className="parfade-label mb-0">Group chat</p>
         <span className="text-fairway">{expanded ? "▲" : "▼"}</span>
       </button>
       <p className="mt-1 text-xs text-charcoal-300">Host and confirmed players only.</p>
@@ -226,7 +226,7 @@ export function RoundChatPanel({ inviteToken }: { inviteToken: string }) {
               placeholder="Message the group…"
               rows={2}
               maxLength={2000}
-              className="partee-input min-h-[44px] flex-1 resize-y"
+              className="parfade-input min-h-[44px] flex-1 resize-y"
               disabled={sendBusy}
             />
             <button

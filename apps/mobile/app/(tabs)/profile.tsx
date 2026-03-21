@@ -142,9 +142,9 @@ export default function ProfileScreen() {
         : locationDisplay;
 
   async function handleShareProfile() {
-    const profileLabel = name.trim() || "Partee golfer";
+    const profileLabel = name.trim() || "Parfade golfer";
     await Share.share({
-      message: `Check out ${profileLabel}'s profile on Partee.`,
+      message: `Check out ${profileLabel}'s profile on Parfade.`,
     });
   }
 

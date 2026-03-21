@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { courses, rounds, spots, users } from "@/db/schema";
+import { courses, roundMessages, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { ensureDbUser, requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveRoundImageUrl } from "@/lib/round-images";
+import { canAccessRoundChat } from "@/lib/round-chat-access";
 
 type RouteContext = {
   params: { token: string };
@@ -159,6 +160,35 @@ export async function GET(req: Request, { params }: RouteContext) {
     .where(and(eq(spots.roundId, round.id), eq(spots.status, "declined")))
     .orderBy(asc(spots.createdAt));
 
+  const chatAllowed =
+    currentUser != null && (await canAccessRoundChat(round.id, currentUser.id));
+
+  let lastChatMessage: {
+    body: string;
+    senderName: string;
+    createdAt: string;
+  } | null = null;
+  if (chatAllowed) {
+    const [lastRow] = await db
+      .select({
+        body: roundMessages.body,
+        createdAt: roundMessages.createdAt,
+        senderName: users.name,
+      })
+      .from(roundMessages)
+      .innerJoin(users, eq(users.id, roundMessages.userId))
+      .where(eq(roundMessages.roundId, round.id))
+      .orderBy(desc(roundMessages.createdAt))
+      .limit(1);
+    if (lastRow) {
+      lastChatMessage = {
+        body: lastRow.body,
+        senderName: lastRow.senderName,
+        createdAt: lastRow.createdAt.toISOString(),
+      };
+    }
+  }
+
   return NextResponse.json({
     round: {
       id: round.id,
@@ -188,6 +218,7 @@ export async function GET(req: Request, { params }: RouteContext) {
         customImageUrl: round.customImageUrl,
         courseMetadata: round.courseMetadata,
       }),
+      ...(chatAllowed ? { lastChatMessage } : {}),
     },
   });
 }

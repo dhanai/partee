@@ -188,7 +188,7 @@ export default function PublicProfileScreen() {
   async function handleShareProfile() {
     if (!profile) return;
     await Share.share({
-      message: `Check out ${profile.user.name}'s profile on Partee.`,
+      message: `Check out ${profile.user.name}'s profile on Parfade.`,
     });
   }
 

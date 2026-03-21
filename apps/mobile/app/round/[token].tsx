@@ -7,9 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   Share,
   ActivityIndicator,
-  Dimensions,
   Image,
-  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -41,8 +39,15 @@ import {
 import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calendar";
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
+
+function groupChatPreviewSubtitle(last: RoundDetails["lastChatMessage"]): string {
+  if (!last) return "No messages yet. Say hi!";
+  const snippet = last.body.replace(/\s+/g, " ").trim();
+  const max = 160;
+  const cut = snippet.length > max ? `${snippet.slice(0, max)}…` : snippet;
+  return `${last.senderName}: ${cut}`;
+}
 import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
-import { RoundGroupChat } from "../../components/round-group-chat";
 import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
@@ -83,9 +88,6 @@ export default function RoundDetailsScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const scrollRef = useRef<ScrollView>(null);
-  const chatSectionLayout = useRef({ y: 0, height: 0 });
-  const keyboardHeightRef = useRef(0);
-  const [keyboardInset, setKeyboardInset] = useState(0);
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const isFirstFocusRef = useRef(true);
@@ -119,43 +121,6 @@ export default function RoundDetailsScreen() {
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
-
-  const scrollChatIntoView = useCallback(() => {
-    const { y, height } = chatSectionLayout.current;
-    const kb = keyboardHeightRef.current;
-    if (height <= 0) {
-      scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
-      return;
-    }
-    const winH = Dimensions.get("window").height;
-    // Smaller visibleApprox / larger tail → scroll further so composer clears the keyboard.
-    const visibleApprox = winH - headerHeight - 160 - Math.min(kb, 360) * 0.35;
-    const targetY = y + height - visibleApprox + 56 + (kb > 0 ? Math.min(kb * 0.2, 56) : 0);
-    scrollRef.current?.scrollTo({ y: Math.max(0, targetY), animated: true });
-  }, [headerHeight]);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const onShow = (e: { endCoordinates: { height: number } }) => {
-      const h = e.endCoordinates.height;
-      keyboardHeightRef.current = h;
-      setKeyboardInset(h);
-      requestAnimationFrame(() => scrollChatIntoView());
-      setTimeout(() => scrollChatIntoView(), 120);
-      setTimeout(() => scrollChatIntoView(), 320);
-    };
-    const onHide = () => {
-      keyboardHeightRef.current = 0;
-      setKeyboardInset(0);
-    };
-    const subShow = Keyboard.addListener(showEvent, onShow);
-    const subHide = Keyboard.addListener(hideEvent, onHide);
-    return () => {
-      subShow.remove();
-      subHide.remove();
-    };
-  }, [scrollChatIntoView]);
 
   useEffect(() => {
     return subscribeRoundListsRefresh((payload) => {
@@ -456,7 +421,7 @@ export default function RoundDetailsScreen() {
     const roundLabel = round.mode === "planning" ? "planning round" : round.courseName;
     try {
       await Share.share({
-        message: `Join my ${roundLabel} on Partee: ${inviteUrl}`,
+        message: `Join my ${roundLabel} on Parfade: ${inviteUrl}`,
         url: inviteUrl,
       });
     } catch {
@@ -539,10 +504,7 @@ export default function RoundDetailsScreen() {
         <ScrollView
           ref={scrollRef}
           style={styles.container}
-          contentContainerStyle={[
-            styles.content,
-            keyboardInset > 0 && { paddingBottom: 32 + keyboardInset },
-          ]}
+          contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
           keyboardDismissMode="interactive"
@@ -657,18 +619,31 @@ export default function RoundDetailsScreen() {
       ) : null}
 
       {canUseGroupChat && token ? (
-        <View
-          onLayout={(e) => {
-            const { y, height } = e.nativeEvent.layout;
-            chatSectionLayout.current = { y, height };
-          }}
+        <Pressable
+          style={({ pressed }) => [
+            styles.chatPreviewRow,
+            pressed && styles.chatPreviewRowPressed,
+          ]}
+          onPress={() =>
+            router.push({
+              pathname: "/round/[token]/chat",
+              params: { token },
+            })
+          }
+          accessibilityLabel="Open group chat"
+          accessibilityRole="button"
         >
-          <RoundGroupChat
-            inviteToken={token}
-            getToken={() => getTokenRef.current()}
-            onComposerFocus={scrollChatIntoView}
-          />
-        </View>
+          <View style={styles.chatPreviewIconWrap}>
+            <Ionicons name="chatbubbles-outline" size={22} color={colors.fairway} />
+          </View>
+          <View style={styles.chatPreviewTextCol}>
+            <Text style={styles.chatPreviewTitle}>Group chat</Text>
+            <Text style={styles.chatPreviewSubtitle} numberOfLines={2}>
+              {groupChatPreviewSubtitle(round.lastChatMessage)}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </Pressable>
       ) : (
         <View style={styles.chatTeaser}>
           <Text style={styles.chatTeaserText}>
@@ -1001,6 +976,29 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   chatTeaserText: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  chatPreviewRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chatPreviewRowPressed: { opacity: 0.92 },
+  chatPreviewIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: colors.fairwaySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chatPreviewTextCol: { flex: 1, minWidth: 0, gap: 4 },
+  chatPreviewTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+  chatPreviewSubtitle: { fontSize: 13, color: colors.muted, lineHeight: 18 },
   actions: { flexDirection: "row", gap: 10, marginTop: 16 },
   button: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
   selectedRow: {

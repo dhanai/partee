@@ -147,6 +147,7 @@ function mergeHintOntoCached(cached: RoundDetails, hint: RoundListHint): RoundDe
     confirmedPlayers: players,
     confirmedCount: players.length,
     spotsRemaining: hint.spotsRemaining ?? cached.spotsRemaining,
+    lastChatMessage: cached.lastChatMessage,
   };
 }
 

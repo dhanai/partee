@@ -164,6 +164,9 @@ export async function POST(req: Request, { params }: RouteContext) {
         inviteToken: rounds.inviteToken,
         courseName: rounds.courseName,
         planningLocation: rounds.planningLocation,
+        mode: rounds.mode,
+        teeTime: rounds.teeTime,
+        targetDate: rounds.targetDate,
       })
       .from(rounds)
       .where(eq(rounds.inviteToken, token))
@@ -206,6 +209,9 @@ export async function POST(req: Request, { params }: RouteContext) {
       messageBody: parsed.body,
       courseName: round.courseName,
       planningLocation: round.planningLocation,
+      mode: round.mode,
+      teeTime: round.teeTime,
+      targetDate: round.targetDate,
     }).catch((err) => console.error("[POST /api/rounds/.../messages] push", err));
 
     return NextResponse.json({

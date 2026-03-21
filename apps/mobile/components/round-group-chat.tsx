@@ -35,10 +35,18 @@ type Props = {
   getToken: () => Promise<string | null>;
   /** Parent scrolls so the composer stays above the keyboard (round detail screen). */
   onComposerFocus?: () => void;
+  /** `fullscreen` = dedicated chat screen (flex layout, no collapsible section). */
+  variant?: "inline" | "fullscreen";
 };
 
-export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props) {
+export function RoundGroupChat({
+  inviteToken,
+  getToken,
+  onComposerFocus,
+  variant = "inline",
+}: Props) {
   const [expanded, setExpanded] = useState(true);
+  const isFullscreen = variant === "fullscreen";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,8 +106,10 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
     void fetchInitial();
   }, [fetchInitial]);
 
+  const pollActive = isFullscreen || expanded;
+
   useEffect(() => {
-    if (!expanded) return;
+    if (!pollActive) return;
     const pollForToken = inviteToken;
     const id = setInterval(() => {
       void (async () => {
@@ -156,10 +166,10 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
       })();
     }, POLL_MS);
     return () => clearInterval(id);
-  }, [expanded, inviteToken]);
+  }, [pollActive, inviteToken]);
 
   useEffect(() => {
-    if (!expanded) return;
+    if (!pollActive) return;
     if (messages.length === 0) {
       prevMessageCountRef.current = 0;
       return;
@@ -174,7 +184,7 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
     });
     prevMessageCountRef.current = next;
     return () => cancelAnimationFrame(t);
-  }, [messages.length, expanded]);
+  }, [messages.length, pollActive]);
 
   async function send() {
     const text = draft.trim();
@@ -214,13 +224,8 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
     }
   }
 
-  return (
-    <RoundDetailSection
-      title="Group chat"
-      hint="Host and confirmed players only."
-      expanded={expanded}
-      onToggle={() => setExpanded((e) => !e)}
-    >
+  const chatBody = (
+    <>
       {loading && messages.length === 0 ? (
         <View style={styles.loaderWrap}>
           <ActivityIndicator color={colors.fairway} size="small" />
@@ -230,7 +235,10 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
       ) : (
         <ScrollView
           ref={scrollRef}
-          style={[styles.messageList, { maxHeight: MAX_LIST_HEIGHT }]}
+          style={[
+            styles.messageList,
+            isFullscreen ? styles.messageListFlex : { maxHeight: MAX_LIST_HEIGHT },
+          ]}
           contentContainerStyle={styles.messageListContent}
           keyboardShouldPersistTaps="handled"
         >
@@ -310,13 +318,34 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
           )}
         </Pressable>
       </View>
+    </>
+  );
+
+  if (isFullscreen) {
+    return <View style={styles.fullscreenRoot}>{chatBody}</View>;
+  }
+
+  return (
+    <RoundDetailSection
+      title="Group chat"
+      hint="Host and confirmed players only."
+      expanded={expanded}
+      onToggle={() => setExpanded((e) => !e)}
+    >
+      {chatBody}
     </RoundDetailSection>
   );
 }
 
 const styles = StyleSheet.create({
+  fullscreenRoot: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: 12,
+  },
   loaderWrap: { paddingVertical: 16, alignItems: "center" },
   messageList: { marginTop: 4 },
+  messageListFlex: { flex: 1 },
   messageListContent: { gap: 10, paddingBottom: 4 },
   empty: { color: colors.muted, fontSize: 13, paddingVertical: 8, textAlign: "center" },
   bubbleRow: {

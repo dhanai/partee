@@ -3,7 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Partee",
+  title: "Parfade",
   description: "Create golf rounds, invite friends, and discover open spots.",
 };
 

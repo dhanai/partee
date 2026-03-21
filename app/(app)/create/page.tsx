@@ -257,9 +257,9 @@ export default function CreateRoundPage() {
         <p className="mt-1 text-sm text-charcoal-400">Set it up. Blast invites. Tee off.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="partee-card space-y-5">
+      <form onSubmit={handleSubmit} className="parfade-card space-y-5">
         <div>
-          <p className="partee-label">Flow</p>
+          <p className="parfade-label">Flow</p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -287,8 +287,8 @@ export default function CreateRoundPage() {
         </div>
 
         <div>
-          <p className="partee-label">Event image (optional)</p>
-          <label className="partee-input flex cursor-pointer items-center justify-between">
+          <p className="parfade-label">Event image (optional)</p>
+          <label className="parfade-input flex cursor-pointer items-center justify-between">
             <span className="text-sm text-charcoal-400">
               {uploadingImage ? "Uploading..." : "Upload custom cover image"}
             </span>
@@ -328,19 +328,19 @@ export default function CreateRoundPage() {
 
         {planningMode ? (
           <div>
-            <p className="partee-label">Target date</p>
+            <p className="parfade-label">Target date</p>
             <input
               type="date"
               value={targetDate}
               onChange={(e) => setTargetDate(e.target.value)}
-              className="partee-input"
+              className="parfade-input"
               required
             />
             <p className="mt-2 text-xs text-charcoal-300">
               You can choose course and tee time after players join.
             </p>
             <div ref={locationRef} className="relative">
-              <p className="partee-label mt-3">Location</p>
+              <p className="parfade-label mt-3">Location</p>
               <input
                 type="text"
                 value={planningLocation}
@@ -349,7 +349,7 @@ export default function CreateRoundPage() {
                   setPlanningLocationIsValidated(false);
                 }}
                 onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
-                className="partee-input"
+                className="parfade-input"
                 placeholder="City, State"
                 required
               />
@@ -386,7 +386,7 @@ export default function CreateRoundPage() {
                 </p>
               )}
             </div>
-            <p className="partee-label mt-3">Preferred time</p>
+            <p className="parfade-label mt-3">Preferred time</p>
             <div className="grid grid-cols-3 gap-2">
               {[
                 { value: "morning", label: "Morning" },
@@ -416,13 +416,13 @@ export default function CreateRoundPage() {
           <>
             {/* Course */}
             <div ref={courseRef} className="relative">
-              <p className="partee-label">Course</p>
+              <p className="parfade-label">Course</p>
               <div className="relative">
                 <input
                   value={query}
                   onChange={(e) => { setQuery(e.target.value); if (selectedCourse) setSelectedCourse(null); }}
                   onFocus={() => results.length > 0 && setShowCourseResults(true)}
-                  className="partee-input"
+                  className="parfade-input"
                   placeholder="Search golf courses..."
                 />
                 {loadingCourses && <span className="absolute right-4 top-3.5 text-xs text-charcoal-300">Searching...</span>}
@@ -451,20 +451,20 @@ export default function CreateRoundPage() {
 
             {/* Tee time */}
             <div>
-              <p className="partee-label">Tee time</p>
-              <input type="datetime-local" value={teeTime} onChange={(e) => setTeeTime(e.target.value)} className="partee-input" required />
+              <p className="parfade-label">Tee time</p>
+              <input type="datetime-local" value={teeTime} onChange={(e) => setTeeTime(e.target.value)} className="parfade-input" required />
             </div>
           </>
         )}
 
         <div>
-          <p className="partee-label">Visibility</p>
+          <p className="parfade-label">Visibility</p>
           <select
             value={visibility}
             onChange={(e) =>
               setVisibility(e.target.value as "private" | "public")
             }
-            className="partee-select"
+            className="parfade-select"
           >
             <option value="private">Invite only</option>
             <option value="public">Public</option>
@@ -473,7 +473,7 @@ export default function CreateRoundPage() {
 
         {/* Spots + settings */}
         <div>
-          <p className="partee-label">Looking for</p>
+          <p className="parfade-label">Looking for</p>
           <div className="flex gap-2">
             {([1, 2, 3] as const).map((n) => (
               <button
@@ -489,11 +489,11 @@ export default function CreateRoundPage() {
         </div>
 
         <div>
-          <p className="partee-label">Join policy</p>
+          <p className="parfade-label">Join policy</p>
           <select
             value={joinPolicy}
             onChange={(e) => setJoinPolicy(e.target.value as "instant" | "approval")}
-            className="partee-select"
+            className="parfade-select"
           >
             <option value="instant">Instant</option>
             <option value="approval">Approval</option>
@@ -502,12 +502,12 @@ export default function CreateRoundPage() {
 
         {/* Friends */}
         <div ref={friendRef} className="relative">
-          <p className="partee-label">Invite friends</p>
+          <p className="parfade-label">Invite friends</p>
           <input
             value={friendQuery}
             onChange={(e) => setFriendQuery(e.target.value)}
             onFocus={() => friendResults.length > 0 && setShowFriendResults(true)}
-            className="partee-input"
+            className="parfade-input"
             placeholder="Name or email..."
           />
           {loadingFriends && <span className="absolute right-4 top-10 text-xs text-charcoal-300">Searching...</span>}
@@ -531,7 +531,7 @@ export default function CreateRoundPage() {
 
         {selectedFriends.length > 0 && (
           <div className="space-y-2">
-            <p className="partee-label">Invite blast ({selectedFriends.length})</p>
+            <p className="parfade-label">Invite blast ({selectedFriends.length})</p>
             {selectedFriends.map((f) => (
               <div key={f.id} className="flex items-center justify-between rounded-xl bg-cream-200 px-4 py-2.5">
                 <span className="text-sm text-charcoal">{f.name}{f.email ? ` · ${f.email}` : ""}</span>
@@ -543,13 +543,13 @@ export default function CreateRoundPage() {
 
         {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
 
-        <button type="submit" disabled={!canSubmit} className="partee-btn-primary w-full disabled:opacity-40">
+        <button type="submit" disabled={!canSubmit} className="parfade-btn-primary w-full disabled:opacity-40">
           {submitting ? "Creating..." : "Create round"}
         </button>
       </form>
 
       {createdInvitePath && (
-        <div className="partee-card space-y-2 border border-fairway-100 bg-fairway-50">
+        <div className="parfade-card space-y-2 border border-fairway-100 bg-fairway-50">
           <p className="font-semibold text-fairway">Round created</p>
           {createdInvitedCount > 0 && (
             <p className="text-sm text-charcoal-400">Blast sent to {createdInvitedCount} golfer{createdInvitedCount !== 1 ? "s" : ""}.</p>

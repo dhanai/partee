@@ -80,6 +80,13 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="round/[token]/chat"
+            options={{
+              title: "Group chat",
+              headerBackTitle: "Round",
+            }}
+          />
+          <Stack.Screen
             name="profile/[userId]"
             options={{
               title: "Profile",

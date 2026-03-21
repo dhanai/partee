@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     const name =
       [event.data.first_name, event.data.last_name].filter(Boolean).join(" ") ||
       event.data.email_addresses?.[0]?.email_address ||
-      "Partee golfer";
+      "Parfade golfer";
 
     await updateUserProfile({
       clerkId: event.data.id,
