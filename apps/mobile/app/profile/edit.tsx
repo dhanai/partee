@@ -31,6 +31,8 @@ type MeResponse = {
     handicap: string | null;
     location: string | null;
     homeCourse: string | null;
+    followersCount?: number;
+    followingCount?: number;
   };
 };
 
@@ -320,6 +322,8 @@ export default function EditProfileScreen() {
           location: location.trim() || null,
           homeCourse: location.trim() || null,
           avatar: avatar ?? null,
+          followersCount: cachedMe?.followersCount,
+          followingCount: cachedMe?.followingCount,
         });
         setProfileSaving(false);
         setSaveNote("Saved");

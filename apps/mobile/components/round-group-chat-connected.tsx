@@ -378,6 +378,7 @@ export function RoundGroupChatConnected({
     <RoundDetailSection
       title="Group chat"
       hint="Host and confirmed players only."
+      icon="chatbubbles-outline"
       expanded={expanded}
       onToggle={() => setExpanded((e) => !e)}
     >

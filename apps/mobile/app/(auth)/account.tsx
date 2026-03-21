@@ -13,7 +13,6 @@ import { StatusBar } from "expo-status-bar";
 import {
   Animated,
   Dimensions,
-  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -27,6 +26,7 @@ import { AuthLandingBackground } from "../../components/auth-landing-background"
 import { GoogleLogo } from "../../components/google-logo";
 import { ParfadeLogo } from "../../components/parfade-logo";
 import { AUTH_LOGO_EXTRA_TOP, authFormStyles } from "../../lib/auth-form-styles";
+import { BOTTOM_SHEET_EASING, bottomSheetOpenAnimation } from "../../lib/bottom-sheet-presets";
 import { colors } from "../../lib/theme";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -140,14 +140,14 @@ function useDualSheetAnimation(
     Animated.parallel([
       Animated.timing(signInY, {
         toValue: hIn.current,
-        duration: 320,
-        easing: Easing.out(Easing.cubic),
+        duration: bottomSheetOpenAnimation.sheet.duration,
+        easing: BOTTOM_SHEET_EASING,
         useNativeDriver: true,
       }),
       Animated.timing(signUpY, {
         toValue: 0,
-        duration: 320,
-        easing: Easing.out(Easing.cubic),
+        duration: bottomSheetOpenAnimation.sheet.duration,
+        easing: BOTTOM_SHEET_EASING,
         useNativeDriver: true,
       }),
     ]).start(({ finished }) => {
@@ -164,14 +164,14 @@ function useDualSheetAnimation(
     Animated.parallel([
       Animated.timing(signInY, {
         toValue: 0,
-        duration: 320,
-        easing: Easing.out(Easing.cubic),
+        duration: bottomSheetOpenAnimation.sheet.duration,
+        easing: BOTTOM_SHEET_EASING,
         useNativeDriver: true,
       }),
       Animated.timing(signUpY, {
         toValue: hUp.current,
-        duration: 320,
-        easing: Easing.out(Easing.cubic),
+        duration: bottomSheetOpenAnimation.sheet.duration,
+        easing: BOTTOM_SHEET_EASING,
         useNativeDriver: true,
       }),
     ]).start(({ finished }) => {
@@ -708,7 +708,7 @@ export default function AuthAccountScreen() {
 
   const anim = useDualSheetAnimation(signInFullH, signUpFullH, initialSignUp);
 
-  const sheetPadBottom = Math.max(insets.bottom, 20) + 10;
+  const sheetPadBottom = Math.max(insets.bottom, 16);
   const scrollMax = maxSheetScrollHeight();
 
   if (isSignedIn) {
@@ -757,7 +757,6 @@ export default function AuthAccountScreen() {
                   { paddingBottom: sheetPadBottom },
                 ]}
               >
-                <View style={authFormStyles.sheetHandle} />
                 <ScrollView
                   style={{ maxHeight: scrollMax }}
                   keyboardShouldPersistTaps="handled"
@@ -788,7 +787,6 @@ export default function AuthAccountScreen() {
                   { paddingBottom: sheetPadBottom },
                 ]}
               >
-                <View style={authFormStyles.sheetHandle} />
                 <ScrollView
                   style={{ maxHeight: scrollMax }}
                   keyboardShouldPersistTaps="handled"

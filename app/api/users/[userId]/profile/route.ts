@@ -3,26 +3,11 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { relationshipViewerToUser } from "@/lib/follow-relationship";
 
 type RouteContext = {
   params: { userId: string };
 };
-
-function relationshipState(input: {
-  self: boolean;
-  outgoingStatus: "requested" | "accepted" | null;
-  incomingStatus: "requested" | "accepted" | null;
-}) {
-  if (input.self) return "self" as const;
-  if (input.outgoingStatus === "accepted" && input.incomingStatus === "accepted") {
-    return "mutual" as const;
-  }
-  if (input.outgoingStatus === "accepted") return "following" as const;
-  if (input.incomingStatus === "accepted") return "followed_by" as const;
-  if (input.outgoingStatus === "requested") return "requested_by_viewer" as const;
-  if (input.incomingStatus === "requested") return "requested_to_viewer" as const;
-  return "none" as const;
-}
 
 export async function GET(req: Request, { params }: RouteContext) {
   try {
@@ -45,8 +30,6 @@ export async function GET(req: Request, { params }: RouteContext) {
     if (!target) {
       return NextResponse.json({ error: "User not found." }, { status: 404 });
     }
-
-    const self = viewer.id === target.id;
 
     const [outgoingFollow] = await db
       .select({ status: userFollows.status })
@@ -106,8 +89,9 @@ export async function GET(req: Request, { params }: RouteContext) {
     return NextResponse.json({
       user: {
         ...target,
-        relationship: relationshipState({
-          self,
+        relationship: relationshipViewerToUser({
+          viewerId: viewer.id,
+          targetUserId: target.id,
           outgoingStatus: outgoingFollow?.status ?? null,
           incomingStatus: incomingFollow?.status ?? null,
         }),

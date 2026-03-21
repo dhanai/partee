@@ -6,6 +6,8 @@ export type MeProfile = {
   handicap: string | null;
   location: string | null;
   homeCourse: string | null;
+  followersCount?: number;
+  followingCount?: number;
 };
 
 type MeCacheEntry = {

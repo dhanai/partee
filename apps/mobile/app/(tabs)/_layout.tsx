@@ -1,17 +1,9 @@
 import { Tabs, Redirect, router } from "expo-router";
-import { useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Animated,
-  Easing,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
+import { AnimatedBottomSheetFrame } from "../../components/animated-bottom-sheet-frame";
 import { NotificationMustardDot } from "../../components/notification-mustard-dot";
 import { ParfadeLogo } from "../../components/parfade-logo";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
@@ -20,10 +12,8 @@ import { colors } from "../../lib/theme";
 export default function TabsLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { showBadge: showNotificationBadge } = useNotificationBadge();
-  const [createSheetMounted, setCreateSheetMounted] = useState(false);
+  const [createSheetOpen, setCreateSheetOpen] = useState(false);
   const showAdvancedCreateTypes = false;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const sheetTranslateY = useRef(new Animated.Value(42)).current;
 
   if (!isLoaded) {
     return (
@@ -45,44 +35,11 @@ export default function TabsLayout() {
   }
 
   function openCreateSheet() {
-    setCreateSheetMounted(true);
-    backdropOpacity.setValue(0);
-    sheetTranslateY.setValue(42);
-    Animated.parallel([
-      Animated.timing(backdropOpacity, {
-        toValue: 1,
-        duration: 190,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(sheetTranslateY, {
-        toValue: 0,
-        duration: 240,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
+    setCreateSheetOpen(true);
   }
 
   function closeCreateSheet() {
-    Animated.parallel([
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: 160,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(sheetTranslateY, {
-        toValue: 42,
-        duration: 190,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start(({ finished }) => {
-      if (finished) {
-        setCreateSheetMounted(false);
-      }
-    });
+    setCreateSheetOpen(false);
   }
 
   function goToCreateOption(option: "planning" | "scheduled" | "tournament" | "event") {
@@ -188,81 +145,61 @@ export default function TabsLayout() {
         />
       </Tabs>
 
-      <Modal visible={createSheetMounted} transparent animationType="none">
-        <View style={styles.sheetRoot}>
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.sheetBackdropTint, { opacity: backdropOpacity }]}
-          />
-          <Pressable style={styles.sheetBackdropPressable} onPress={closeCreateSheet}>
-            <Animated.View
-              style={[styles.sheetCardWrap, { transform: [{ translateY: sheetTranslateY }] }]}
-            >
-              <Pressable style={styles.sheetCard} onPress={(event) => event.stopPropagation()}>
-            <Text style={styles.sheetTitle}>What do you want to create?</Text>
-            <Text style={styles.sheetSub}>Choose a format to get started.</Text>
+      <AnimatedBottomSheetFrame
+        visible={createSheetOpen}
+        onClose={closeCreateSheet}
+        sheetStyle={styles.createSheetSurface}
+        backdropAccessibilityLabel="Dismiss create options"
+      >
+        <Text style={styles.sheetTitle}>What do you want to create?</Text>
+        <Text style={styles.sheetSub}>Choose a format to get started.</Text>
 
-            <Pressable
-              style={styles.optionRow}
-              onPress={() => goToCreateOption("planning")}
-            >
+        <Pressable style={styles.optionRow} onPress={() => goToCreateOption("planning")}>
+          <View style={styles.optionIconWrap}>
+            <Ionicons name="people-outline" size={18} color={colors.fairway} />
+          </View>
+          <View style={styles.optionTextWrap}>
+            <Text style={styles.optionTitle}>Planning round</Text>
+            <Text style={styles.optionSubtitle}>Find players first, lock details later.</Text>
+          </View>
+        </Pressable>
+
+        <Pressable style={styles.optionRow} onPress={() => goToCreateOption("scheduled")}>
+          <View style={styles.optionIconWrap}>
+            <Ionicons name="golf-outline" size={18} color={colors.fairway} />
+          </View>
+          <View style={styles.optionTextWrap}>
+            <Text style={styles.optionTitle}>Scheduled tee time</Text>
+            <Text style={styles.optionSubtitle}>Set course and tee time now.</Text>
+          </View>
+        </Pressable>
+
+        {showAdvancedCreateTypes ? (
+          <>
+            <Pressable style={styles.optionRow} onPress={() => goToCreateOption("tournament")}>
               <View style={styles.optionIconWrap}>
-                <Ionicons name="people-outline" size={18} color={colors.fairway} />
+                <Ionicons name="trophy-outline" size={18} color={colors.fairway} />
               </View>
               <View style={styles.optionTextWrap}>
-                <Text style={styles.optionTitle}>Planning round</Text>
-                <Text style={styles.optionSubtitle}>Find players first, lock details later.</Text>
+                <Text style={styles.optionTitle}>Tournament</Text>
+                <Text style={styles.optionSubtitle}>Placeholder flow for upcoming support.</Text>
               </View>
             </Pressable>
 
-            <Pressable
-              style={styles.optionRow}
-              onPress={() => goToCreateOption("scheduled")}
-            >
+            <Pressable style={styles.optionRow} onPress={() => goToCreateOption("event")}>
               <View style={styles.optionIconWrap}>
-                <Ionicons name="golf-outline" size={18} color={colors.fairway} />
+                <Ionicons name="sparkles-outline" size={18} color={colors.fairway} />
               </View>
               <View style={styles.optionTextWrap}>
-                <Text style={styles.optionTitle}>Scheduled tee time</Text>
-                <Text style={styles.optionSubtitle}>Set course and tee time now.</Text>
+                <Text style={styles.optionTitle}>Event</Text>
+                <Text style={styles.optionSubtitle}>
+                  Meetup, market, tournament side-event and more.
+                </Text>
               </View>
             </Pressable>
-
-            {showAdvancedCreateTypes ? (
-              <>
-                <Pressable
-                  style={styles.optionRow}
-                  onPress={() => goToCreateOption("tournament")}
-                >
-                  <View style={styles.optionIconWrap}>
-                    <Ionicons name="trophy-outline" size={18} color={colors.fairway} />
-                  </View>
-                  <View style={styles.optionTextWrap}>
-                    <Text style={styles.optionTitle}>Tournament</Text>
-                    <Text style={styles.optionSubtitle}>
-                      Placeholder flow for upcoming support.
-                    </Text>
-                  </View>
-                </Pressable>
-
-                <Pressable style={styles.optionRow} onPress={() => goToCreateOption("event")}>
-                  <View style={styles.optionIconWrap}>
-                    <Ionicons name="sparkles-outline" size={18} color={colors.fairway} />
-                  </View>
-                  <View style={styles.optionTextWrap}>
-                    <Text style={styles.optionTitle}>Event</Text>
-                    <Text style={styles.optionSubtitle}>
-                      Meetup, market, tournament side-event and more.
-                    </Text>
-                  </View>
-                </Pressable>
-              </>
-            ) : null}
-              </Pressable>
-            </Animated.View>
-          </Pressable>
-        </View>
-      </Modal>
+          </>
+        ) : null}
+      </AnimatedBottomSheetFrame>
     </>
   );
 }
@@ -279,30 +216,9 @@ const styles = StyleSheet.create({
     top: -1,
     right: 2,
   },
-  sheetRoot: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  sheetBackdropTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.22)",
-  },
-  sheetBackdropPressable: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  sheetCardWrap: {
-    justifyContent: "flex-end",
-  },
-  sheetCard: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderBottomWidth: 0,
+  createSheetSurface: {
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 24,
     gap: 10,
   },
   sheetTitle: {

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 
@@ -38,6 +38,25 @@ const updateSchema = z.object({
 export async function GET(req: Request) {
   try {
     const user = await requireDbUser(req);
+    const [followerCountRows, followingCountRows] = await Promise.all([
+      db
+        .select({
+          count: sql<number>`count(*)`.mapWith(Number),
+        })
+        .from(userFollows)
+        .where(
+          and(eq(userFollows.followedId, user.id), eq(userFollows.status, "accepted")),
+        ),
+      db
+        .select({
+          count: sql<number>`count(*)`.mapWith(Number),
+        })
+        .from(userFollows)
+        .where(
+          and(eq(userFollows.followerId, user.id), eq(userFollows.status, "accepted")),
+        ),
+    ]);
+
     return NextResponse.json({
       user: {
         id: user.id,
@@ -49,6 +68,8 @@ export async function GET(req: Request) {
         homeCourse: user.homeCourse,
         followVisibility: user.followVisibility,
         hideHostedRoundsFromDiscover: user.hideHostedRoundsFromDiscover,
+        followersCount: followerCountRows[0]?.count ?? 0,
+        followingCount: followingCountRows[0]?.count ?? 0,
       },
     });
   } catch (error) {

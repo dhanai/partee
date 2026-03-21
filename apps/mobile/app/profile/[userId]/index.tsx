@@ -1,15 +1,24 @@
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
-import { apiDelete, apiPost, toAbsoluteUrl } from "../../lib/api";
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { apiDelete, apiPost, toAbsoluteUrl } from "../../../lib/api";
 import {
   fetchPublicProfileAndCache,
   getCachedPublicProfile,
   PublicProfile,
   setCachedPublicProfile,
-} from "../../lib/public-profile-cache";
-import { colors } from "../../lib/theme";
+} from "../../../lib/public-profile-cache";
+import { colors } from "../../../lib/theme";
 
 /**
  * Route params carry the name/avatar from the list row you tapped (fresh).
@@ -64,6 +73,7 @@ export default function PublicProfileScreen() {
     userName?: string;
     userAvatar?: string;
   }>();
+  const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const [loading, setLoading] = useState(true);
@@ -231,9 +241,29 @@ export default function PublicProfileScreen() {
         <Text style={styles.name}>{profile.user.name}</Text>
         {profileMetaLine ? <Text style={styles.profileInfoLine}>{profileMetaLine}</Text> : null}
         <View style={styles.statsRow}>
-          <Text style={styles.statText}>{profile.user.followersCount} followers</Text>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/profile/[userId]/followers",
+                params: { userId },
+              })
+            }
+            hitSlop={8}
+          >
+            <Text style={styles.statText}>{profile.user.followersCount} followers</Text>
+          </Pressable>
           <Text style={styles.statDot}>•</Text>
-          <Text style={styles.statText}>{profile.user.followingCount} following</Text>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/profile/[userId]/following",
+                params: { userId },
+              })
+            }
+            hitSlop={8}
+          >
+            <Text style={styles.statText}>{profile.user.followingCount} following</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -250,33 +280,6 @@ export default function PublicProfileScreen() {
         <Pressable style={styles.secondaryAction} onPress={() => void handleShareProfile()}>
           <Text style={styles.secondaryActionText}>Share profile</Text>
         </Pressable>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Following</Text>
-        {profile.friends.length === 0 ? (
-          <Text style={styles.cardHint}>Not following anyone yet.</Text>
-        ) : (
-          profile.friends.map((friend) => (
-            <View key={friend.id} style={styles.friendRow}>
-              {friend.avatar ? (
-                <Image source={{ uri: toAbsoluteUrl(friend.avatar) }} style={styles.friendAvatar} />
-              ) : (
-                <View style={[styles.friendAvatar, styles.avatarPlaceholder]}>
-                  <Text style={styles.friendInitial}>
-                    {friend.name.trim().charAt(0).toUpperCase() || "?"}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.friendMeta}>
-                <Text style={styles.friendName}>{friend.name}</Text>
-                {friend.handicap?.trim() ? (
-                  <Text style={styles.friendSub}>Handicap {friend.handicap.trim()}</Text>
-                ) : null}
-              </View>
-            </View>
-          ))
-        )}
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -321,22 +324,6 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   secondaryActionText: { color: colors.text, fontWeight: "700", fontSize: 12 },
-  card: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 10,
-    gap: 8,
-    backgroundColor: colors.surface,
-  },
-  cardTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  cardHint: { color: colors.muted, fontSize: 12 },
-  friendRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  friendAvatar: { width: 34, height: 34, borderRadius: 999 },
-  friendInitial: { color: colors.fairway, fontWeight: "700", fontSize: 13 },
-  friendMeta: { flex: 1 },
-  friendName: { color: colors.text, fontWeight: "700" },
-  friendSub: { color: colors.muted, fontSize: 12 },
   errorText: { color: colors.danger },
   disabledButton: { opacity: 0.6 },
 });

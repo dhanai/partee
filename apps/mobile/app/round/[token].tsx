@@ -37,6 +37,7 @@ import {
   subscribeRoundListsRefresh,
 } from "../../lib/round-lists-refresh";
 import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calendar";
+import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-last-initial";
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
 
@@ -45,9 +46,10 @@ function groupChatPreviewSubtitle(last: RoundDetails["lastChatMessage"]): string
   const snippet = last.body.replace(/\s+/g, " ").trim();
   const max = 160;
   const cut = snippet.length > max ? `${snippet.slice(0, max)}…` : snippet;
-  return `${last.senderName}: ${cut}`;
+  return `${formatInviterFirstLastInitial(last.senderName)}: ${cut}`;
 }
 import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
+import { RoundOverflowMenuSheet } from "../../components/round-overflow-menu-sheet";
 import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
@@ -108,6 +110,7 @@ export default function RoundDetailsScreen() {
   });
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [roundMenuOpen, setRoundMenuOpen] = useState(false);
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -203,9 +206,9 @@ export default function RoundDetailsScreen() {
       });
       return;
     }
-    const canAddToCalendar =
+    const showOverflowMenu =
       round.isHost || round.currentUserSpotStatus === "confirmed";
-    if (!canAddToCalendar) {
+    if (!showOverflowMenu) {
       navigation.setOptions({
         headerRight: undefined,
         headerRightContainerStyle: undefined,
@@ -216,14 +219,12 @@ export default function RoundDetailsScreen() {
       headerRightContainerStyle: { paddingRight: 10 },
       headerRight: () => (
         <Pressable
-          accessibilityLabel="Add round to calendar"
+          accessibilityLabel="Round actions"
           accessibilityRole="button"
           hitSlop={12}
-          onPress={() => {
-            void presentAddRoundToCalendar(round);
-          }}
+          onPress={() => setRoundMenuOpen(true)}
         >
-          <Ionicons name="calendar-outline" size={22} color={colors.text} />
+          <Ionicons name="ellipsis-vertical" size={22} color={colors.text} />
         </Pressable>
       ),
     });
@@ -478,7 +479,6 @@ export default function RoundDetailsScreen() {
     (!round.currentUserSpotStatus ||
       round.currentUserSpotStatus === "invited" ||
       round.currentUserSpotStatus === "declined");
-  const showUnclaimAction = !round.isHost && round.currentUserSpotStatus === "confirmed";
   function openInviteFriends() {
     if (!round) return;
     const flowKey = inviteFlowKeyRef.current;
@@ -659,6 +659,7 @@ export default function RoundDetailsScreen() {
         <RoundDetailSection
           title="Finalize details"
           hint="Pick course and tee time for your group."
+          icon="calendar-outline"
           expanded={finalizeExpanded}
           onToggle={() => setFinalizeExpanded((e) => !e)}
         >
@@ -753,6 +754,7 @@ export default function RoundDetailsScreen() {
         <RoundDetailSection
           title="Invite players"
           hint="Choose friends or share a link."
+          icon="person-add-outline"
           expanded={inviteExpanded}
           onToggle={() => setInviteExpanded((e) => !e)}
         >
@@ -832,42 +834,6 @@ export default function RoundDetailsScreen() {
           </Pressable>
         </View>
       ) : null}
-      {showUnclaimAction ? (
-        <View style={styles.actions}>
-          <Pressable
-            style={[styles.button, styles.secondaryButton, busy && styles.disabledButton]}
-            onPress={() => void rsvp("decline")}
-            disabled={busy}
-          >
-            <Text style={styles.secondaryText}>{busy ? "Updating..." : "Unclaim spot"}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {round.isHost ? (
-        <View style={styles.hostActionsRow}>
-          <Pressable
-            style={[styles.button, styles.hostEditButton]}
-            onPress={() =>
-              router.push({
-                pathname: "/round/[token]/edit",
-                params: { token: round.inviteToken },
-              })
-            }
-          >
-            <Text style={styles.hostEditText}>Edit round</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.button, styles.hostDeleteButton, deleteBusy && styles.disabledButton]}
-            onPress={() => setDeleteConfirmOpen(true)}
-            disabled={deleteBusy}
-          >
-            <Text style={styles.hostDeleteText}>
-              {deleteBusy ? "Deleting..." : "Delete round"}
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
-
       <DatePickerModal
         visible={calendarOpen}
         title="Select tee date"
@@ -917,6 +883,55 @@ export default function RoundDetailsScreen() {
       />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <RoundOverflowMenuSheet
+        visible={roundMenuOpen}
+        onClose={() => setRoundMenuOpen(false)}
+        items={
+          round.isHost
+            ? [
+                {
+                  key: "calendar",
+                  label: "Add to calendar",
+                  onPress: () => {
+                    void presentAddRoundToCalendar(round);
+                  },
+                },
+                {
+                  key: "edit",
+                  label: "Edit round",
+                  onPress: () => {
+                    router.push({
+                      pathname: "/round/[token]/edit",
+                      params: { token: round.inviteToken },
+                    });
+                  },
+                },
+                {
+                  key: "delete",
+                  label: "Delete round",
+                  onPress: () => setDeleteConfirmOpen(true),
+                  destructive: true,
+                },
+              ]
+            : [
+                {
+                  key: "calendar",
+                  label: "Add to calendar",
+                  onPress: () => {
+                    void presentAddRoundToCalendar(round);
+                  },
+                },
+                {
+                  key: "unclaim",
+                  label: "Unclaim spot",
+                  onPress: () => {
+                    void rsvp("decline");
+                  },
+                },
+              ]
+        }
+      />
     </View>
   );
 }
@@ -1045,16 +1060,6 @@ const styles = StyleSheet.create({
   },
   primaryButton: { backgroundColor: colors.fairway },
   secondaryButton: { backgroundColor: "#ece8e1" },
-  hostActionsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 16,
-  },
-  hostEditButton: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
   hostDeleteButton: {
     backgroundColor: "#fee4e2",
     borderWidth: 1,
@@ -1063,7 +1068,6 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.5 },
   primaryText: { color: "#fff", fontWeight: "700" },
   secondaryText: { color: colors.text, fontWeight: "700" },
-  hostEditText: { color: colors.text, fontWeight: "700" },
   hostDeleteText: { color: colors.danger, fontWeight: "700" },
   errorText: {
     color: colors.danger,
