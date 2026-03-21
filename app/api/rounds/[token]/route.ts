@@ -7,6 +7,7 @@ import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-play
 import { ensureDbUser, requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveRoundImageUrl } from "@/lib/round-images";
+import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
 import { canAccessRoundChat } from "@/lib/round-chat-access";
 
 type RouteContext = {
@@ -319,6 +320,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       })
       .where(eq(rounds.id, existingRound.id));
 
+    publishAfterRoundDetailChanged(token, "patch");
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -361,6 +364,7 @@ export async function DELETE(req: Request, { params }: RouteContext) {
       );
     }
 
+    publishAfterRoundDetailChanged(token, "delete");
     await db.delete(rounds).where(eq(rounds.id, round.id));
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -6,6 +6,7 @@ import { rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyRoundInvites } from "@/lib/notify-user";
 import { buildRoundInvitePushBody } from "@/lib/round-invite-push-message";
+import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
 
 const inviteSchema = z.object({
   inviteeUserIds: z.array(z.string().uuid()).min(1).max(30),
@@ -99,6 +100,8 @@ export async function POST(req: Request, { params }: RouteContext) {
         }),
       });
     }
+
+    publishAfterRoundDetailChanged(params.token, "invites");
 
     return NextResponse.json({
       invitedCount: inviteRows.length,

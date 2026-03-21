@@ -16,3 +16,7 @@ export function parfadeProfileChannel(userId: string): string {
 export function parfadeProfileChannelsCapabilityPattern(): string {
   return `${PARFADE_ABLY_NS}:profile:*`;
 }
+
+export function parfadeRoundDetailChannel(inviteToken: string): string {
+  return `${PARFADE_ABLY_NS}:round-detail:${inviteToken.trim()}`;
+}

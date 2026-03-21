@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { courses, rounds } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
 
 const finalizeSchema = z.object({
   courseId: z.string().uuid(),
@@ -82,6 +83,8 @@ export async function POST(req: Request, { params }: RouteContext) {
         teeTime: rounds.teeTime,
         targetDate: rounds.targetDate,
       });
+
+    publishAfterRoundDetailChanged(params.token, "finalize");
 
     return NextResponse.json({ round: updated });
   } catch (error) {

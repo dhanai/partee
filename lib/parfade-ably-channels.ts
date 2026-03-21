@@ -17,3 +17,15 @@ export function parfadeProfileChannel(userId: string): string {
 export function parfadeProfileChannelsCapabilityPattern(): string {
   return `${PARFADE_ABLY_NS}:profile:*`;
 }
+
+/**
+ * Live updates for GET /api/rounds/[token] (finalize, edits, spots, invites).
+ * Distinct from Ably Chat room ids (`round:{token}`).
+ */
+export function parfadeRoundDetailChannel(inviteToken: string): string {
+  return `${PARFADE_ABLY_NS}:round-detail:${inviteToken.trim()}`;
+}
+
+export function parfadeRoundDetailChannelsCapabilityPattern(): string {
+  return `${PARFADE_ABLY_NS}:round-detail:*`;
+}

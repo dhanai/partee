@@ -2,6 +2,7 @@ import Ably from "ably";
 import {
   parfadeDiscoverChannel,
   parfadeProfileChannel,
+  parfadeRoundDetailChannel,
   parfadeUserInboxChannel,
 } from "@/lib/parfade-ably-channels";
 import type { ParfadeRealtimeMessageV1 } from "@/lib/parfade-ably-messages";
@@ -72,4 +73,19 @@ export function publishAfterProfileUpdated(userId: string): void {
     type: "profile-updated",
     userId,
   }).catch((e) => logPublishError("profile-updated", e));
+}
+
+/** Round detail screen: refetch when host edits, finalizes, spots/invites change, chat preview, etc. */
+export function publishAfterRoundDetailChanged(
+  inviteToken: string,
+  reason?: string,
+): void {
+  const t = inviteToken.trim();
+  if (!t) return;
+  void publishParfadeMessage(parfadeRoundDetailChannel(t), {
+    v: 1,
+    type: "round-detail-updated",
+    inviteToken: t,
+    reason,
+  }).catch((e) => logPublishError("round-detail-updated", e));
 }

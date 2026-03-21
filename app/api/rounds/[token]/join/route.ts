@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { rounds, spots } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { recordHostRoundRsvpAndMaybePush } from "@/lib/notify-user";
+import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
 import { delay } from "@/lib/utils";
 
 const joinSchema = z.object({
@@ -95,6 +96,7 @@ export async function POST(req: Request, { params }: RouteContext) {
             targetDate: round.targetDate,
             spotStatus: targetStatus,
           }).catch((err) => console.error("[join] host RSVP notify", err));
+          publishAfterRoundDetailChanged(params.token, "join");
           return NextResponse.json({
             ok: true,
             status: targetStatus,
@@ -121,6 +123,7 @@ export async function POST(req: Request, { params }: RouteContext) {
             targetDate: round.targetDate,
             spotStatus: targetStatus,
           }).catch((err) => console.error("[join] host RSVP notify", err));
+          publishAfterRoundDetailChanged(params.token, "join");
           return NextResponse.json({
             ok: true,
             status: targetStatus,

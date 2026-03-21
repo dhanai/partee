@@ -5,6 +5,7 @@ import { requireDbUser } from "@/lib/auth";
 import {
   parfadeDiscoverChannel,
   parfadeProfileChannelsCapabilityPattern,
+  parfadeRoundDetailChannelsCapabilityPattern,
   parfadeUserInboxChannel,
 } from "@/lib/parfade-ably-channels";
 
@@ -24,6 +25,7 @@ function clientCapability(userId: string): { [key: string]: capabilityOp[] } {
     [parfadeDiscoverChannel()]: ["subscribe"],
     [parfadeUserInboxChannel(userId)]: ["subscribe"],
     [parfadeProfileChannelsCapabilityPattern()]: ["subscribe"],
+    [parfadeRoundDetailChannelsCapabilityPattern()]: ["subscribe"],
   };
 }
 

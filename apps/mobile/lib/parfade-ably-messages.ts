@@ -2,7 +2,8 @@
 export type ParfadeRealtimeMessageV1 =
   | { v: 1; type: "discover-refresh"; reason?: string }
   | { v: 1; type: "inbox-sync"; roundLists?: boolean; notificationBadge?: boolean; reason?: string }
-  | { v: 1; type: "profile-updated"; userId: string };
+  | { v: 1; type: "profile-updated"; userId: string }
+  | { v: 1; type: "round-detail-updated"; inviteToken: string; reason?: string };
 
 export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessageV1 | null {
   let raw: unknown = data;
@@ -40,6 +41,16 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
   }
   if (o.type === "profile-updated" && typeof o.userId === "string") {
     return { v: 1, type: "profile-updated", userId: o.userId };
+  }
+  if (o.type === "round-detail-updated" && typeof (raw as { inviteToken?: unknown }).inviteToken === "string") {
+    const inviteToken = (raw as { inviteToken: string }).inviteToken;
+    const reasonRaw = (raw as { reason?: unknown }).reason;
+    return {
+      v: 1,
+      type: "round-detail-updated",
+      inviteToken,
+      reason: typeof reasonRaw === "string" ? reasonRaw : undefined,
+    };
   }
   return null;
 }

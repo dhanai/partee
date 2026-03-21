@@ -18,6 +18,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useAblyChatMounted } from "../../lib/ably-chat-context";
+import { ParfadeRoundDetailLiveRefresh } from "../../components/parfade-round-detail-live-refresh";
 import { RoundCoverImage } from "../../components/round-cover-image";
 import { apiBaseUrl, apiDelete, apiPost, toAbsoluteUrl } from "../../lib/api";
 import {
@@ -90,6 +92,7 @@ export default function RoundDetailsScreen() {
   const headerHeight = useHeaderHeight();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
+  const ablyChatMounted = useAblyChatMounted();
   const scrollRef = useRef<ScrollView>(null);
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -162,6 +165,18 @@ export default function RoundDetailsScreen() {
     },
     [token],
   );
+
+  const onRemoteRoundDetailRefresh = useCallback(() => {
+    void loadRound({ silent: true });
+  }, [loadRound]);
+
+  const roundDetailLive =
+    ablyChatMounted && token ? (
+      <ParfadeRoundDetailLiveRefresh
+        inviteToken={token}
+        onRoundMaybeUpdated={onRemoteRoundDetailRefresh}
+      />
+    ) : null;
 
   useLayoutEffect(() => {
     if (!token) {
@@ -459,17 +474,23 @@ export default function RoundDetailsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.fairway} />
-      </View>
+      <>
+        {roundDetailLive}
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.fairway} />
+        </View>
+      </>
     );
   }
 
   if (!round) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error ?? "Round not found."}</Text>
-      </View>
+      <>
+        {roundDetailLive}
+        <View style={styles.center}>
+          <Text style={styles.errorText}>{error ?? "Round not found."}</Text>
+        </View>
+      </>
     );
   }
 
@@ -497,6 +518,7 @@ export default function RoundDetailsScreen() {
 
   return (
     <View style={styles.screenRoot}>
+      {roundDetailLive}
       <KeyboardAvoidingView
         style={styles.keyboardFill}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
