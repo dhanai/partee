@@ -8,6 +8,20 @@ On a **physical device**, `http://localhost:3000` is the **phone**, not your Mac
 - **Intermittent HTML 404 on `/api/*` after things worked:** Often a corrupt `.next` dev cache (Next terminal may show `/_not-found` and webpack `ENOENT` / `vendor-chunks`). Stop Next, then from repo root: **`npm run dev:lan:clean`** (deletes `.next` and starts on `0.0.0.0:3000`).
 - **No Mac / easiest:** Set `EXPO_PUBLIC_API_BASE_URL=https://your-app.vercel.app` in **`apps/mobile/.env`** for dev-client sessions, and add the same variable under **EAS → Project → Environment variables** for **development** builds so installs work without Metro.
 
+## Calendar (`expo-calendar`) — `MissingCalendarPListValueException`
+
+iOS **requires** usage strings in **Info.plist**. On **iOS 17+** the system looks for **`NSCalendarsFullAccessUsageDescription`** (and Expo Calendar also validates **reminders** keys). If they’re missing, you get a red screen / fatal at startup when the module loads.
+
+`app.json` now sets these under **`expo.ios.infoPlist`** and **`expo-calendar`** `remindersPermission`. After changing them you must **regenerate the native project**: from `apps/mobile` run **`npx expo prebuild --clean`** (or **`npx expo run:ios`**, which runs prebuild) so the new keys are copied into the built app.
+
+## Calendar — “Cannot find native module ‘ExpoCalendar’”
+
+That error is **not about web vs sim** — it means the **native app you’re running** was built **without** the calendar native module linked (or you’re on a client that doesn’t include it).
+
+- **Custom dev client** (`expo-dev-client`): After adding or changing `expo-calendar` / `app.json` plugins, run a **new native build** — e.g. `npx expo run:ios` from `apps/mobile`, or `eas build --profile development --platform ios` — then open the app from that install. An older dev client IPA won’t magically pick up new native modules.
+- **Expo Go**: Use the **App Store Expo Go** version that matches your **SDK** (e.g. SDK 55). Then calendar should be available; simulator + Expo Go is supported for this module.
+- **Round screen on web**: `expo-calendar` isn’t available in the browser; the app uses a **dynamic import** so the round page still loads; “Add to calendar” shows a short message on web.
+
 ---
 
 # Push notifications (round invites)

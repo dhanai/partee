@@ -30,11 +30,13 @@ function mapMessageRow(
     userName: string;
     userAvatar: string | null;
   },
+  viewerId: string,
 ) {
   return {
     id: r.id,
     body: r.body,
     createdAt: r.createdAt.toISOString(),
+    isMine: r.userId === viewerId,
     user: {
       id: r.userId,
       name: r.userName,
@@ -91,7 +93,10 @@ export async function GET(req: Request, { params }: RouteContext) {
         .limit(1);
 
       if (!ref) {
-        return NextResponse.json({ messages: [] as ReturnType<typeof mapMessageRow>[] });
+        return NextResponse.json({
+          messages: [],
+          viewerId: viewer.id,
+        });
       }
 
       const rows = await db
@@ -110,7 +115,8 @@ export async function GET(req: Request, { params }: RouteContext) {
         .limit(limit);
 
       return NextResponse.json({
-        messages: rows.map(mapMessageRow),
+        messages: rows.map((row) => mapMessageRow(row, viewer.id)),
+        viewerId: viewer.id,
       });
     }
 
@@ -131,7 +137,8 @@ export async function GET(req: Request, { params }: RouteContext) {
 
     const chronological = [...rowsDesc].reverse();
     return NextResponse.json({
-      messages: chronological.map(mapMessageRow),
+      messages: chronological.map((row) => mapMessageRow(row, viewer.id)),
+      viewerId: viewer.id,
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
@@ -186,14 +193,18 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
 
     return NextResponse.json({
-      message: mapMessageRow({
-        id: inserted.id,
-        body: inserted.body,
-        createdAt: inserted.createdAt,
-        userId: inserted.userId,
-        userName: viewer.name,
-        userAvatar: viewer.avatar,
-      }),
+      message: mapMessageRow(
+        {
+          id: inserted.id,
+          body: inserted.body,
+          createdAt: inserted.createdAt,
+          userId: inserted.userId,
+          userName: viewer.name,
+          userAvatar: viewer.avatar,
+        },
+        viewer.id,
+      ),
+      viewerId: viewer.id,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

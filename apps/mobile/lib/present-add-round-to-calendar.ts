@@ -1,8 +1,23 @@
-import * as Calendar from "expo-calendar";
-import type { Event as CalendarEvent } from "expo-calendar";
 import { Alert, Platform } from "react-native";
 import type { RoundDetails } from "../types/round";
 import { formatPlanningWindow } from "./round-card-meta";
+
+/**
+ * Same fields `expo-calendar` expects for `createEventInCalendarAsync`.
+ * Static `import "expo-calendar"` runs as soon as this file loads. That breaks:
+ * - **Web** (no native `ExpoCalendar`)
+ * - **Simulator/device** if the binary was built without calendar (stale dev client / wrong client)
+ * Dynamic import only runs when you tap “Add to calendar” on iOS/Android.
+ */
+type CalendarEventInput = {
+  title?: string;
+  location?: string;
+  notes?: string;
+  startDate: Date;
+  endDate: Date;
+  allDay?: boolean;
+  timeZone?: string;
+};
 
 const ROUND_DURATION_MS = 4.5 * 60 * 60 * 1000;
 
@@ -29,9 +44,7 @@ function eventTimeZone(): string {
   }
 }
 
-function buildCalendarEventData(
-  round: RoundDetails,
-): Omit<Partial<CalendarEvent>, "id"> {
+function buildCalendarEventData(round: RoundDetails): CalendarEventInput {
   const timeZone = eventTimeZone();
 
   if (round.mode === "scheduled" && round.teeTime) {
@@ -91,13 +104,13 @@ export async function presentAddRoundToCalendar(round: RoundDetails): Promise<vo
     return;
   }
 
-  const available = await Calendar.isAvailableAsync();
-  if (!available) {
-    Alert.alert("Calendar", "Calendar isn’t available on this device.");
-    return;
-  }
-
   try {
+    const Calendar = await import("expo-calendar");
+    const available = await Calendar.isAvailableAsync();
+    if (!available) {
+      Alert.alert("Calendar", "Calendar isn’t available on this device.");
+      return;
+    }
     await Calendar.createEventInCalendarAsync(buildCalendarEventData(round));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Couldn’t open the calendar.";

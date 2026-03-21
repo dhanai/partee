@@ -2,14 +2,22 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { ClerkProvider } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
+import { BuildConfigMissingScreen } from "../components/build-config-missing-screen";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { colors } from "../lib/theme";
 
+const CLERK_PUBLISHABLE_ENV = "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY";
+
 export default function RootLayout() {
-  const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim();
 
   if (!publishableKey) {
-    throw new Error("Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in mobile env.");
+    if (__DEV__) {
+      throw new Error(
+        `Missing ${CLERK_PUBLISHABLE_ENV} in mobile env. For EAS builds, set project secrets and rebuild.`,
+      );
+    }
+    return <BuildConfigMissingScreen missingEnv={CLERK_PUBLISHABLE_ENV} />;
   }
 
   return (

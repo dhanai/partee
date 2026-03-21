@@ -18,10 +18,12 @@ export type ChatMessage = {
   id: string;
   body: string;
   createdAt: string;
+  /** Set by API so layout never depends on a separate viewerId update (avoids left/right race). */
+  isMine?: boolean;
   user: { id: string; name: string; avatar: string | null };
 };
 
-type MessagesResponse = { messages: ChatMessage[] };
+type MessagesResponse = { messages: ChatMessage[]; viewerId?: string };
 
 const POLL_MS = 2800;
 const MAX_LIST_HEIGHT = 240;
@@ -29,9 +31,11 @@ const MAX_LIST_HEIGHT = 240;
 type Props = {
   inviteToken: string;
   getToken: () => Promise<string | null>;
+  /** Parent scrolls so the composer stays above the keyboard (round detail screen). */
+  onComposerFocus?: () => void;
 };
 
-export function RoundGroupChat({ inviteToken, getToken }: Props) {
+export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props) {
   const [expanded, setExpanded] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -41,52 +45,91 @@ export function RoundGroupChat({ inviteToken, getToken }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   messagesRef.current = messages;
-  const meId = getCachedMeProfile()?.id ?? null;
+  /** Parent often passes `() => getToken()` inline → new ref every render; must not sit in useCallback deps. */
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+  const inviteTokenRef = useRef(inviteToken);
+  inviteTokenRef.current = inviteToken;
+  const [viewerId, setViewerId] = useState<string | null>(() => getCachedMeProfile()?.id ?? null);
+  /** Ignore chat GET responses after token changed or a newer load started (prevents stale viewer/messages). */
+  const loadGenRef = useRef(0);
+
+  function resolveMine(m: ChatMessage): boolean {
+    if (typeof m.isMine === "boolean") return m.isMine;
+    const vid = viewerId?.trim();
+    return vid != null && vid.length > 0 && m.user.id.trim() === vid;
+  }
 
   const fetchInitial = useCallback(async () => {
+    const gen = ++loadGenRef.current;
     try {
-      const authToken = await getToken();
+      const authToken = await getTokenRef.current();
       if (!authToken) return;
       const data = await apiGet<MessagesResponse>(
         `/api/rounds/${inviteToken}/messages`,
         authToken,
       );
+      if (loadGenRef.current !== gen) return;
+      setViewerId((prev) => {
+        const fromApi = data.viewerId?.trim();
+        const fromCache = getCachedMeProfile()?.id?.trim();
+        return fromApi || fromCache || prev || null;
+      });
       setMessages(data.messages ?? []);
       setLoadError(null);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Could not load chat.");
+      if (loadGenRef.current === gen) {
+        setLoadError(e instanceof Error ? e.message : "Could not load chat.");
+      }
     } finally {
-      setLoading(false);
+      if (loadGenRef.current === gen) {
+        setLoading(false);
+      }
     }
-  }, [inviteToken, getToken]);
+  }, [inviteToken]);
 
   useEffect(() => {
+    setMessages([]);
+    setLoadError(null);
     setLoading(true);
     void fetchInitial();
   }, [fetchInitial]);
 
   useEffect(() => {
     if (!expanded) return;
+    const pollForToken = inviteToken;
     const id = setInterval(() => {
       void (async () => {
+        if (inviteTokenRef.current !== pollForToken) return;
         const list = messagesRef.current;
         try {
-          const authToken = await getToken();
+          const authToken = await getTokenRef.current();
           if (!authToken) return;
+          if (inviteTokenRef.current !== pollForToken) return;
           if (list.length === 0) {
             const data = await apiGet<MessagesResponse>(
-              `/api/rounds/${inviteToken}/messages`,
+              `/api/rounds/${pollForToken}/messages`,
               authToken,
             );
+            if (inviteTokenRef.current !== pollForToken) return;
+            setViewerId((prev) => {
+              const v = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
+              return v || prev || null;
+            });
             const incoming = data.messages ?? [];
             if (incoming.length > 0) setMessages(incoming);
             return;
           }
           const last = list[list.length - 1];
           const data = await apiGet<MessagesResponse>(
-            `/api/rounds/${inviteToken}/messages?after=${encodeURIComponent(last.id)}`,
+            `/api/rounds/${pollForToken}/messages?after=${encodeURIComponent(last.id)}`,
             authToken,
           );
+          if (inviteTokenRef.current !== pollForToken) return;
+          setViewerId((prev) => {
+            const v = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
+            return v || prev || null;
+          });
           const incoming = data.messages ?? [];
           if (incoming.length === 0) return;
           setMessages((prev) => {
@@ -106,7 +149,7 @@ export function RoundGroupChat({ inviteToken, getToken }: Props) {
       })();
     }, POLL_MS);
     return () => clearInterval(id);
-  }, [expanded, inviteToken, getToken]);
+  }, [expanded, inviteToken]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -122,16 +165,18 @@ export function RoundGroupChat({ inviteToken, getToken }: Props) {
     setSendBusy(true);
     setLoadError(null);
     try {
-      const authToken = await getToken();
+      const authToken = await getTokenRef.current();
       if (!authToken) {
         setLoadError("Sign in to send a message.");
         return;
       }
-      const data = await apiPost<{ message: ChatMessage }>(
+      const data = await apiPost<MessagesResponse & { message: ChatMessage }>(
         `/api/rounds/${inviteToken}/messages`,
         { body: text },
         authToken,
       );
+      const vidSend = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
+      if (vidSend) setViewerId(vidSend);
       setDraft("");
       setMessages((prev) => {
         if (prev.some((m) => m.id === data.message.id)) return prev;
@@ -188,41 +233,42 @@ export function RoundGroupChat({ inviteToken, getToken }: Props) {
                 <Text style={styles.empty}>No messages yet. Say hi!</Text>
               ) : (
                 messages.map((m) => {
-                  const mine = meId != null && m.user.id === meId;
+                  const mine = resolveMine(m);
+                  const avatarEl = m.user.avatar ? (
+                    <Image
+                      source={{ uri: toAbsoluteUrl(m.user.avatar) }}
+                      style={styles.avatar}
+                    />
+                  ) : (
+                    <View style={[styles.avatar, styles.avatarFallback]}>
+                      <Text style={styles.avatarInitial}>
+                        {m.user.name.trim().charAt(0).toUpperCase() || "?"}
+                      </Text>
+                    </View>
+                  );
                   return (
-                    <View
-                      key={m.id}
-                      style={[styles.bubbleRow, mine && styles.bubbleRowMine]}
-                    >
-                      {!mine ? (
-                        m.user.avatar ? (
-                          <Image
-                            source={{ uri: toAbsoluteUrl(m.user.avatar) }}
-                            style={styles.avatar}
-                          />
-                        ) : (
-                          <View style={[styles.avatar, styles.avatarFallback]}>
-                            <Text style={styles.avatarInitial}>
-                              {m.user.name.trim().charAt(0).toUpperCase() || "?"}
+                    <View key={m.id} style={styles.bubbleRow}>
+                      {mine ? (
+                        <>
+                          <View style={styles.bubbleRowFlex} />
+                          <View style={[styles.bubble, styles.bubbleMine]}>
+                            <Text style={[styles.bubbleBody, styles.bubbleBodyMine]}>{m.body}</Text>
+                            <Text style={[styles.bubbleTime, styles.bubbleTimeMine]}>
+                              {formatTime(m.createdAt)}
                             </Text>
                           </View>
-                        )
+                          {avatarEl}
+                        </>
                       ) : (
-                        <View style={styles.avatarSpacer} />
+                        <>
+                          {avatarEl}
+                          <View style={[styles.bubble, styles.bubbleTheirs]}>
+                            <Text style={styles.bubbleName}>{m.user.name}</Text>
+                            <Text style={styles.bubbleBody}>{m.body}</Text>
+                            <Text style={styles.bubbleTime}>{formatTime(m.createdAt)}</Text>
+                          </View>
+                        </>
                       )}
-                      <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
-                        {!mine ? (
-                          <Text style={styles.bubbleName}>{m.user.name}</Text>
-                        ) : null}
-                        <Text
-                          style={[styles.bubbleBody, mine && styles.bubbleBodyMine]}
-                        >
-                          {m.body}
-                        </Text>
-                        <Text style={[styles.bubbleTime, mine && styles.bubbleTimeMine]}>
-                          {formatTime(m.createdAt)}
-                        </Text>
-                      </View>
                     </View>
                   );
                 })
@@ -238,6 +284,7 @@ export function RoundGroupChat({ inviteToken, getToken }: Props) {
             <TextInput
               value={draft}
               onChangeText={setDraft}
+              onFocus={() => onComposerFocus?.()}
               placeholder="Message the group…"
               placeholderTextColor={colors.muted}
               style={styles.input}
@@ -292,12 +339,14 @@ const styles = StyleSheet.create({
   messageListContent: { gap: 10, paddingBottom: 4 },
   empty: { color: colors.muted, fontSize: 13, paddingVertical: 8, textAlign: "center" },
   bubbleRow: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 8,
     maxWidth: "100%",
   },
-  bubbleRowMine: { flexDirection: "row-reverse" },
+  /** Pushes “mine” row (bubble + avatar) to the right. */
+  bubbleRowFlex: { flex: 1, minWidth: 0 },
   avatar: { width: 28, height: 28, borderRadius: 999 },
   avatarFallback: {
     backgroundColor: colors.fairwaySoft,
@@ -305,7 +354,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarInitial: { fontSize: 11, fontWeight: "700", color: colors.fairway },
-  avatarSpacer: { width: 28 },
   bubble: {
     flexShrink: 1,
     maxWidth: "78%",

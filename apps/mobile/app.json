@@ -16,11 +16,16 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.partee-mobile",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCalendarsUsageDescription": "Partee can add rounds you host or join to your calendar when you tap Add to calendar.",
+        "NSCalendarsFullAccessUsageDescription": "Partee can add rounds you host or join to your calendar when you tap Add to calendar.",
+        "NSRemindersUsageDescription": "Partee uses this only as required by iOS when saving round events to your calendar.",
+        "NSRemindersFullAccessUsageDescription": "Partee uses this only as required by iOS when saving round events to your calendar."
       },
-      "buildNumber": "3"
+      "buildNumber": "4"
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#1a3c2a",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -42,7 +47,8 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "Partee can add rounds you host or join to your calendar when you tap Add to calendar."
+          "calendarPermission": "Partee can add rounds you host or join to your calendar when you tap Add to calendar.",
+          "remindersPermission": "Partee uses this only as required by iOS when saving round events to your calendar."
         }
       ],
       "@react-native-community/datetimepicker",

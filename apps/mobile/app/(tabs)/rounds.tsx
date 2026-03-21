@@ -5,9 +5,9 @@ import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   FlatList,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -150,6 +150,9 @@ export default function MyRoundsScreen() {
 
   const [inviteActionRoundId, setInviteActionRoundId] = useState<string | null>(null);
   const [hostActionRoundId, setHostActionRoundId] = useState<string | null>(null);
+  /** Same modal pattern as round detail — swipe delete opens this instead of `Alert.alert`. */
+  const [hostDeleteTarget, setHostDeleteTarget] = useState<MineRound | null>(null);
+  const lastHostEditNavAtRef = useRef(0);
   const [inviteRowError, setInviteRowError] = useState<Record<string, string>>({});
   /** Mail-style: no list scroll while a row owns the horizontal pan. */
   const [listScrollLockedForRowSwipe, setListScrollLockedForRowSwipe] = useState(false);
@@ -364,19 +367,8 @@ export default function MyRoundsScreen() {
     }
   }, [activeTab, hosting.length, joined.length, invited.length, loading, loadingMore]);
 
-  function promptHostDelete(round: MineRound) {
-    Alert.alert(
-      "Delete this round?",
-      "This removes the round for everyone and can’t be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => void confirmDeleteHostedRound(round),
-        },
-      ],
-    );
+  function openHostDeleteModal(round: MineRound) {
+    setHostDeleteTarget(round);
   }
 
   async function confirmDeleteHostedRound(round: MineRound) {
@@ -637,13 +629,16 @@ export default function MyRoundsScreen() {
               variant={swipeVariant}
               enabled={swipeEnabled}
               onSwipeActiveChange={onRowSwipeActiveChange}
-              onHostDelete={() => promptHostDelete(round)}
-              onHostEdit={() =>
+              onHostDelete={() => openHostDeleteModal(round)}
+              onHostEdit={() => {
+                const now = Date.now();
+                if (now - lastHostEditNavAtRef.current < 900) return;
+                lastHostEditNavAtRef.current = now;
                 router.push({
                   pathname: "/round/[token]/edit",
                   params: { token: round.inviteToken },
-                })
-              }
+                });
+              }}
               onInviteClaim={() => void submitInviteAction(round, "claim")}
               onInviteDecline={() => void submitInviteAction(round, "decline")}
             >
@@ -740,6 +735,41 @@ export default function MyRoundsScreen() {
           );
         }}
       />
+
+      <Modal
+        visible={hostDeleteTarget != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setHostDeleteTarget(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setHostDeleteTarget(null)}>
+          <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
+            <Text style={styles.modalTitle}>Delete round?</Text>
+            <Text style={styles.modalMeta}>
+              This will permanently remove the round and all RSVP activity.
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnSecondary]}
+                onPress={() => setHostDeleteTarget(null)}
+              >
+                <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnDanger]}
+                onPress={() => {
+                  const r = hostDeleteTarget;
+                  if (!r) return;
+                  setHostDeleteTarget(null);
+                  void confirmDeleteHostedRound(r);
+                }}
+              >
+                <Text style={styles.modalBtnDangerText}>Delete</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -895,4 +925,33 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 8,
   },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+  },
+  modalTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+  modalMeta: { color: colors.muted, fontSize: 12 },
+  modalActions: { flexDirection: "row", gap: 8, alignItems: "center" },
+  modalBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  modalBtnSecondary: { backgroundColor: "#ece8e1" },
+  modalBtnSecondaryText: { color: colors.text, fontWeight: "700" },
+  modalBtnDanger: {
+    backgroundColor: "#fee4e2",
+    borderWidth: 1,
+    borderColor: "#fbc6c2",
+  },
+  modalBtnDangerText: { color: colors.danger, fontWeight: "700" },
 });

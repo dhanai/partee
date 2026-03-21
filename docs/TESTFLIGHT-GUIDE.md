@@ -66,6 +66,14 @@ npx eas-cli secret:create --scope project --name EXPO_PUBLIC_CLERK_PUBLISHABLE_K
 
 **Local dev** can still use `apps/mobile/.env` / `.env.local`; EAS does not read those unless you wire `eas.json` `env` (optional).
 
+### Crash immediately when opening TestFlight build?
+
+Most often **`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` was not set for the EAS build** (or the profile you used didn’t inherit project env). The JS bundle then has no Clerk key; older builds **threw on launch** and iOS reported a crash. **New builds** show an in-app “Configuration needed” screen instead.
+
+1. Expo dashboard → your project → **Environment variables** (or `eas env:list` / `eas secret:list`) and confirm **`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`** and **`EXPO_PUBLIC_API_BASE_URL`** exist for **production** (or the profile you build with).
+2. Run **`eas build --profile production --platform ios`** again and submit the new build to TestFlight.
+3. If it still crashes with **no** config screen, collect a device log (Xcode → Window → Devices and Simulators → open console while launching the app) and look for native/assertion errors — then compare with a known-good Expo SDK / plugin matrix.
+
 ---
 
 ## 4. iOS bundle ID, version, and native modules

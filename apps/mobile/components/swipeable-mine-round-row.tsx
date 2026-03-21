@@ -284,11 +284,16 @@ export function SwipeableMineRoundRow({
     }
   }, [variant, enabled, translateX]);
 
-  const closeThen = (fn?: () => void) => {
+  /**
+   * Run the action immediately, then close the row in parallel. Waiting for the close
+   * animation before `router.push` / modal made taps feel dead on device and encouraged
+   * multi-tap → duplicate screens / stacked alerts.
+   */
+  const invokeThenCloseRow = (fn?: () => void) => {
+    fn?.();
     translateX.stopAnimation((current) => {
       easeSnapTo(translateX, 0, current, () => {
         lastTranslateXRef.current = 0;
-        fn?.();
       });
     });
   };
@@ -460,7 +465,7 @@ export function SwipeableMineRoundRow({
               label={leftLabel}
               circleColor={leftCircleColor}
               iconColor="#fff"
-              onPress={() => closeThen(onLeftPress)}
+              onPress={() => invokeThenCloseRow(onLeftPress)}
             />
           </Animated.View>
         </View>
@@ -472,7 +477,7 @@ export function SwipeableMineRoundRow({
               label={rightLabel}
               circleColor={rightCircleColor}
               iconColor={rightIconColor}
-              onPress={() => closeThen(onRightPress)}
+              onPress={() => invokeThenCloseRow(onRightPress)}
               iconStyle={
                 variant === "host" ? styles.editPencilIconNudge : undefined
               }

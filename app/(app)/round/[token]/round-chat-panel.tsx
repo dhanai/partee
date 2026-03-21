@@ -7,14 +7,21 @@ type ChatMessage = {
   id: string;
   body: string;
   createdAt: string;
+  isMine?: boolean;
   user: { id: string; name: string; avatar: string | null };
 };
+
+function messageIsMine(m: ChatMessage, viewerId: string | null): boolean {
+  if (typeof m.isMine === "boolean") return m.isMine;
+  return viewerId != null && m.user.id === viewerId;
+}
 
 const POLL_MS = 2800;
 
 export function RoundChatPanel({ inviteToken }: { inviteToken: string }) {
   const { getToken, isLoaded } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [viewerId, setViewerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -37,9 +44,14 @@ export function RoundChatPanel({ inviteToken }: { inviteToken: string }) {
     }
     try {
       const res = await fetch(`/api/rounds/${inviteToken}/messages`, { headers });
-      const json = (await res.json()) as { messages?: ChatMessage[]; error?: string };
+      const json = (await res.json()) as {
+        messages?: ChatMessage[];
+        viewerId?: string;
+        error?: string;
+      };
       if (!res.ok) throw new Error(json.error ?? "Could not load chat.");
       setMessages(json.messages ?? []);
+      if (json.viewerId) setViewerId(json.viewerId);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load chat.");
@@ -64,9 +76,10 @@ export function RoundChatPanel({ inviteToken }: { inviteToken: string }) {
         try {
           if (list.length === 0) {
             const res = await fetch(`/api/rounds/${inviteToken}/messages`, { headers });
-            const json = (await res.json()) as { messages?: ChatMessage[] };
-            if (res.ok && (json.messages?.length ?? 0) > 0) {
-              setMessages(json.messages ?? []);
+            const json = (await res.json()) as { messages?: ChatMessage[]; viewerId?: string };
+            if (res.ok) {
+              if (json.viewerId) setViewerId(json.viewerId);
+              if ((json.messages?.length ?? 0) > 0) setMessages(json.messages ?? []);
             }
             return;
           }
@@ -75,8 +88,9 @@ export function RoundChatPanel({ inviteToken }: { inviteToken: string }) {
             `/api/rounds/${inviteToken}/messages?after=${encodeURIComponent(last.id)}`,
             { headers },
           );
-          const json = (await res.json()) as { messages?: ChatMessage[] };
+          const json = (await res.json()) as { messages?: ChatMessage[]; viewerId?: string };
           if (!res.ok) return;
+          if (json.viewerId) setViewerId(json.viewerId);
           const incoming = json.messages ?? [];
           if (incoming.length === 0) return;
           setMessages((prev) => {
@@ -114,8 +128,13 @@ export function RoundChatPanel({ inviteToken }: { inviteToken: string }) {
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ body: text }),
       });
-      const json = (await res.json()) as { message?: ChatMessage; error?: string };
+      const json = (await res.json()) as {
+        message?: ChatMessage;
+        viewerId?: string;
+        error?: string;
+      };
       if (!res.ok) throw new Error(json.error ?? "Send failed.");
+      if (json.viewerId) setViewerId(json.viewerId);
       setDraft("");
       if (json.message) {
         setMessages((prev) =>
@@ -160,13 +179,38 @@ export function RoundChatPanel({ inviteToken }: { inviteToken: string }) {
               {messages.length === 0 ? (
                 <li className="text-center text-sm text-charcoal-300">No messages yet.</li>
               ) : (
-                messages.map((m) => (
-                  <li key={m.id} className="text-sm">
-                    <span className="font-semibold text-charcoal">{m.user.name}</span>
-                    <span className="text-charcoal-300"> · {formatTime(m.createdAt)}</span>
-                    <p className="mt-0.5 whitespace-pre-wrap text-charcoal">{m.body}</p>
-                  </li>
-                ))
+                messages.map((m) => {
+                  const mine = messageIsMine(m, viewerId);
+                  return (
+                    <li
+                      key={m.id}
+                      className={`flex w-full gap-2 text-sm ${mine ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[78%] rounded-2xl px-3 py-2 ${
+                          mine
+                            ? "bg-fairway text-white"
+                            : "border border-cream-200 bg-white text-charcoal"
+                        }`}
+                      >
+                        {!mine ? (
+                          <>
+                            <span className="font-semibold text-charcoal-500">{m.user.name}</span>
+                            <span className="text-charcoal-300"> · {formatTime(m.createdAt)}</span>
+                          </>
+                        ) : null}
+                        <p className={`mt-0.5 whitespace-pre-wrap ${mine ? "text-white" : ""}`}>
+                          {m.body}
+                        </p>
+                        {mine ? (
+                          <p className="mt-1 text-right text-[10px] text-white/75">
+                            {formatTime(m.createdAt)}
+                          </p>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })
               )}
             </ul>
           )}

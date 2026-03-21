@@ -1,4 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
@@ -6,8 +7,12 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   Share,
   ActivityIndicator,
+  Dimensions,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -73,8 +78,13 @@ export default function RoundDetailsScreen() {
   }>();
   const router = useRouter();
   const navigation = useNavigation();
+  const headerHeight = useHeaderHeight();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
+  const scrollRef = useRef<ScrollView>(null);
+  const chatSectionLayout = useRef({ y: 0, height: 0 });
+  const keyboardHeightRef = useRef(0);
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const isFirstFocusRef = useRef(true);
@@ -106,6 +116,43 @@ export default function RoundDetailsScreen() {
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
+
+  const scrollChatIntoView = useCallback(() => {
+    const { y, height } = chatSectionLayout.current;
+    const kb = keyboardHeightRef.current;
+    if (height <= 0) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+      return;
+    }
+    const winH = Dimensions.get("window").height;
+    // Smaller visibleApprox / larger tail → scroll further so composer clears the keyboard.
+    const visibleApprox = winH - headerHeight - 160 - Math.min(kb, 360) * 0.35;
+    const targetY = y + height - visibleApprox + 56 + (kb > 0 ? Math.min(kb * 0.2, 56) : 0);
+    scrollRef.current?.scrollTo({ y: Math.max(0, targetY), animated: true });
+  }, [headerHeight]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const onShow = (e: { endCoordinates: { height: number } }) => {
+      const h = e.endCoordinates.height;
+      keyboardHeightRef.current = h;
+      setKeyboardInset(h);
+      requestAnimationFrame(() => scrollChatIntoView());
+      setTimeout(() => scrollChatIntoView(), 120);
+      setTimeout(() => scrollChatIntoView(), 320);
+    };
+    const onHide = () => {
+      keyboardHeightRef.current = 0;
+      setKeyboardInset(0);
+    };
+    const subShow = Keyboard.addListener(showEvent, onShow);
+    const subHide = Keyboard.addListener(hideEvent, onHide);
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, [scrollChatIntoView]);
 
   useEffect(() => {
     return subscribeRoundListsRefresh((payload) => {
@@ -476,8 +523,27 @@ export default function RoundDetailsScreen() {
     });
   }
 
+  /** Stack header + extra slack so KAV padding clears the keyboard under the composer. */
+  const kavOffset = headerHeight + 32;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.screenRoot}>
+      <KeyboardAvoidingView
+        style={styles.keyboardFill}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={kavOffset}
+      >
+        <ScrollView
+          ref={scrollRef}
+          style={styles.container}
+          contentContainerStyle={[
+            styles.content,
+            keyboardInset > 0 && { paddingBottom: 32 + keyboardInset },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+          keyboardDismissMode="interactive"
+        >
       {round.mode === "scheduled" ? (
         <>
           <RoundCoverImage
@@ -588,7 +654,18 @@ export default function RoundDetailsScreen() {
       ) : null}
 
       {canUseGroupChat && token ? (
-        <RoundGroupChat inviteToken={token} getToken={() => getTokenRef.current()} />
+        <View
+          onLayout={(e) => {
+            const { y, height } = e.nativeEvent.layout;
+            chatSectionLayout.current = { y, height };
+          }}
+        >
+          <RoundGroupChat
+            inviteToken={token}
+            getToken={() => getTokenRef.current()}
+            onComposerFocus={scrollChatIntoView}
+          />
+        </View>
       ) : (
         <View style={styles.chatTeaser}>
           <Text style={styles.chatTeaserText}>
@@ -854,11 +931,15 @@ export default function RoundDetailsScreen() {
         onChange={setFinalizeTeeTimeValue}
         onClose={() => setTimePickerOpen(false)}
       />
-    </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenRoot: { flex: 1, backgroundColor: colors.background },
+  keyboardFill: { flex: 1 },
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, gap: 8, paddingBottom: 32 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
