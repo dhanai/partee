@@ -1,4 +1,8 @@
 import { Stack } from "expo-router";
+import {
+  renderProfileStackHeaderLeft,
+  type ProfileStackHeaderBackProps,
+} from "../../../lib/profile-stack-header-back";
 import { colors } from "../../../lib/theme";
 
 /**
@@ -9,13 +13,15 @@ import { colors } from "../../../lib/theme";
 export default function ProfileUserStackLayout() {
   return (
     <Stack
-      screenOptions={{
+      screenOptions={({ navigation }) => ({
         headerShadowVisible: false,
         headerLargeTitle: false,
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
         contentStyle: { backgroundColor: colors.background },
-      }}
+        headerLeft: (props: ProfileStackHeaderBackProps) =>
+          renderProfileStackHeaderLeft(navigation, props),
+      })}
     >
       <Stack.Screen
         name="index"

@@ -125,9 +125,9 @@ export default function PublicProfileScreen() {
   }, [userId, userName, userAvatar]);
 
   useLayoutEffect(() => {
-    const title = formatProfileNavTitle(profile?.user.name ?? "");
+    const title = loading ? "Profile" : formatProfileNavTitle(profile?.user.name ?? "");
     navigation.setOptions({ title });
-  }, [navigation, profile?.user.name]);
+  }, [navigation, loading, profile?.user.name]);
 
   const initials = useMemo(() => {
     const name = profile?.user.name ?? "";
