@@ -117,6 +117,7 @@ Most often **`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` was not set for the EAS build**
 | 7.3 | Wait for EAS to finish; download or use **Submit** flow. |
 | 7.4 | **Submit to App Store Connect:** `npx eas-cli submit --platform ios --latest` (or upload the `.ipa` manually in Transporter). |
 | 7.5 | In **App Store Connect**: add **TestFlight** testers, internal testing first, then external if needed (may require brief “export compliance” / encryption questions). |
+| 7.6 | **Icon placeholder in Connect**: App Store Connect often keeps a generic listing icon until a **build is uploaded and tied to distribution** (e.g. first TestFlight build or a version with a binary). After that, the **icon from the IPA** usually appears—separate from the home-screen icon cache on device. |
 
 ---
 
