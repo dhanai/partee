@@ -1,10 +1,13 @@
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
+import { useIsFocused } from "@react-navigation/native";
+import { setStatusBarStyle } from "expo-status-bar";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
   ImageBackground,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -24,7 +27,7 @@ import { colors } from "../../../lib/theme";
 const WINDOW_HEIGHT = Dimensions.get("window").height;
 
 function profileHeroHeight() {
-  return Math.min(420, Math.max(280, Math.round(WINDOW_HEIGHT * 0.44)));
+  return Math.min(520, Math.max(320, Math.round(WINDOW_HEIGHT * 0.58)));
 }
 
 /**
@@ -80,6 +83,7 @@ export default function PublicProfileScreen() {
     userName?: string;
     userAvatar?: string;
   }>();
+  const isFocused = useIsFocused();
   const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
@@ -91,6 +95,15 @@ export default function PublicProfileScreen() {
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setStatusBarStyle("dark");
+      return;
+    }
+    const immersive = !loading && profile;
+    setStatusBarStyle(immersive ? "light" : "dark");
+  }, [isFocused, loading, profile]);
 
   async function loadProfile(options?: { silent?: boolean }) {
     if (!userId) return;
@@ -230,16 +243,11 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen
-        options={{
-          title: "",
-          headerTransparent: true,
-          headerTintColor: "#fff",
-          headerShadowVisible: false,
-          headerStyle: { backgroundColor: "transparent" },
-        }}
-      />
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "never" : undefined}
+    >
       <View style={[styles.hero, { height: heroH }]}>
         {profile.user.avatar ? (
           <ImageBackground
@@ -247,6 +255,7 @@ export default function PublicProfileScreen() {
             style={styles.heroImage}
             imageStyle={styles.heroImageInner}
           >
+            <View style={styles.heroTopScrim} pointerEvents="none" />
             <View style={styles.heroScrim} />
             <View style={styles.heroTextBlock}>
               <Text style={styles.heroName}>{profile.user.name}</Text>
@@ -259,6 +268,7 @@ export default function PublicProfileScreen() {
           </ImageBackground>
         ) : (
           <View style={[styles.heroImage, styles.heroPlaceholder]}>
+            <View style={styles.heroTopScrim} pointerEvents="none" />
             <Text style={styles.heroInitialsLarge}>{initials}</Text>
             <View style={styles.heroScrim} />
             <View style={styles.heroTextBlock}>
@@ -339,6 +349,14 @@ const styles = StyleSheet.create({
   },
   heroImageInner: {
     resizeMode: "cover",
+  },
+  heroTopScrim: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 140,
+    backgroundColor: "rgba(0,0,0,0.28)",
   },
   heroPlaceholder: {
     backgroundColor: colors.fairwaySoft,

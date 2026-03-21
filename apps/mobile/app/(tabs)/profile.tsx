@@ -2,11 +2,13 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
+import { setStatusBarStyle } from "expo-status-bar";
 import {
   ActivityIndicator,
   Dimensions,
   ImageBackground,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -35,11 +37,12 @@ type MeResponse = {
 const WINDOW_HEIGHT = Dimensions.get("window").height;
 
 function profileHeroHeight() {
-  return Math.min(420, Math.max(280, Math.round(WINDOW_HEIGHT * 0.44)));
+  return Math.min(520, Math.max(320, Math.round(WINDOW_HEIGHT * 0.58)));
 }
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
@@ -64,15 +67,23 @@ export default function ProfileScreen() {
       },
       headerRight: () => (
         <Pressable
-          style={styles.headerSettingsBtn}
+          style={styles.headerGlassBtn}
           onPress={() => router.push("/settings")}
           accessibilityLabel="Open settings"
         >
-          <Ionicons name="options-outline" size={18} color={colors.fairway} />
+          <Ionicons name="options-outline" size={20} color="#fff" />
         </Pressable>
       ),
     });
   }, [navigation, router]);
+
+  useEffect(() => {
+    if (isFocused) {
+      setStatusBarStyle(loading ? "dark" : "light");
+    } else {
+      setStatusBarStyle("dark");
+    }
+  }, [isFocused, loading]);
 
   function applyMeUser(user: MeResponse["user"]) {
     setCachedMeProfile(user);
@@ -144,7 +155,11 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "never" : undefined}
+    >
       {loading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={colors.fairway} />
@@ -158,6 +173,7 @@ export default function ProfileScreen() {
                 style={styles.heroImage}
                 imageStyle={styles.heroImageInner}
               >
+                <View style={styles.heroTopScrim} pointerEvents="none" />
                 <View style={styles.heroScrim} />
                 <View style={styles.heroTextBlock}>
                   <Text style={styles.heroName}>{name || "Your profile"}</Text>
@@ -170,6 +186,7 @@ export default function ProfileScreen() {
               </ImageBackground>
             ) : (
               <View style={[styles.heroImage, styles.heroPlaceholder]}>
+                <View style={styles.heroTopScrim} pointerEvents="none" />
                 <Text style={styles.heroInitialsLarge}>{initials}</Text>
                 <View style={styles.heroScrim} />
                 <View style={styles.heroTextBlock}>
@@ -253,6 +270,14 @@ const styles = StyleSheet.create({
   },
   heroImageInner: {
     resizeMode: "cover",
+  },
+  heroTopScrim: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 140,
+    backgroundColor: "rgba(0,0,0,0.28)",
   },
   heroPlaceholder: {
     backgroundColor: colors.fairwaySoft,
@@ -341,14 +366,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   actionSecondaryText: { color: colors.text, fontWeight: "800", fontSize: 16 },
-  errorText: { color: colors.danger },
-  headerSettingsBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+  errorText: { color: colors.danger, paddingHorizontal: 16 },
+  headerGlassBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(0,0,0,0.38)",
     alignItems: "center",
     justifyContent: "center",
   },

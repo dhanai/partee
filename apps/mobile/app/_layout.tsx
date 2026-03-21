@@ -91,8 +91,12 @@ export default function RootLayout() {
             <Stack.Screen
               name="profile/[userId]"
               options={{
-                title: "Profile",
+                title: "",
                 headerBackTitle: "Back",
+                headerTransparent: true,
+                headerShadowVisible: false,
+                headerStyle: { backgroundColor: "transparent" },
+                headerTintColor: "#ffffff",
               }}
             />
             <Stack.Screen
