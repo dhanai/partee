@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { subscribeNotificationsListsRefresh } from "../lib/notifications-list-refresh";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { buildRoundListHint, prefetchRoundOpen } from "../lib/round-details-cache";
@@ -57,6 +58,25 @@ export default function NotificationsScreen() {
     getTokenRef.current = getToken;
   }, [getToken]);
 
+  const fetchNotificationsData = useCallback(async () => {
+    const authToken = await getTokenRef.current();
+    const [roundData, followData, activityData] = await Promise.all([
+      apiGet<MineTabResponse>(
+        "/api/rounds/mine?tab=joined&limit=50&includeInvited=1",
+        authToken,
+      ),
+      apiGet<FollowRequestsResponse>("/api/users/me/follow-requests", authToken),
+      apiGet<ActivityNotificationsResponse>("/api/users/me/activity-notifications", authToken),
+    ]);
+    setInviteNotifications(
+      roundData.rounds.filter(
+        (round) => round.spotStatus === "invited" || round.spotStatus === "requested",
+      ),
+    );
+    setFollowRequestNotifications(followData.requests ?? []);
+    setActivityItems(activityData.items ?? []);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -65,23 +85,8 @@ export default function NotificationsScreen() {
         setLoading(true);
         setError(null);
         try {
-          const authToken = await getTokenRef.current();
-          const [roundData, followData, activityData] = await Promise.all([
-            apiGet<MineTabResponse>(
-              "/api/rounds/mine?tab=joined&limit=50&includeInvited=1",
-              authToken,
-            ),
-            apiGet<FollowRequestsResponse>("/api/users/me/follow-requests", authToken),
-            apiGet<ActivityNotificationsResponse>("/api/users/me/activity-notifications", authToken),
-          ]);
+          await fetchNotificationsData();
           if (cancelled) return;
-          setInviteNotifications(
-            roundData.rounds.filter(
-              (round) => round.spotStatus === "invited" || round.spotStatus === "requested",
-            ),
-          );
-          setFollowRequestNotifications(followData.requests ?? []);
-          setActivityItems(activityData.items ?? []);
           await markSeenRef.current();
         } catch (loadError) {
           if (!cancelled) {
@@ -100,8 +105,16 @@ export default function NotificationsScreen() {
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [fetchNotificationsData]),
   );
+
+  useEffect(() => {
+    return subscribeNotificationsListsRefresh(() => {
+      void fetchNotificationsData().catch(() => {
+        // Silent refresh (e.g. Ably nudge while another tab is visible).
+      });
+    });
+  }, [fetchNotificationsData]);
 
   async function handleFollowRequestAction(
     followerId: string,

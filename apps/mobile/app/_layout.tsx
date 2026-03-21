@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { BuildConfigMissingScreen } from "../components/build-config-missing-screen";
 import { ParfadeAppRealtimeGate } from "../components/parfade-app-realtime";
 import { AblyChatProviders } from "../lib/ably-chat-context";
+import { InAppToastProvider } from "../lib/in-app-toast-context";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
 import { colors } from "../lib/theme";
@@ -54,9 +55,10 @@ export default function RootLayout() {
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoadedSplashSync />
       <NotificationBadgeProvider>
-        <AblyChatProviders>
-          <ParfadeAppRealtimeGate />
-          <NotificationDeepLinkEffects />
+        <InAppToastProvider>
+          <AblyChatProviders>
+            <ParfadeAppRealtimeGate />
+            <NotificationDeepLinkEffects />
           <StatusBar style="dark" />
           <Stack
             screenOptions={{
@@ -140,7 +142,8 @@ export default function RootLayout() {
               }}
             />
           </Stack>
-        </AblyChatProviders>
+          </AblyChatProviders>
+        </InAppToastProvider>
       </NotificationBadgeProvider>
     </ClerkProvider>
   );

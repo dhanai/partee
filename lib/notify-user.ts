@@ -7,6 +7,7 @@ import {
   formatChatPushTitleLine,
   formatInviterFirstLastInitial,
 } from "@/lib/round-invite-push-message";
+import { publishNotificationBadgeNudge } from "@/lib/parfade-ably-publish";
 import { sendExpoPushMessages } from "@/lib/push-expo";
 
 /**
@@ -52,6 +53,8 @@ export async function recordHostRoundRsvpAndMaybePush(input: {
     },
   });
 
+  publishNotificationBadgeNudge(input.hostId, "round-rsvp");
+
   if (!accepted) return;
 
   const [row] = await db
@@ -96,17 +99,19 @@ export async function notifyFollowRequest(input: {
     .limit(1);
 
   const token = row?.token?.trim();
-  if (!token) return;
+  if (token) {
+    await sendExpoPushMessages([
+      {
+        to: token,
+        sound: "default",
+        title: "New follow request",
+        body: `${input.followerName} wants to follow you on Parfade.`,
+        data: { type: "follow_request" },
+      },
+    ]);
+  }
 
-  await sendExpoPushMessages([
-    {
-      to: token,
-      sound: "default",
-      title: "New follow request",
-      body: `${input.followerName} wants to follow you on Parfade.`,
-      data: { type: "follow_request" },
-    },
-  ]);
+  publishNotificationBadgeNudge(input.followedUserId, "follow-request");
 }
 
 export async function notifyRoundInvites(input: {

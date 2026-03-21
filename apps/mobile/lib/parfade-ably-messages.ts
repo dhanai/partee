@@ -3,7 +3,15 @@ export type ParfadeRealtimeMessageV1 =
   | { v: 1; type: "discover-refresh"; reason?: string }
   | { v: 1; type: "inbox-sync"; roundLists?: boolean; notificationBadge?: boolean; reason?: string }
   | { v: 1; type: "profile-updated"; userId: string }
-  | { v: 1; type: "round-detail-updated"; inviteToken: string; reason?: string };
+  | { v: 1; type: "round-detail-updated"; inviteToken: string; reason?: string }
+  | {
+      v: 1;
+      type: "group-chat-toast";
+      inviteToken: string;
+      roundTitle: string;
+      senderLabel: string;
+      bodyPreview: string;
+    };
 
 export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessageV1 | null {
   let raw: unknown = data;
@@ -51,6 +59,29 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
       inviteToken,
       reason: typeof reasonRaw === "string" ? reasonRaw : undefined,
     };
+  }
+  if (o.type === "group-chat-toast") {
+    const r = raw as {
+      inviteToken?: unknown;
+      roundTitle?: unknown;
+      senderLabel?: unknown;
+      bodyPreview?: unknown;
+    };
+    if (
+      typeof r.inviteToken === "string" &&
+      typeof r.roundTitle === "string" &&
+      typeof r.senderLabel === "string" &&
+      typeof r.bodyPreview === "string"
+    ) {
+      return {
+        v: 1,
+        type: "group-chat-toast",
+        inviteToken: r.inviteToken,
+        roundTitle: r.roundTitle,
+        senderLabel: r.senderLabel,
+        bodyPreview: r.bodyPreview,
+      };
+    }
   }
   return null;
 }

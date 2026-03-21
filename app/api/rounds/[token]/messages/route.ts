@@ -5,7 +5,10 @@ import { db } from "@/db";
 import { roundMessages, rounds, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyRoundChatMessagePushes } from "@/lib/notify-user";
-import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
+import {
+  publishAfterRoundDetailChanged,
+  publishGroupChatToastFanout,
+} from "@/lib/parfade-ably-publish";
 import { canAccessRoundChat } from "@/lib/round-chat-access";
 
 type RouteContext = {
@@ -214,6 +217,19 @@ export async function POST(req: Request, { params }: RouteContext) {
       teeTime: round.teeTime,
       targetDate: round.targetDate,
     }).catch((err) => console.error("[POST /api/rounds/.../messages] push", err));
+
+    publishGroupChatToastFanout({
+      roundId: round.id,
+      inviteToken: round.inviteToken,
+      senderUserId: viewer.id,
+      senderName: viewer.name,
+      messageBody: parsed.body,
+      courseName: round.courseName,
+      planningLocation: round.planningLocation,
+      mode: round.mode,
+      teeTime: round.teeTime,
+      targetDate: round.targetDate,
+    });
 
     publishAfterRoundDetailChanged(token, "chat-message");
 

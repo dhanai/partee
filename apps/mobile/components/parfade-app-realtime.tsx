@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useAblyChatMounted } from "../lib/ably-chat-context";
 import { parfadeDiscoverChannel, parfadeUserInboxChannel } from "../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../lib/parfade-ably-messages";
+import { useInAppToast } from "../lib/in-app-toast-context";
+import { emitNotificationsListsShouldRefresh } from "../lib/notifications-list-refresh";
 import { emitRoundListsShouldRefresh } from "../lib/round-lists-refresh";
 import { useNotificationBadge } from "../lib/notification-badge-context";
 
@@ -12,11 +14,12 @@ const PARFADE_EVENT = "parfade";
 /**
  * Subscribes to Parfade-wide Ably channels (discover + per-user inbox).
  * Uses the Realtime client directly so we do not need a ChannelProvider per channel.
- * Must render under AblyProvider and NotificationBadgeProvider.
+ * Must render under AblyProvider, InAppToastProvider, and NotificationBadgeProvider.
  */
 export function ParfadeAppRealtime() {
   const ably = useAbly();
   const { refresh: refreshNotificationBadge } = useNotificationBadge();
+  const { showGroupChatToast } = useInAppToast();
   const [inboxUserId, setInboxUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,15 +37,27 @@ export function ParfadeAppRealtime() {
   const onInboxMessage = useCallback(
     (message: Message) => {
       const parsed = parseParfadeRealtimeMessage(message.data);
-      if (!parsed || parsed.type !== "inbox-sync") return;
-      if (parsed.roundLists) {
-        emitRoundListsShouldRefresh();
+      if (!parsed) return;
+      if (parsed.type === "inbox-sync") {
+        if (parsed.roundLists) {
+          emitRoundListsShouldRefresh();
+        }
+        if (parsed.notificationBadge) {
+          void refreshNotificationBadge();
+          emitNotificationsListsShouldRefresh();
+        }
+        return;
       }
-      if (parsed.notificationBadge) {
-        void refreshNotificationBadge();
+      if (parsed.type === "group-chat-toast") {
+        showGroupChatToast({
+          inviteToken: parsed.inviteToken,
+          roundTitle: parsed.roundTitle,
+          senderName: parsed.senderLabel,
+          bodyPreview: parsed.bodyPreview,
+        });
       }
     },
-    [refreshNotificationBadge],
+    [refreshNotificationBadge, showGroupChatToast],
   );
 
   const onDiscoverMessage = useCallback((message: Message) => {
