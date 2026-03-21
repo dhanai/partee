@@ -87,12 +87,15 @@ export async function POST(req: Request, { params }: RouteContext) {
         target: [spots.roundId, spots.userId],
       });
       void notifyRoundInvites({
+        inviteToken: params.token,
         inviteeUserIds: inviteRows.map((r) => r.userId),
         body: buildRoundInvitePushBody({
           inviterDisplayName: currentUser.name,
           teeTime: round.teeTime,
           targetDate: round.targetDate,
           mode: round.mode,
+          courseName: round.courseName,
+          planningLocation: round.planningLocation,
         }),
       });
     }

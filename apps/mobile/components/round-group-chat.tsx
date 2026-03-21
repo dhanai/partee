@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
+import { RoundDetailSection } from "./round-detail-section";
 
 export type ChatMessage = {
   id: string;
@@ -25,7 +26,8 @@ export type ChatMessage = {
 
 type MessagesResponse = { messages: ChatMessage[]; viewerId?: string };
 
-const POLL_MS = 2800;
+/** Slightly relaxed to reduce background churn; chat still feels live. */
+const POLL_MS = 4200;
 const MAX_LIST_HEIGHT = 240;
 
 type Props = {
@@ -53,6 +55,7 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
   const [viewerId, setViewerId] = useState<string | null>(() => getCachedMeProfile()?.id ?? null);
   /** Ignore chat GET responses after token changed or a newer load started (prevents stale viewer/messages). */
   const loadGenRef = useRef(0);
+  const prevMessageCountRef = useRef(0);
 
   function resolveMine(m: ChatMessage): boolean {
     if (typeof m.isMine === "boolean") return m.isMine;
@@ -114,7 +117,8 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
             if (inviteTokenRef.current !== pollForToken) return;
             setViewerId((prev) => {
               const v = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
-              return v || prev || null;
+              const next = v || prev || null;
+              return next === prev ? prev : next;
             });
             const incoming = data.messages ?? [];
             if (incoming.length > 0) setMessages(incoming);
@@ -128,20 +132,23 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
           if (inviteTokenRef.current !== pollForToken) return;
           setViewerId((prev) => {
             const v = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
-            return v || prev || null;
+            const next = v || prev || null;
+            return next === prev ? prev : next;
           });
           const incoming = data.messages ?? [];
           if (incoming.length === 0) return;
           setMessages((prev) => {
             const seen = new Set(prev.map((m) => m.id));
+            let added = 0;
             const merged = [...prev];
             for (const m of incoming) {
               if (!seen.has(m.id)) {
                 seen.add(m.id);
                 merged.push(m);
+                added += 1;
               }
             }
-            return merged;
+            return added === 0 ? prev : merged;
           });
         } catch {
           /* ignore poll errors */
@@ -152,10 +159,20 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
   }, [expanded, inviteToken]);
 
   useEffect(() => {
-    if (messages.length === 0) return;
+    if (!expanded) return;
+    if (messages.length === 0) {
+      prevMessageCountRef.current = 0;
+      return;
+    }
+    const prev = prevMessageCountRef.current;
+    const next = messages.length;
+    const delta = next - prev;
     const t = requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: false });
+      if (next > prev) {
+        scrollRef.current?.scrollToEnd({ animated: delta <= 4 });
+      }
     });
+    prevMessageCountRef.current = next;
     return () => cancelAnimationFrame(t);
   }, [messages.length, expanded]);
 
@@ -198,142 +215,106 @@ export function RoundGroupChat({ inviteToken, getToken, onComposerFocus }: Props
   }
 
   return (
-    <View style={styles.card}>
-      <Pressable
-        style={styles.headerRow}
-        onPress={() => setExpanded((e) => !e)}
-        accessibilityRole="button"
-        accessibilityLabel={expanded ? "Collapse group chat" : "Expand group chat"}
-      >
-        <Text style={styles.sectionTitle}>Group chat</Text>
-        <Ionicons
-          name={expanded ? "chevron-up" : "chevron-down"}
-          size={20}
-          color={colors.fairway}
-        />
-      </Pressable>
-      <Text style={styles.hint}>Host and confirmed players only.</Text>
-
-      {expanded ? (
-        <>
-          {loading ? (
-            <View style={styles.loaderWrap}>
-              <ActivityIndicator color={colors.fairway} size="small" />
-            </View>
-          ) : loadError && messages.length === 0 ? (
-            <Text style={styles.errorInline}>{loadError}</Text>
+    <RoundDetailSection
+      title="Group chat"
+      hint="Host and confirmed players only."
+      expanded={expanded}
+      onToggle={() => setExpanded((e) => !e)}
+    >
+      {loading && messages.length === 0 ? (
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator color={colors.fairway} size="small" />
+        </View>
+      ) : loadError && messages.length === 0 ? (
+        <Text style={styles.errorInline}>{loadError}</Text>
+      ) : (
+        <ScrollView
+          ref={scrollRef}
+          style={[styles.messageList, { maxHeight: MAX_LIST_HEIGHT }]}
+          contentContainerStyle={styles.messageListContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {messages.length === 0 ? (
+            <Text style={styles.empty}>No messages yet. Say hi!</Text>
           ) : (
-            <ScrollView
-              ref={scrollRef}
-              style={[styles.messageList, { maxHeight: MAX_LIST_HEIGHT }]}
-              contentContainerStyle={styles.messageListContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              {messages.length === 0 ? (
-                <Text style={styles.empty}>No messages yet. Say hi!</Text>
+            messages.map((m) => {
+              const mine = resolveMine(m);
+              const avatarEl = m.user.avatar ? (
+                <Image
+                  source={{ uri: toAbsoluteUrl(m.user.avatar) }}
+                  style={styles.avatar}
+                />
               ) : (
-                messages.map((m) => {
-                  const mine = resolveMine(m);
-                  const avatarEl = m.user.avatar ? (
-                    <Image
-                      source={{ uri: toAbsoluteUrl(m.user.avatar) }}
-                      style={styles.avatar}
-                    />
+                <View style={[styles.avatar, styles.avatarFallback]}>
+                  <Text style={styles.avatarInitial}>
+                    {m.user.name.trim().charAt(0).toUpperCase() || "?"}
+                  </Text>
+                </View>
+              );
+              return (
+                <View key={m.id} style={styles.bubbleRow}>
+                  {mine ? (
+                    <>
+                      <View style={styles.bubbleRowFlex} />
+                      <View style={[styles.bubble, styles.bubbleMine]}>
+                        <Text style={[styles.bubbleBody, styles.bubbleBodyMine]}>{m.body}</Text>
+                        <Text style={[styles.bubbleTime, styles.bubbleTimeMine]}>
+                          {formatTime(m.createdAt)}
+                        </Text>
+                      </View>
+                      {avatarEl}
+                    </>
                   ) : (
-                    <View style={[styles.avatar, styles.avatarFallback]}>
-                      <Text style={styles.avatarInitial}>
-                        {m.user.name.trim().charAt(0).toUpperCase() || "?"}
-                      </Text>
-                    </View>
-                  );
-                  return (
-                    <View key={m.id} style={styles.bubbleRow}>
-                      {mine ? (
-                        <>
-                          <View style={styles.bubbleRowFlex} />
-                          <View style={[styles.bubble, styles.bubbleMine]}>
-                            <Text style={[styles.bubbleBody, styles.bubbleBodyMine]}>{m.body}</Text>
-                            <Text style={[styles.bubbleTime, styles.bubbleTimeMine]}>
-                              {formatTime(m.createdAt)}
-                            </Text>
-                          </View>
-                          {avatarEl}
-                        </>
-                      ) : (
-                        <>
-                          {avatarEl}
-                          <View style={[styles.bubble, styles.bubbleTheirs]}>
-                            <Text style={styles.bubbleName}>{m.user.name}</Text>
-                            <Text style={styles.bubbleBody}>{m.body}</Text>
-                            <Text style={styles.bubbleTime}>{formatTime(m.createdAt)}</Text>
-                          </View>
-                        </>
-                      )}
-                    </View>
-                  );
-                })
-              )}
-            </ScrollView>
+                    <>
+                      {avatarEl}
+                      <View style={[styles.bubble, styles.bubbleTheirs]}>
+                        <Text style={styles.bubbleName}>{m.user.name}</Text>
+                        <Text style={styles.bubbleBody}>{m.body}</Text>
+                        <Text style={styles.bubbleTime}>{formatTime(m.createdAt)}</Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+              );
+            })
           )}
+        </ScrollView>
+      )}
 
-          {loadError && messages.length > 0 ? (
-            <Text style={styles.errorInline}>{loadError}</Text>
-          ) : null}
-
-          <View style={styles.composerRow}>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              onFocus={() => onComposerFocus?.()}
-              placeholder="Message the group…"
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-              multiline
-              maxLength={2000}
-              editable={!sendBusy}
-            />
-            <Pressable
-              style={[styles.sendBtn, sendBusy && styles.sendBtnDisabled]}
-              onPress={() => void send()}
-              disabled={sendBusy || !draft.trim()}
-              accessibilityLabel="Send message"
-            >
-              {sendBusy ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Ionicons name="send" size={18} color="#fff" />
-              )}
-            </Pressable>
-          </View>
-        </>
+      {loadError && messages.length > 0 ? (
+        <Text style={styles.errorInline}>{loadError}</Text>
       ) : null}
-    </View>
+
+      <View style={styles.composerRow}>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          onFocus={() => onComposerFocus?.()}
+          placeholder="Message the group…"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+          multiline
+          maxLength={2000}
+          editable={!sendBusy}
+        />
+        <Pressable
+          style={[styles.sendBtn, sendBusy && styles.sendBtnDisabled]}
+          onPress={() => void send()}
+          disabled={sendBusy || !draft.trim()}
+          accessibilityLabel="Send message"
+        >
+          {sendBusy ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Ionicons name="send" size={18} color="#fff" />
+          )}
+        </Pressable>
+      </View>
+    </RoundDetailSection>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: 12,
-    gap: 8,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: colors.text,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  hint: { color: colors.muted, fontSize: 12, marginTop: -4 },
   loaderWrap: { paddingVertical: 16, alignItems: "center" },
   messageList: { marginTop: 4 },
   messageListContent: { gap: 10, paddingBottom: 4 },

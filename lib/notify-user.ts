@@ -1,6 +1,12 @@
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { inAppNotifications, users } from "@/db/schema";
+import { listRoundChatPushRecipientUserIds } from "@/lib/round-chat-access";
+import {
+  buildHostRsvpNotificationCopy,
+  formatInviterFirstLastInitial,
+  formatRoundShortLabel,
+} from "@/lib/round-invite-push-message";
 import { sendExpoPushMessages } from "@/lib/push-expo";
 
 /**
@@ -14,25 +20,25 @@ export async function recordHostRoundRsvpAndMaybePush(input: {
   roundId: string;
   inviteToken: string;
   courseName: string | null;
+  planningLocation: string | null;
+  mode: "planning" | "scheduled";
+  teeTime: Date | null;
+  targetDate: Date;
   spotStatus: "confirmed" | "requested" | "declined";
 }): Promise<void> {
   if (input.hostId === input.guestId) return;
 
   const accepted = input.spotStatus !== "declined";
   const type = accepted ? "round_rsvp_accepted" : "round_rsvp_declined";
-  const course = input.courseName?.trim() || "your round";
-
-  const title = accepted
-    ? input.spotStatus === "requested"
-      ? "Join request"
-      : "Spot claimed"
-    : "Invite declined";
-
-  const body = accepted
-    ? input.spotStatus === "requested"
-      ? `${input.guestName} requested to join ${course}.`
-      : `${input.guestName} claimed a spot for ${course}.`
-    : `${input.guestName} declined your invite to ${course}.`;
+  const { title, body } = buildHostRsvpNotificationCopy({
+    guestName: input.guestName,
+    courseName: input.courseName,
+    planningLocation: input.planningLocation,
+    mode: input.mode,
+    teeTime: input.teeTime,
+    targetDate: input.targetDate,
+    spotStatus: input.spotStatus,
+  });
 
   await db.insert(inAppNotifications).values({
     recipientUserId: input.hostId,
@@ -104,6 +110,7 @@ export async function notifyFollowRequest(input: {
 }
 
 export async function notifyRoundInvites(input: {
+  inviteToken: string;
   inviteeUserIds: string[];
   body: string;
 }): Promise<void> {
@@ -134,13 +141,76 @@ export async function notifyRoundInvites(input: {
     return;
   }
 
+  const data = {
+    type: "round_invite",
+    inviteToken: input.inviteToken,
+  } as const;
+
   await sendExpoPushMessages(
     tokens.map((to) => ({
       to,
       sound: "default" as const,
       title: "Round invite",
       body: input.body,
-      data: { type: "round_invite" },
+      data,
+    })),
+  );
+}
+
+const CHAT_PREVIEW_MAX = 140;
+
+/**
+ * Push to other group-chat participants when someone sends a message (host + confirmed; not sender).
+ */
+export async function notifyRoundChatMessagePushes(input: {
+  roundId: string;
+  inviteToken: string;
+  senderUserId: string;
+  senderName: string;
+  messageBody: string;
+  courseName: string | null;
+  planningLocation: string | null;
+}): Promise<void> {
+  const recipientIds = await listRoundChatPushRecipientUserIds(
+    input.roundId,
+    input.senderUserId,
+  );
+  if (recipientIds.length === 0) return;
+
+  const rows = await db
+    .select({ token: users.expoPushToken })
+    .from(users)
+    .where(inArray(users.id, recipientIds));
+
+  const tokens = rows
+    .map((r) => r.token?.trim())
+    .filter((t): t is string => Boolean(t));
+
+  if (tokens.length === 0) return;
+
+  const roundLabel = formatRoundShortLabel({
+    courseName: input.courseName,
+    planningLocation: input.planningLocation,
+  });
+  const who = formatInviterFirstLastInitial(input.senderName);
+  const raw = input.messageBody.trim();
+  const preview =
+    raw.length > CHAT_PREVIEW_MAX ? `${raw.slice(0, CHAT_PREVIEW_MAX - 1)}…` : raw;
+  const title = `Group chat · ${roundLabel}`;
+  const body = `${who}: ${preview}`;
+
+  const data = {
+    type: "round_chat",
+    inviteToken: input.inviteToken,
+  } as const;
+
+  await sendExpoPushMessages(
+    tokens.map((to) => ({
+      to,
+      sound: "default" as const,
+      title,
+      body,
+      data,
     })),
   );
 }

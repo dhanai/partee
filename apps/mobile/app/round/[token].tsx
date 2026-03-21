@@ -43,6 +43,7 @@ import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
 import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
 import { RoundGroupChat } from "../../components/round-group-chat";
+import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
@@ -111,6 +112,8 @@ export default function RoundDetailsScreen() {
   const debouncedFinalizeQuery = useDebounce(finalizeQuery, 320);
   const [selectedFriends, setSelectedFriends] = useState<InviteSelectionUser[]>([]);
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [finalizeExpanded, setFinalizeExpanded] = useState(true);
+  const [inviteExpanded, setInviteExpanded] = useState(false);
   const inviteFlowKeyRef = useRef(`round-${Math.random().toString(36).slice(2, 10)}`);
 
   useEffect(() => {
@@ -678,10 +681,12 @@ export default function RoundDetailsScreen() {
       {message ? <Text style={styles.successText}>{message}</Text> : null}
 
       {round.isHost && round.mode === "planning" ? (
-        <View style={styles.finalizeCard}>
-          <Text style={styles.finalizeTitle}>Finalize details</Text>
-          <Text style={styles.meta}>Pick course and tee time for your group.</Text>
-
+        <RoundDetailSection
+          title="Finalize details"
+          hint="Pick course and tee time for your group."
+          expanded={finalizeExpanded}
+          onToggle={() => setFinalizeExpanded((e) => !e)}
+        >
           <Text style={styles.sectionLabel}>Course</Text>
           <View style={styles.inputRow}>
             <TextInput
@@ -766,12 +771,16 @@ export default function RoundDetailsScreen() {
               {finalizeBusy ? "Finalizing..." : "Finalize round"}
             </Text>
           </Pressable>
-        </View>
+        </RoundDetailSection>
       ) : null}
 
       {canInviteUsers ? (
-        <View style={styles.inviteCard}>
-          <Text style={styles.sectionLabel}>Invite players</Text>
+        <RoundDetailSection
+          title="Invite players"
+          hint="Choose friends or share a link."
+          expanded={inviteExpanded}
+          onToggle={() => setInviteExpanded((e) => !e)}
+        >
           <Pressable style={[styles.button, styles.secondaryButton]} onPress={openInviteFriends}>
             <Text style={styles.secondaryText}>Select friends</Text>
           </Pressable>
@@ -825,7 +834,7 @@ export default function RoundDetailsScreen() {
               <Text style={styles.secondaryText}>Share link</Text>
             </Pressable>
           </View>
-        </View>
+        </RoundDetailSection>
       ) : null}
 
       {showRsvpActions ? (
@@ -952,7 +961,6 @@ const styles = StyleSheet.create({
   whenBlock: { gap: 2, marginTop: 2 },
   whenDate: { color: colors.text, fontWeight: "700", fontSize: 18 },
   whenTime: { color: colors.muted, fontWeight: "600", fontSize: 16 },
-  meta: { color: colors.muted },
   claimedRow: { marginTop: 10, gap: 6 },
   claimedLabel: {
     color: colors.muted,
@@ -995,15 +1003,6 @@ const styles = StyleSheet.create({
   chatTeaserText: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   actions: { flexDirection: "row", gap: 10, marginTop: 16 },
   button: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
-  inviteCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: 12,
-    gap: 8,
-    marginTop: 8,
-  },
   selectedRow: {
     backgroundColor: colors.fairwaySoft,
     borderRadius: 12,
@@ -1082,16 +1081,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 8,
   },
-  finalizeCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: 12,
-    gap: 8,
-    marginTop: 6,
-  },
-  finalizeTitle: { fontWeight: "700", color: colors.text, fontSize: 16 },
   sectionLabel: {
     color: colors.muted,
     fontSize: 12,

@@ -26,7 +26,9 @@ That error is **not about web vs sim** — it means the **native app you’re ru
 
 # Push notifications (round invites)
 
-Partee sends **round invite** pushes via **Expo’s service** from your Next API (`lib/notify-user.ts` → `lib/push-expo.ts`). The **invitee’s** app must register an **Expo push token**; the API must have **`EXPO_ACCESS_TOKEN`**.
+Partee sends **round invite**, **host RSVP**, and **group chat** pushes via **Expo’s service** from your Next API (`lib/notify-user.ts` → `lib/push-expo.ts`). The recipient’s app must register an **Expo push token**; the API must have **`EXPO_ACCESS_TOKEN`**.
+
+**Tapping a notification** (invite, RSVP, or chat): the app opens that **round** (`/round/[inviteToken]`) when the payload includes `inviteToken` + `type` of `round_invite`, `round_rsvp`, or `round_chat` — see `lib/notification-deep-link.tsx`. Follow-request pushes open **Notifications**.
 
 ## No push after an invite? Check these first
 

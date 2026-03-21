@@ -232,11 +232,20 @@ export default function InviteFriendsScreen() {
           <ActivityIndicator size="small" color={colors.muted} />
         </View>
       ) : rows.length === 0 ? (
-        <Text style={styles.emptyText}>
-          {isSearching
-            ? "No users found."
-            : "No one you follow yet. Search by name to invite anyone."}
-        </Text>
+        isSearching ? (
+          <Text style={styles.emptyText}>No matches for that name. Try a different spelling.</Text>
+        ) : (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="people-outline" size={28} color={colors.fairway} />
+            </View>
+            <Text style={styles.emptyTitle}>No friends here yet</Text>
+            <Text style={styles.emptyBody}>
+              Golfers you follow show up here for quick invites. To invite anyone now, search above and
+              type at least two letters of their name.
+            </Text>
+          </View>
+        )
       ) : (
         rows.map((user) => (
           <Pressable key={user.id} style={styles.listRow} onPress={() => toggleUser(user)}>
@@ -303,7 +312,35 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     alignItems: "center",
   },
-  emptyText: { color: colors.muted, marginTop: 6 },
+  emptyText: { color: colors.muted, marginTop: 6, fontSize: 15, lineHeight: 22 },
+  emptyState: {
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    gap: 10,
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    backgroundColor: colors.fairwaySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.text,
+    textAlign: "center",
+  },
+  emptyBody: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.muted,
+    textAlign: "center",
+    maxWidth: 320,
+  },
   listRow: {
     backgroundColor: "#f9f7f3",
     borderRadius: 12,

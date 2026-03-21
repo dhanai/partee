@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { BuildConfigMissingScreen } from "../components/build-config-missing-screen";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
+import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
 import { colors } from "../lib/theme";
 
 const CLERK_PUBLISHABLE_ENV = "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY";
@@ -23,6 +24,7 @@ export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <NotificationBadgeProvider>
+        <NotificationDeepLinkEffects />
         <StatusBar style="dark" />
         <Stack
           screenOptions={{

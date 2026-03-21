@@ -420,7 +420,9 @@ function SignInFields({
       ) : (
         <>
           <Text style={authFormStyles.title}>Sign in</Text>
-          <Text style={authFormStyles.subtitle}>Use the same account you use on web.</Text>
+          <Text style={authFormStyles.subtitle}>
+            Welcome back—use the email and password for your Partee account.
+          </Text>
           <TextInput
             value={identifier}
             onChangeText={setIdentifier}
@@ -584,7 +586,7 @@ function SignUpFields({
       </Text>
       <Text style={authFormStyles.subtitle}>
         {step === "create"
-          ? "Make a new account to test a second user."
+          ? "Create your Partee account to host rounds, join invites, and chat with your group."
           : "Enter the verification code sent to your email."}
       </Text>
       {step === "create" ? (

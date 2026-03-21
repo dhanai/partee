@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { roundMessages, rounds, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { notifyRoundChatMessagePushes } from "@/lib/notify-user";
 import { canAccessRoundChat } from "@/lib/round-chat-access";
 
 type RouteContext = {
@@ -158,7 +159,12 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
 
     const [round] = await db
-      .select({ id: rounds.id })
+      .select({
+        id: rounds.id,
+        inviteToken: rounds.inviteToken,
+        courseName: rounds.courseName,
+        planningLocation: rounds.planningLocation,
+      })
       .from(rounds)
       .where(eq(rounds.inviteToken, token))
       .limit(1);
@@ -191,6 +197,16 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (!inserted) {
       return NextResponse.json({ error: "Failed to send message." }, { status: 500 });
     }
+
+    void notifyRoundChatMessagePushes({
+      roundId: round.id,
+      inviteToken: round.inviteToken,
+      senderUserId: viewer.id,
+      senderName: viewer.name,
+      messageBody: parsed.body,
+      courseName: round.courseName,
+      planningLocation: round.planningLocation,
+    }).catch((err) => console.error("[POST /api/rounds/.../messages] push", err));
 
     return NextResponse.json({
       message: mapMessageRow(

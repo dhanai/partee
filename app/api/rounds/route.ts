@@ -209,12 +209,15 @@ export async function POST(req: Request) {
         .from(spots)
         .where(and(eq(spots.roundId, createdRound.id), eq(spots.status, "invited")));
       void notifyRoundInvites({
+        inviteToken: createdRound.inviteToken,
         inviteeUserIds: invitedRows.map((r) => r.userId),
         body: buildRoundInvitePushBody({
           inviterDisplayName: user.name,
           teeTime: createdRound.teeTime,
           targetDate: createdRound.targetDate,
           mode: createdRound.mode,
+          courseName: createdRound.courseName,
+          planningLocation: createdRound.planningLocation,
         }),
       });
     }

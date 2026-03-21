@@ -89,6 +89,10 @@ export async function POST(req: Request, { params }: RouteContext) {
             roundId: round.id,
             inviteToken: round.inviteToken,
             courseName: round.courseName,
+            planningLocation: round.planningLocation,
+            mode: round.mode,
+            teeTime: round.teeTime,
+            targetDate: round.targetDate,
             spotStatus: targetStatus,
           }).catch((err) => console.error("[join] host RSVP notify", err));
           return NextResponse.json({
@@ -111,6 +115,10 @@ export async function POST(req: Request, { params }: RouteContext) {
             roundId: round.id,
             inviteToken: round.inviteToken,
             courseName: round.courseName,
+            planningLocation: round.planningLocation,
+            mode: round.mode,
+            teeTime: round.teeTime,
+            targetDate: round.targetDate,
             spotStatus: targetStatus,
           }).catch((err) => console.error("[join] host RSVP notify", err));
           return NextResponse.json({

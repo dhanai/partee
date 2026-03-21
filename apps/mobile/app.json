@@ -22,7 +22,7 @@
         "NSRemindersUsageDescription": "Partee uses this only as required by iOS when saving round events to your calendar.",
         "NSRemindersFullAccessUsageDescription": "Partee uses this only as required by iOS when saving round events to your calendar."
       },
-      "buildNumber": "4"
+      "buildNumber": "5"
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
