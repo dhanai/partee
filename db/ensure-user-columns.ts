@@ -27,8 +27,12 @@ export async function repairUserColumns(): Promise<void> {
     ALTER TABLE users
     ADD COLUMN IF NOT EXISTS expo_push_token text
   `;
+  await sql`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS hide_hosted_rounds_from_discover boolean DEFAULT false NOT NULL
+  `;
   console.log(
-    "users.notifications_last_viewed_at and users.expo_push_token are present (added if missing).",
+    "users.notifications_last_viewed_at, expo_push_token, hide_hosted_rounds_from_discover are present (added if missing).",
   );
 }
 

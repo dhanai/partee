@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   index,
   integer,
@@ -55,6 +56,10 @@ export const users = pgTable(
     followVisibility: followVisibilityEnum("follow_visibility")
       .notNull()
       .default("public"),
+    /** When true, rounds this user hosts are omitted from *their own* Discover feed only (visibility is still public vs invite-only). */
+    hideHostedRoundsFromDiscover: boolean("hide_hosted_rounds_from_discover")
+      .notNull()
+      .default(false),
     notificationsLastViewedAt: timestamp("notifications_last_viewed_at", {
       withTimezone: true,
     }),

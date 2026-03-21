@@ -112,9 +112,15 @@ export async function GET(req: Request) {
     )
     .orderBy(asc(rounds.targetDate));
 
+  /** Viewer-only: hide rounds you host from *your* Discover feed (others still see per public / invite-only). */
+  const rowsVisible = rows.filter((row) => {
+    if (!currentUser?.hideHostedRoundsFromDiscover) return true;
+    return row.hostId !== currentUser.id;
+  });
+
   const withRemaining = (
     await Promise.all(
-      rows.map(async (row) => {
+      rowsVisible.map(async (row) => {
       const effectiveDate = row.teeTime ?? row.targetDate;
       let rowLat = row.lat ? Number(row.lat) : null;
       let rowLng = row.lng ? Number(row.lng) : null;

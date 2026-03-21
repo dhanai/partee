@@ -1,17 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { useNavigation } from "@react-navigation/native";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
 import { router } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from "react-native";
 import { apiGet, apiPatch, apiPost } from "../lib/api";
 import { colors } from "../lib/theme";
 
 type MeResponse = {
   user: {
     followVisibility?: "public" | "private";
+    hideHostedRoundsFromDiscover?: boolean;
   };
 };
 
 export default function SettingsScreen() {
+  const navigation = useNavigation();
   const { getToken } = useAuth();
   const { signOut } = useClerk();
   const getTokenRef = useRef(getToken);
@@ -19,7 +31,9 @@ export default function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [followVisibility, setFollowVisibility] = useState<"public" | "private">("public");
-  const [message, setMessage] = useState<string | null>(null);
+  const [hideHostedFromDiscover, setHideHostedFromDiscover] = useState(false);
+  const [savingDiscover, setSavingDiscover] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,6 +50,7 @@ export default function SettingsScreen() {
         const json = await apiGet<MeResponse>("/api/users/me", token);
         if (!active) return;
         setFollowVisibility(json.user.followVisibility ?? "public");
+        setHideHostedFromDiscover(json.user.hideHostedRoundsFromDiscover ?? false);
       } catch (loadError) {
         if (!active) return;
         setError(loadError instanceof Error ? loadError.message : "Unable to load settings.");
@@ -49,21 +64,77 @@ export default function SettingsScreen() {
     };
   }, []);
 
+  const savingAny = saving || savingDiscover;
+
+  useLayoutEffect(() => {
+    const show = !loading && (savingAny || saveNote != null);
+    const label = savingAny ? "Saving…" : (saveNote ?? "");
+    const pill = (
+      <View style={styles.headerSavePill}>
+        <Text style={styles.headerSavePillText} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    );
+
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        headerRight: undefined,
+        headerRightContainerStyle: { paddingRight: 6 },
+        unstable_headerRightItems: show
+          ? () => [
+              {
+                type: "custom" as const,
+                element: pill,
+                hidesSharedBackground: true,
+              },
+            ]
+          : () => [],
+      });
+    } else {
+      navigation.setOptions({
+        unstable_headerRightItems: undefined,
+        headerRightContainerStyle: { paddingRight: 10, justifyContent: "center" },
+        headerRight: () => (show ? pill : null),
+      });
+    }
+  }, [navigation, loading, savingAny, saveNote]);
+
   async function saveFollowVisibility(next: "public" | "private") {
     const previous = followVisibility;
     setSaving(true);
     setError(null);
-    setMessage(null);
+    setSaveNote(null);
     setFollowVisibility(next);
     try {
       const token = await getTokenRef.current();
       await apiPatch("/api/users/me", { followVisibility: next }, token);
-      setMessage("Settings updated.");
+      setSaveNote("Saved");
     } catch (saveError) {
       setFollowVisibility(previous);
       setError(saveError instanceof Error ? saveError.message : "Unable to save settings.");
+      setSaveNote("Save failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveHideHostedFromDiscover(next: boolean) {
+    const previous = hideHostedFromDiscover;
+    setSavingDiscover(true);
+    setError(null);
+    setSaveNote(null);
+    setHideHostedFromDiscover(next);
+    try {
+      const token = await getTokenRef.current();
+      await apiPatch("/api/users/me", { hideHostedRoundsFromDiscover: next }, token);
+      setSaveNote("Saved");
+    } catch (saveError) {
+      setHideHostedFromDiscover(previous);
+      setError(saveError instanceof Error ? saveError.message : "Unable to save settings.");
+      setSaveNote("Save failed");
+    } finally {
+      setSavingDiscover(false);
     }
   }
 
@@ -100,49 +171,35 @@ export default function SettingsScreen() {
         <>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Privacy</Text>
-            <Text style={styles.cardHint}>Control who can follow you.</Text>
-            <View style={styles.row}>
-              <Pressable
-                style={[
-                  styles.pill,
-                  followVisibility === "public" && styles.pillActive,
-                  saving && styles.disabled,
-                ]}
-                onPress={() => void saveFollowVisibility("public")}
-                disabled={saving}
-              >
-                <Text
-                  style={[
-                    styles.pillText,
-                    followVisibility === "public" && styles.pillTextActive,
-                  ]}
-                >
-                  Public
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.pill,
-                  followVisibility === "private" && styles.pillActive,
-                  saving && styles.disabled,
-                ]}
-                onPress={() => void saveFollowVisibility("private")}
-                disabled={saving}
-              >
-                <Text
-                  style={[
-                    styles.pillText,
-                    followVisibility === "private" && styles.pillTextActive,
-                  ]}
-                >
-                  Private
-                </Text>
-              </Pressable>
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Make my profile private</Text>
+              <Switch
+                value={followVisibility === "private"}
+                onValueChange={(v) => void saveFollowVisibility(v ? "private" : "public")}
+                disabled={saving || savingDiscover}
+                trackColor={{ false: "#ece8e1", true: colors.fairwaySoft }}
+                thumbColor={followVisibility === "private" ? colors.fairway : "#f4f3f4"}
+                ios_backgroundColor="#ece8e1"
+              />
             </View>
-            {saving ? <Text style={styles.hint}>Saving...</Text> : null}
-            {message ? <Text style={styles.success}>{message}</Text> : null}
-            {error ? <Text style={styles.error}>{error}</Text> : null}
           </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Discover</Text>
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Hide my hosted rounds on my Discover</Text>
+              <Switch
+                value={hideHostedFromDiscover}
+                onValueChange={(v) => void saveHideHostedFromDiscover(v)}
+                disabled={savingDiscover || saving}
+                trackColor={{ false: "#ece8e1", true: colors.fairwaySoft }}
+                thumbColor={hideHostedFromDiscover ? colors.fairway : "#f4f3f4"}
+                ios_backgroundColor="#ece8e1"
+              />
+            </View>
+          </View>
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Pressable
             style={[styles.signOutButton, signingOut && styles.disabled]}
@@ -170,19 +227,34 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   cardTitle: { color: colors.text, fontWeight: "700", fontSize: 16 },
-  cardHint: { color: colors.muted, fontSize: 12 },
-  row: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  pill: {
-    backgroundColor: "#ece8e1",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginTop: 4,
   },
-  pillActive: { backgroundColor: colors.fairway },
-  pillText: { color: colors.text, fontWeight: "700", fontSize: 12 },
-  pillTextActive: { color: "#fff" },
-  hint: { color: colors.muted, fontSize: 12 },
-  success: { color: colors.fairway, fontWeight: "600" },
+  switchLabel: {
+    flex: 1,
+    color: colors.text,
+    fontWeight: "400",
+    fontSize: 14,
+  },
+  headerSavePill: {
+    alignSelf: "center",
+    backgroundColor: colors.fairwaySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    maxWidth: 120,
+  },
+  headerSavePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.fairway,
+  },
   error: { color: colors.danger },
   signOutButton: {
     borderRadius: 12,

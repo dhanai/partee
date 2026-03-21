@@ -443,17 +443,18 @@ export function SwipeableMineRoundRow({
     return <>{children}</>;
   }
 
-  const onLeftPress = variant === "host" ? onHostDelete : onInviteClaim;
-  const onRightPress = variant === "host" ? onHostEdit : onInviteDecline;
+  /** Swipe right (translateX +) reveals left rail; swipe left (−) reveals right rail. */
+  const onLeftPress = variant === "host" ? onHostEdit : onInviteClaim;
+  const onRightPress = variant === "host" ? onHostDelete : onInviteDecline;
 
-  const leftCircleColor = variant === "host" ? colors.danger : colors.fairway;
-  const leftIcon = variant === "host" ? "trash-outline" : "checkmark-outline";
-  const leftLabel = variant === "host" ? "Delete" : "Claim";
+  const leftCircleColor = colors.fairway;
+  const leftIcon = variant === "host" ? "create-outline" : "checkmark-outline";
+  const leftLabel = variant === "host" ? "Edit" : "Claim";
 
-  const rightCircleColor = variant === "host" ? colors.fairway : "#ddd8cf";
-  const rightIcon = variant === "host" ? "create-outline" : "close-outline";
+  const rightCircleColor = variant === "host" ? colors.danger : "#ddd8cf";
+  const rightIcon = variant === "host" ? "trash-outline" : "close-outline";
   const rightIconColor = variant === "host" ? "#fff" : colors.text;
-  const rightLabel = variant === "host" ? "Edit" : "Decline";
+  const rightLabel = variant === "host" ? "Delete" : "Decline";
 
   return (
     <View style={styles.swipeOuter}>
@@ -466,6 +467,9 @@ export function SwipeableMineRoundRow({
               circleColor={leftCircleColor}
               iconColor="#fff"
               onPress={() => invokeThenCloseRow(onLeftPress)}
+              iconStyle={
+                variant === "host" ? styles.editPencilIconNudge : undefined
+              }
             />
           </Animated.View>
         </View>
@@ -478,9 +482,6 @@ export function SwipeableMineRoundRow({
               circleColor={rightCircleColor}
               iconColor={rightIconColor}
               onPress={() => invokeThenCloseRow(onRightPress)}
-              iconStyle={
-                variant === "host" ? styles.editPencilIconNudge : undefined
-              }
             />
           </Animated.View>
         </View>
