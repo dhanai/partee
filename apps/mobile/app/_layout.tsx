@@ -88,6 +88,7 @@ export default function RootLayout() {
                 headerBackTitle: "Round",
               }}
             />
+            <Stack.Screen name="profile" options={{ headerShown: false }} />
             <Stack.Screen
               name="profile/edit"
               options={{

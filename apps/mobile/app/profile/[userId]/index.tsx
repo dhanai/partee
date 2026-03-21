@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { claimRsvpButtonStyles as btn } from "../../../lib/claim-rsvp-button-styles";
+import { formatProfileNavTitle } from "../../../lib/format-profile-nav-title";
 import { apiDelete, apiPost, toAbsoluteUrl } from "../../../lib/api";
 import {
   fetchPublicProfileAndCache,
@@ -124,7 +125,7 @@ export default function PublicProfileScreen() {
   }, [userId, userName, userAvatar]);
 
   useLayoutEffect(() => {
-    const title = profile?.user.name?.trim() || "Profile";
+    const title = formatProfileNavTitle(profile?.user.name ?? "");
     navigation.setOptions({ title });
   }, [navigation, profile?.user.name]);
 
@@ -255,13 +256,14 @@ export default function PublicProfileScreen() {
         </View>
       </View>
 
-      {locationDisplay ? (
-        <View style={styles.identityBlock}>
+      <View style={styles.identityBlock}>
+        <Text style={styles.profileName}>{profile.user.name}</Text>
+        {locationDisplay ? (
           <Text style={styles.profileLocation} numberOfLines={2}>
             {locationDisplay}
           </Text>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
 
       <View style={styles.statsGrid}>
         <View style={styles.statCell}>
@@ -358,9 +360,17 @@ const styles = StyleSheet.create({
   },
   identityBlock: {
     alignItems: "center",
-    paddingTop: 16,
+    paddingTop: 20,
     paddingHorizontal: 8,
+    gap: 6,
     width: "100%",
+  },
+  profileName: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 26,
+    textAlign: "center",
+    letterSpacing: -0.3,
   },
   profileLocation: {
     color: colors.muted,

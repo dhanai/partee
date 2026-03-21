@@ -11,6 +11,7 @@ export default function ProfileUserStackLayout() {
     <Stack
       screenOptions={{
         headerShadowVisible: false,
+        headerLargeTitle: false,
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
         contentStyle: { backgroundColor: colors.background },
