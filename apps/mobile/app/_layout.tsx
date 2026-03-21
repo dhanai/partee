@@ -88,7 +88,27 @@ export default function RootLayout() {
                 headerBackTitle: "Round",
               }}
             />
-            <Stack.Screen name="profile" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="profile/[userId]/index"
+              options={{
+                title: "Profile",
+                headerBackTitle: "Back",
+              }}
+            />
+            <Stack.Screen
+              name="profile/[userId]/followers"
+              options={{
+                title: "Followers",
+                headerBackTitle: "Back",
+              }}
+            />
+            <Stack.Screen
+              name="profile/[userId]/following"
+              options={{
+                title: "Following",
+                headerBackTitle: "Back",
+              }}
+            />
             <Stack.Screen
               name="profile/edit"
               options={{
