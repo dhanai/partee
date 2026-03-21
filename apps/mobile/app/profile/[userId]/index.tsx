@@ -1,21 +1,18 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
-import { useIsFocused } from "@react-navigation/native";
-import { setStatusBarStyle } from "expo-status-bar";
+import { useNavigation } from "@react-navigation/native";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
-  ImageBackground,
-  Platform,
+  Image,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { ProfileHeroOverlays } from "../../../components/profile-hero-overlays";
 import { apiDelete, apiPost, toAbsoluteUrl } from "../../../lib/api";
 import {
   fetchPublicProfileAndCache,
@@ -25,11 +22,7 @@ import {
 } from "../../../lib/public-profile-cache";
 import { colors } from "../../../lib/theme";
 
-const WINDOW_HEIGHT = Dimensions.get("window").height;
-
-function profileHeroHeight() {
-  return Math.min(520, Math.max(320, Math.round(WINDOW_HEIGHT * 0.58)));
-}
+const AVATAR_RADIUS = 28;
 
 /**
  * Route params carry the name/avatar from the list row you tapped (fresh).
@@ -84,8 +77,9 @@ export default function PublicProfileScreen() {
     userName?: string;
     userAvatar?: string;
   }>();
-  const isFocused = useIsFocused();
+  const navigation = useNavigation();
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const [loading, setLoading] = useState(true);
@@ -93,18 +87,11 @@ export default function PublicProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
 
+  const avatarSize = Math.min(windowWidth - 48, 340);
+
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
-
-  useEffect(() => {
-    if (!isFocused) {
-      setStatusBarStyle("dark");
-      return;
-    }
-    const immersive = !loading && profile;
-    setStatusBarStyle(immersive ? "light" : "dark");
-  }, [isFocused, loading, profile]);
 
   async function loadProfile(options?: { silent?: boolean }) {
     if (!userId) return;
@@ -122,7 +109,7 @@ export default function PublicProfileScreen() {
     }
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!userId) {
       setProfile(null);
       setLoading(true);
@@ -132,7 +119,13 @@ export default function PublicProfileScreen() {
     setProfile(next);
     setLoading(!next);
     void loadProfile({ silent: Boolean(next) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on route param identity only
   }, [userId, userName, userAvatar]);
+
+  useLayoutEffect(() => {
+    const title = profile?.user.name?.trim() || "Profile";
+    navigation.setOptions({ title });
+  }, [navigation, profile?.user.name]);
 
   const initials = useMemo(() => {
     const name = profile?.user.name ?? "";
@@ -147,7 +140,6 @@ export default function PublicProfileScreen() {
   }, [profile?.user.name]);
   const handicapDisplay = profile?.user.handicap?.trim() || "";
   const locationDisplay = profile?.user.location?.trim() || "";
-  const heroH = profileHeroHeight();
 
   async function handleFollowAction() {
     if (!profile || profile.user.relationship === "self" || !userId || busy) return;
@@ -159,7 +151,6 @@ export default function PublicProfileScreen() {
     const shouldDelete =
       relation === "following" || relation === "mutual" || relation === "requested_by_viewer";
 
-    // Optimistic UI update for immediate social-app feedback.
     setProfile((current) => {
       if (!current) return current;
       const visibility = current.user.followVisibility;
@@ -244,42 +235,32 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "never" : undefined}
-    >
-      <View style={[styles.hero, { height: heroH }]}>
-        {profile.user.avatar ? (
-          <ImageBackground
-            source={{ uri: toAbsoluteUrl(profile.user.avatar) }}
-            style={styles.heroImage}
-            imageStyle={styles.heroImageInner}
-          >
-            <ProfileHeroOverlays />
-            <View style={styles.heroTextBlock}>
-              <Text style={styles.heroName}>{profile.user.name}</Text>
-              {locationDisplay ? (
-                <Text style={styles.heroLocation} numberOfLines={2}>
-                  {locationDisplay}
-                </Text>
-              ) : null}
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={[styles.avatarShadowOuter, { width: avatarSize, height: avatarSize }]}>
+        <View style={[styles.avatarClip, { width: avatarSize, height: avatarSize }]}>
+          {profile.user.avatar ? (
+            <Image
+              source={{ uri: toAbsoluteUrl(profile.user.avatar) }}
+              style={[styles.avatarImage, { width: avatarSize, height: avatarSize }]}
+              accessibilityLabel="Profile photo"
+            />
+          ) : (
+            <View style={[styles.avatarPlaceholder, { width: avatarSize, height: avatarSize }]}>
+              <Text style={[styles.avatarInitials, { fontSize: Math.round(avatarSize * 0.22) }]}>
+                {initials}
+              </Text>
             </View>
-          </ImageBackground>
-        ) : (
-          <View style={[styles.heroImage, styles.heroPlaceholder]}>
-            <ProfileHeroOverlays placeholder />
-            <Text style={styles.heroInitialsLarge}>{initials}</Text>
-            <View style={styles.heroTextBlock}>
-              <Text style={styles.heroName}>{profile.user.name}</Text>
-              {locationDisplay ? (
-                <Text style={styles.heroLocation} numberOfLines={2}>
-                  {locationDisplay}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-        )}
+          )}
+        </View>
+      </View>
+
+      <View style={styles.identityBlock}>
+        <Text style={styles.profileName}>{profile.user.name}</Text>
+        {locationDisplay ? (
+          <Text style={styles.profileLocation} numberOfLines={2}>
+            {locationDisplay}
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.statsGrid}>
@@ -335,58 +316,75 @@ export default function PublicProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 32 },
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  hero: {
-    width: "100%",
+  content: {
+    paddingBottom: 32,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    alignItems: "center",
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.background,
+  },
+  avatarShadowOuter: {
+    borderRadius: AVATAR_RADIUS,
+    backgroundColor: colors.surface,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 22,
+    elevation: 10,
+  },
+  avatarClip: {
+    borderRadius: AVATAR_RADIUS,
+    overflow: "hidden",
     backgroundColor: colors.surface,
   },
-  heroImage: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "flex-end",
-  },
-  heroImageInner: {
+  avatarImage: {
+    borderRadius: AVATAR_RADIUS,
     resizeMode: "cover",
   },
-  heroPlaceholder: {
+  avatarPlaceholder: {
+    borderRadius: AVATAR_RADIUS,
     backgroundColor: colors.fairwaySoft,
     alignItems: "center",
     justifyContent: "center",
   },
-  heroInitialsLarge: {
-    position: "absolute",
+  avatarInitials: {
     color: colors.fairway,
     fontWeight: "800",
-    fontSize: 72,
-    letterSpacing: -2,
-    zIndex: 1,
   },
-  heroTextBlock: {
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-    paddingTop: 12,
+  identityBlock: {
+    alignItems: "center",
+    paddingTop: 20,
+    paddingHorizontal: 8,
     gap: 6,
-    zIndex: 2,
+    width: "100%",
   },
-  heroName: {
-    color: "#fff",
+  profileName: {
+    color: colors.text,
     fontWeight: "800",
-    fontSize: 30,
-    letterSpacing: -0.5,
+    fontSize: 26,
+    textAlign: "center",
+    letterSpacing: -0.3,
   },
-  heroLocation: {
-    color: "rgba(255,255,255,0.88)",
+  profileLocation: {
+    color: colors.muted,
     fontSize: 16,
     fontWeight: "600",
+    textAlign: "center",
   },
   statsGrid: {
     flexDirection: "row",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    width: "100%",
+    marginTop: 24,
     paddingVertical: 20,
-    paddingHorizontal: 8,
-    backgroundColor: colors.background,
+    paddingHorizontal: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   statCell: {
     flex: 1,
@@ -410,8 +408,8 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 20,
+    width: "100%",
+    marginTop: 20,
     alignSelf: "stretch",
   },
   primaryAction: {
@@ -434,6 +432,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   secondaryActionText: { color: colors.text, fontWeight: "800", fontSize: 16 },
-  errorText: { color: colors.danger, paddingHorizontal: 16, marginTop: 8 },
+  errorText: { color: colors.danger, marginTop: 12, textAlign: "center" },
   disabledButton: { opacity: 0.6 },
 });

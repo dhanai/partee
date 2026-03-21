@@ -19,11 +19,7 @@ export default function ProfileUserStackLayout() {
       <Stack.Screen
         name="index"
         options={{
-          headerTitle: () => null,
-          headerTransparent: true,
-          headerShadowVisible: false,
-          headerStyle: { backgroundColor: "transparent" },
-          headerTintColor: "#ffffff",
+          title: "Profile",
           headerBackTitle: "Back",
         }}
       />
@@ -31,14 +27,14 @@ export default function ProfileUserStackLayout() {
         name="followers"
         options={{
           title: "Followers",
-          headerBackTitle: "Back",
+          headerBackTitle: "Profile",
         }}
       />
       <Stack.Screen
         name="following"
         options={{
           title: "Following",
-          headerBackTitle: "Back",
+          headerBackTitle: "Profile",
         }}
       />
     </Stack>

@@ -2,21 +2,18 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { setStatusBarStyle } from "expo-status-bar";
+import { useNavigation } from "@react-navigation/native";
 import {
   ActivityIndicator,
-  Dimensions,
-  ImageBackground,
-  Platform,
+  Image,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { ProfileHeroOverlays } from "../../components/profile-hero-overlays";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import { colors } from "../../lib/theme";
@@ -35,16 +32,12 @@ type MeResponse = {
   };
 };
 
-const WINDOW_HEIGHT = Dimensions.get("window").height;
-
-function profileHeroHeight() {
-  return Math.min(520, Math.max(320, Math.round(WINDOW_HEIGHT * 0.58)));
-}
+const AVATAR_RADIUS = 28;
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
-  const isFocused = useIsFocused();
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const [loading, setLoading] = useState(true);
@@ -57,6 +50,8 @@ export default function ProfileScreen() {
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
 
+  const avatarSize = Math.min(windowWidth - 48, 340);
+
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
@@ -68,23 +63,15 @@ export default function ProfileScreen() {
       },
       headerRight: () => (
         <Pressable
-          style={styles.headerGlassBtn}
+          style={styles.headerSettingsBtn}
           onPress={() => router.push("/settings")}
           accessibilityLabel="Open settings"
         >
-          <Ionicons name="options-outline" size={20} color="#fff" />
+          <Ionicons name="options-outline" size={18} color={colors.fairway} />
         </Pressable>
       ),
     });
   }, [navigation, router]);
-
-  useEffect(() => {
-    if (isFocused) {
-      setStatusBarStyle(loading ? "dark" : "light");
-    } else {
-      setStatusBarStyle("dark");
-    }
-  }, [isFocused, loading]);
 
   function applyMeUser(user: MeResponse["user"]) {
     setCachedMeProfile(user);
@@ -146,7 +133,6 @@ export default function ProfileScreen() {
 
   const handicapDisplay = handicap.trim();
   const locationDisplay = location.trim();
-  const heroH = profileHeroHeight();
 
   async function handleShareProfile() {
     const profileLabel = name.trim() || "Parfade golfer";
@@ -156,48 +142,38 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "never" : undefined}
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {loading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={colors.fairway} />
         </View>
       ) : (
         <View style={styles.profileLayout}>
-          <View style={[styles.hero, { height: heroH }]}>
-            {avatar ? (
-              <ImageBackground
-                source={{ uri: toAbsoluteUrl(avatar) }}
-                style={styles.heroImage}
-                imageStyle={styles.heroImageInner}
-              >
-                <ProfileHeroOverlays />
-                <View style={styles.heroTextBlock}>
-                  <Text style={styles.heroName}>{name || "Your profile"}</Text>
-                  {locationDisplay ? (
-                    <Text style={styles.heroLocation} numberOfLines={2}>
-                      {locationDisplay}
-                    </Text>
-                  ) : null}
+          <View style={[styles.avatarShadowOuter, { width: avatarSize, height: avatarSize }]}>
+            <View style={[styles.avatarClip, { width: avatarSize, height: avatarSize }]}>
+              {avatar ? (
+                <Image
+                  source={{ uri: toAbsoluteUrl(avatar) }}
+                  style={[styles.avatarImage, { width: avatarSize, height: avatarSize }]}
+                  accessibilityLabel="Profile photo"
+                />
+              ) : (
+                <View style={[styles.avatarPlaceholder, { width: avatarSize, height: avatarSize }]}>
+                  <Text style={[styles.avatarInitials, { fontSize: Math.round(avatarSize * 0.22) }]}>
+                    {initials}
+                  </Text>
                 </View>
-              </ImageBackground>
-            ) : (
-              <View style={[styles.heroImage, styles.heroPlaceholder]}>
-                <ProfileHeroOverlays placeholder />
-                <Text style={styles.heroInitialsLarge}>{initials}</Text>
-                <View style={styles.heroTextBlock}>
-                  <Text style={styles.heroName}>{name || "Your profile"}</Text>
-                  {locationDisplay ? (
-                    <Text style={styles.heroLocation} numberOfLines={2}>
-                      {locationDisplay}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-            )}
+              )}
+            </View>
+          </View>
+
+          <View style={styles.identityBlock}>
+            <Text style={styles.profileName}>{name || "Your profile"}</Text>
+            {locationDisplay ? (
+              <Text style={styles.profileLocation} numberOfLines={2}>
+                {locationDisplay}
+              </Text>
+            ) : null}
           </View>
 
           {myUserId ? (
@@ -251,63 +227,74 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 40 },
+  content: { paddingBottom: 40, paddingHorizontal: 16, paddingTop: 12 },
   loadingRow: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 32,
   },
-  profileLayout: { gap: 0 },
-  hero: {
-    width: "100%",
+  profileLayout: {
+    alignItems: "center",
+    gap: 0,
+  },
+  avatarShadowOuter: {
+    alignSelf: "center",
+    borderRadius: AVATAR_RADIUS,
+    backgroundColor: colors.surface,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 22,
+    elevation: 10,
+  },
+  avatarClip: {
+    borderRadius: AVATAR_RADIUS,
+    overflow: "hidden",
     backgroundColor: colors.surface,
   },
-  heroImage: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "flex-end",
-  },
-  heroImageInner: {
+  avatarImage: {
+    borderRadius: AVATAR_RADIUS,
     resizeMode: "cover",
   },
-  heroPlaceholder: {
+  avatarPlaceholder: {
+    borderRadius: AVATAR_RADIUS,
     backgroundColor: colors.fairwaySoft,
     alignItems: "center",
     justifyContent: "center",
   },
-  heroInitialsLarge: {
-    position: "absolute",
+  avatarInitials: {
     color: colors.fairway,
     fontWeight: "800",
-    fontSize: 72,
-    letterSpacing: -2,
-    zIndex: 1,
   },
-  heroTextBlock: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    paddingTop: 12,
+  identityBlock: {
+    alignItems: "center",
+    paddingTop: 20,
+    paddingHorizontal: 8,
     gap: 6,
-    zIndex: 2,
+    width: "100%",
   },
-  heroName: {
-    color: "#fff",
+  profileName: {
+    color: colors.text,
     fontWeight: "800",
-    fontSize: 30,
-    letterSpacing: -0.5,
+    fontSize: 26,
+    textAlign: "center",
+    letterSpacing: -0.3,
   },
-  heroLocation: {
-    color: "rgba(255,255,255,0.88)",
+  profileLocation: {
+    color: colors.muted,
     fontSize: 16,
     fontWeight: "600",
+    textAlign: "center",
   },
   statsGrid: {
     flexDirection: "row",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    width: "100%",
+    marginTop: 24,
     paddingVertical: 20,
-    paddingHorizontal: 8,
-    backgroundColor: colors.background,
+    paddingHorizontal: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   statCell: {
     flex: 1,
@@ -331,8 +318,8 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 20,
+    width: "100%",
+    marginTop: 20,
   },
   actionPrimary: {
     flex: 1,
@@ -354,12 +341,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   actionSecondaryText: { color: colors.text, fontWeight: "800", fontSize: 16 },
-  errorText: { color: colors.danger, paddingHorizontal: 16 },
-  headerGlassBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(0,0,0,0.38)",
+  errorText: { color: colors.danger, marginTop: 12, textAlign: "center" },
+  headerSettingsBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
