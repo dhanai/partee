@@ -39,6 +39,7 @@ The mobile app calls your Next.js API using **`EXPO_PUBLIC_API_BASE_URL`** (see 
 | `EXPO_ACCESS_TOKEN` | Expo account [access token](https://expo.dev/accounts/_/settings/access-tokens) — server uses this to send **push** notifications (invites, etc.). Without it, API may work but pushes won’t send. |
 | `GOOGLE_PLACES_API_KEY` | Server-side Places (course search, photos). Restrict key by IP / service in Google Cloud. |
 | `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY` | If the web app uses Places in the browser. |
+| `ABLY_API_KEY` | Server-only Ably API key — mints tokens for **group chat** realtime (`POST /api/ably/token`). Without it, chat still works via polling only. |
 
 | Step | What to do |
 |------|------------|

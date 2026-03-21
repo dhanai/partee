@@ -5,6 +5,7 @@ import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { useEffect } from "react";
 import { BuildConfigMissingScreen } from "../components/build-config-missing-screen";
+import { AblyChatProviders } from "../lib/ably-chat-context";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
 import { colors } from "../lib/theme";
@@ -51,78 +52,80 @@ export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoadedSplashSync />
-      <NotificationBadgeProvider>
-        <NotificationDeepLinkEffects />
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: colors.background },
-            headerTintColor: colors.text,
-            headerShadowVisible: false,
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        >
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="round/[token]"
-            options={{
-              title: "Round",
-              headerBackTitle: "Back",
+      <AblyChatProviders>
+        <NotificationBadgeProvider>
+          <NotificationDeepLinkEffects />
+          <StatusBar style="dark" />
+          <Stack
+            screenOptions={{
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.text,
+              headerShadowVisible: false,
+              contentStyle: { backgroundColor: colors.background },
             }}
-          />
-          <Stack.Screen
-            name="round/[token]/edit"
-            options={{
-              title: "Edit Round",
-              headerBackTitle: "Round",
-            }}
-          />
-          <Stack.Screen
-            name="round/[token]/chat"
-            options={{
-              title: "Group chat",
-              headerBackTitle: "Round",
-            }}
-          />
-          <Stack.Screen
-            name="profile/[userId]"
-            options={{
-              title: "Profile",
-              headerBackTitle: "Back",
-            }}
-          />
-          <Stack.Screen
-            name="profile/edit"
-            options={{
-              title: "Edit profile",
-              headerBackTitle: "Back",
-            }}
-          />
-          <Stack.Screen
-            name="notifications"
-            options={{
-              title: "Notifications",
-              headerBackTitle: "Back",
-            }}
-          />
-          <Stack.Screen
-            name="settings"
-            options={{
-              title: "Settings",
-              headerBackTitle: "Back",
-            }}
-          />
-          <Stack.Screen
-            name="invite-friends"
-            options={{
-              title: "Invite Friends",
-              headerBackTitle: "Back",
-            }}
-          />
-        </Stack>
-      </NotificationBadgeProvider>
+          >
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="round/[token]"
+              options={{
+                title: "Round",
+                headerBackTitle: "Back",
+              }}
+            />
+            <Stack.Screen
+              name="round/[token]/edit"
+              options={{
+                title: "Edit Round",
+                headerBackTitle: "Round",
+              }}
+            />
+            <Stack.Screen
+              name="round/[token]/chat"
+              options={{
+                title: "Group chat",
+                headerBackTitle: "Round",
+              }}
+            />
+            <Stack.Screen
+              name="profile/[userId]"
+              options={{
+                title: "Profile",
+                headerBackTitle: "Back",
+              }}
+            />
+            <Stack.Screen
+              name="profile/edit"
+              options={{
+                title: "Edit profile",
+                headerBackTitle: "Back",
+              }}
+            />
+            <Stack.Screen
+              name="notifications"
+              options={{
+                title: "Notifications",
+                headerBackTitle: "Back",
+              }}
+            />
+            <Stack.Screen
+              name="settings"
+              options={{
+                title: "Settings",
+                headerBackTitle: "Back",
+              }}
+            />
+            <Stack.Screen
+              name="invite-friends"
+              options={{
+                title: "Invite Friends",
+                headerBackTitle: "Back",
+              }}
+            />
+          </Stack>
+        </NotificationBadgeProvider>
+      </AblyChatProviders>
     </ClerkProvider>
   );
 }
