@@ -85,6 +85,13 @@
       "when": 1774200000000,
       "tag": "0011_users_hide_hosted_discover",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1774300000000,
+      "tag": "0012_games",
+      "breakpoints": true
     }
   ]
 }
