@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { inAppNotifications } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { toIsoTimestamp } from "@/lib/utils";
 
 const LIMIT = 50;
 
@@ -31,13 +32,14 @@ export async function GET(req: Request) {
         title: r.title,
         body: r.body,
         inviteToken: r.data.inviteToken,
-        createdAt: r.createdAt.toISOString(),
+        createdAt: toIsoTimestamp(r.createdAt),
       })),
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    console.error(error);
     return NextResponse.json({ error: "Unable to load notifications." }, { status: 500 });
   }
 }

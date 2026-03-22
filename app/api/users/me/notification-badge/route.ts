@@ -3,6 +3,7 @@ import { and, eq, inArray, max, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { inAppNotifications, rounds, spots, userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { timestampMs, toIsoTimestamp } from "@/lib/utils";
 
 export async function GET(req: Request) {
   try {
@@ -41,27 +42,30 @@ export async function GET(req: Request) {
     const followLatest = followAgg?.latest ?? null;
     const spotLatest = spotAgg?.latest ?? null;
     const activityLatest = activityAgg?.latest ?? null;
-    const times = [followLatest, spotLatest, activityLatest].filter((t): t is Date => t != null);
-    const maxActivity =
-      times.length === 0 ? null : new Date(Math.max(...times.map((d) => d.getTime())));
+    const msList = [followLatest, spotLatest, activityLatest]
+      .map((t) => timestampMs(t))
+      .filter((n): n is number => n != null);
+    const maxMs = msList.length === 0 ? null : Math.max(...msList);
 
+    const lastMs = timestampMs(lastViewed);
     let showBadge = false;
-    if (maxActivity) {
-      if (!lastViewed) {
+    if (maxMs != null) {
+      if (lastMs == null) {
         showBadge = true;
       } else {
-        showBadge = maxActivity.getTime() > lastViewed.getTime();
+        showBadge = maxMs > lastMs;
       }
     }
 
     return NextResponse.json({
       showBadge,
-      lastViewedAt: lastViewed ? lastViewed.toISOString() : null,
+      lastViewedAt: lastViewed != null ? toIsoTimestamp(lastViewed) : null,
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    console.error(error);
     return NextResponse.json({ error: "Unable to load notification badge." }, { status: 500 });
   }
 }

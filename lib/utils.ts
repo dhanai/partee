@@ -14,6 +14,26 @@ export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Neon / Drizzle may return timestamptz as `string`; never call `.toISOString()` blindly. */
+export function toIsoTimestamp(v: Date | string): string {
+  if (v instanceof Date) return v.toISOString();
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) {
+    throw new TypeError("Invalid timestamp from database");
+  }
+  return d.toISOString();
+}
+
+export function timestampMs(v: Date | string | null | undefined): number | null {
+  if (v == null) return null;
+  if (v instanceof Date) {
+    const n = v.getTime();
+    return Number.isNaN(n) ? null : n;
+  }
+  const n = new Date(v).getTime();
+  return Number.isNaN(n) ? null : n;
+}
+
 export function haversineMiles(
   lat1: number,
   lon1: number,

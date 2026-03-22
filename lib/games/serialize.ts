@@ -1,14 +1,9 @@
 import type { gameSessions } from "@/db/schema";
+import { toIsoTimestamp } from "@/lib/utils";
 
 type GameSessionRow = typeof gameSessions.$inferSelect;
 
-/** Neon / some drivers return timestamptz as strings; Drizzle types may still say Date. */
-export function toIso(v: Date | string): string {
-  if (v instanceof Date) return v.toISOString();
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) throw new TypeError("Invalid timestamp from database");
-  return d.toISOString();
-}
+export const toIso = toIsoTimestamp;
 
 export function serializeGameSessionForApi(s: GameSessionRow) {
   return {
@@ -19,10 +14,10 @@ export function serializeGameSessionForApi(s: GameSessionRow) {
     status: s.status,
     holesCount: s.holesCount,
     settings: s.settings,
-    startedAt: toIso(s.startedAt),
-    endedAt: s.endedAt != null ? toIso(s.endedAt) : null,
-    createdAt: toIso(s.createdAt),
-    updatedAt: toIso(s.updatedAt),
+    startedAt: toIsoTimestamp(s.startedAt),
+    endedAt: s.endedAt != null ? toIsoTimestamp(s.endedAt) : null,
+    createdAt: toIsoTimestamp(s.createdAt),
+    updatedAt: toIsoTimestamp(s.updatedAt),
   };
 }
 
