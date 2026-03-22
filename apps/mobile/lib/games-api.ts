@@ -86,6 +86,24 @@ export async function updateGameSessionStatus(
   return apiPatch(`/api/games/${sessionId}`, { status }, token);
 }
 
+export type PatchGameSessionBody = {
+  status?: "active" | "completed" | "abandoned";
+  holesCount?: 9 | 18;
+  settings?: {
+    wolfTeeOff?: "first" | "last";
+    wolfTieHandling?: "carry" | "wash";
+    skinsTieHandling?: "carry" | "wash";
+  };
+};
+
+export async function patchGameSession(
+  token: string | null,
+  sessionId: string,
+  body: PatchGameSessionBody,
+): Promise<{ session: GameSessionSummary }> {
+  return apiPatch(`/api/games/${sessionId}`, body, token);
+}
+
 export async function putGameHole(
   token: string | null,
   sessionId: string,

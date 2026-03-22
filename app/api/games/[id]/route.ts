@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, max } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { gameSessions } from "@/db/schema";
+import { gameHoleEvents, gameSessions } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { serializeGameSessionForApi, toIso } from "@/lib/games/serialize";
 import { deleteGameSessionIfAllowed } from "@/lib/games/delete-session";
@@ -60,9 +60,35 @@ export async function GET(req: Request, context: RouteContext) {
   }
 }
 
-const patchSchema = z.object({
-  status: z.enum(["active", "completed", "abandoned"]),
-});
+/** Accept 9/18 as number or string (some clients stringify JSON numbers). */
+const holesCount918 = z.preprocess((v) => {
+  if (v === "9" || v === 9) return 9;
+  if (v === "18" || v === 18) return 18;
+  return v;
+}, z.union([z.literal(9), z.literal(18)]));
+
+const patchBodySchema = z
+  .object({
+    status: z.enum(["active", "completed", "abandoned"]).optional(),
+    holesCount: holesCount918.optional(),
+    settings: z
+      .object({
+        wolfTeeOff: z.enum(["first", "last"]).optional(),
+        wolfTieHandling: z.enum(["carry", "wash"]).optional(),
+        skinsTieHandling: z.enum(["carry", "wash"]).optional(),
+      })
+      .optional(),
+  })
+  .refine(
+    (b) =>
+      b.status !== undefined ||
+      b.holesCount !== undefined ||
+      (b.settings !== undefined &&
+        (b.settings.wolfTeeOff !== undefined ||
+          b.settings.wolfTieHandling !== undefined ||
+          b.settings.skinsTieHandling !== undefined)),
+    { message: "Provide status, holesCount, or at least one settings field." },
+  );
 
 export async function PATCH(req: Request, context: RouteContext) {
   try {
@@ -77,14 +103,83 @@ export async function PATCH(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = patchSchema.parse(await req.json());
+    const body = patchBodySchema.parse(await req.json());
+
+    const [existing] = await db.select().from(gameSessions).where(eq(gameSessions.id, id));
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const now = new Date();
-    const endedAt = body.status === "active" ? null : now;
+    let holesCount = existing.holesCount;
+    const settings = { ...(existing.settings as Record<string, unknown>) };
+    let status = existing.status;
+    let endedAt: Date | null = existing.endedAt;
+
+    if (body.holesCount !== undefined) {
+      if (existing.gameType !== "skins" && existing.gameType !== "wolf") {
+        return NextResponse.json(
+          { error: "holesCount can only be changed for Skins or Wolf games." },
+          { status: 400 },
+        );
+      }
+      const [agg] = await db
+        .select({ maxN: max(gameHoleEvents.holeNumber) })
+        .from(gameHoleEvents)
+        .where(eq(gameHoleEvents.sessionId, id));
+      const maxHole = Number(agg?.maxN ?? 0);
+      if (body.holesCount < maxHole) {
+        return NextResponse.json(
+          {
+            error: `Use at least ${maxHole} holes — those holes already have recorded results.`,
+          },
+          { status: 400 },
+        );
+      }
+      holesCount = body.holesCount;
+    }
+
+    if (body.settings) {
+      if (body.settings.wolfTeeOff !== undefined) {
+        if (existing.gameType !== "wolf") {
+          return NextResponse.json(
+            { error: "wolfTeeOff only applies to Wolf games." },
+            { status: 400 },
+          );
+        }
+        settings.wolfTeeOff = body.settings.wolfTeeOff;
+      }
+      if (body.settings.wolfTieHandling !== undefined) {
+        if (existing.gameType !== "wolf") {
+          return NextResponse.json(
+            { error: "wolfTieHandling only applies to Wolf games." },
+            { status: 400 },
+          );
+        }
+        settings.wolfTieHandling = body.settings.wolfTieHandling;
+      }
+      if (body.settings.skinsTieHandling !== undefined) {
+        if (existing.gameType !== "skins") {
+          return NextResponse.json(
+            { error: "skinsTieHandling only applies to Skins games." },
+            { status: 400 },
+          );
+        }
+        settings.skinsTieHandling = body.settings.skinsTieHandling;
+      }
+    }
+
+    if (body.status !== undefined) {
+      status = body.status;
+      endedAt = body.status === "active" ? null : now;
+    }
 
     const [updated] = await db
       .update(gameSessions)
       .set({
-        status: body.status,
+        holesCount,
+        settings,
+        status,
         endedAt,
         updatedAt: now,
       })

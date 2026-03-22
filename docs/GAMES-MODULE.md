@@ -20,6 +20,8 @@ Hole writes go through [`app/api/games/[id]/holes/[holeNumber]/route.ts`](../app
 
 Session creation is [`POST /api/games`](../app/api/games/route.ts). **Guest (write-in) golfers** are stored only in `game_sessions.settings.guestPlayers` as `{ id: uuid, name }` (see [`lib/games/guest-players.ts`](../lib/games/guest-players.ts)); hole payloads reference those ids like real `users.id`. No `game_session_players` row for guests.
 
+**Session updates:** [`PATCH /api/games/[id]`](../app/api/games/[id]/route.ts) accepts `status` (existing), **`holesCount`** (9 or 18, Skins/Wolf only; cannot shrink below any hole that already has events), and **`settings`** partials: Wolf `wolfTeeOff` / `wolfTieHandling`, Skins `skinsTieHandling`. Participants may update; `guestPlayers` / `wolfLetterOrder` are not accepted here.
+
 ## 4. Mobile registry and UI
 
 - Add the game to [`apps/mobile/lib/games-registry.ts`](../apps/mobile/lib/games-registry.ts) (`implemented: true`, **`minPlayers`**, optional **`maxPlayers`**) + mirror caps in [`POST /api/games`](../app/api/games/route.ts) `minPlayersForGame` / `maxPlayersForGame` (Wolf = 4–4).
@@ -50,9 +52,15 @@ Wolf hole **`payload`** (normalized on write):
 | **Wolf + partner** (2 vs 2) | Wolf **+1×stake**, partner **+1×stake** | Each of the **two** Team Pack players **+1×stake** (2 vs 2 total) |
 | **No wolf points** (`tie`: low gross split across both teams) | — | **0** that hole; next-hole stake follows **carry** or **wash** |
 
+### Skins session `settings`
+
+On **`POST /api/games`** with `game_type: skins`, the server stores **`skinsTieHandling: "carry" | "wash"`** (default **`carry`**). **`holesCount`** must be **9** or **18** for Skins and Wolf.
+
 ### Skins hole payload
 
-Mobile matches Wolf-style **who shot lowest** picks: **`won`** = exactly one `winnerUserIds` (sole low gross wins the skin); **`tie`** = two or more ids (tied low → skin carries). Legacy **`carry`** is normalized to **`tie`**. Older rows may have **`tie`** with empty `winnerUserIds` (undifferentiated carry). Skin counts for standings: [`apps/mobile/lib/skins-scoring.ts`](../apps/mobile/lib/skins-scoring.ts) (`computeSkinsWins`).
+Mobile matches Wolf-style **who shot lowest** picks: **`won`** = exactly one `winnerUserIds` (sole low gross wins the skin); **`tie`** = two or more ids (tied low). Legacy **`carry`** is normalized to **`tie`**. Older rows may have **`tie`** with empty `winnerUserIds` (undifferentiated carry).
+
+**Skin totals** (standings): [`apps/mobile/lib/skins-scoring.ts`](../apps/mobile/lib/skins-scoring.ts) **`computeSkinsTotals`**: walks holes **1..holesCount** in order. **`carry`** — each tied hole increments a carry counter; the next **`won`** awards **1 + carry** skins to the winner then resets carry. **`wash`** — a tied hole resets carry to **0** (no accumulation across that tie).
 
 ### Wolf recap copy (names, not “teams”)
 

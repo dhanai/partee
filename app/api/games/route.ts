@@ -23,6 +23,7 @@ const createGameSchema = z
     guestNames: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
     roundInviteToken: z.string().trim().min(8).max(64).optional(),
     roundId: z.string().uuid().optional(),
+    /** Skins/Wolf: must be 9 or 18. Other types: 1–27 (when added). */
     holesCount: z.number().int().min(1).max(27).optional(),
     settings: z.record(z.string(), z.any()).optional(),
   })
@@ -150,6 +151,22 @@ export async function POST(req: Request) {
       (baseSettings as { wolfLetterOrder: string[] }).wolfLetterOrder = shuffleUserIds(rosterIds);
     }
 
+    if (body.gameType === "skins") {
+      const st = (baseSettings as { skinsTieHandling?: unknown }).skinsTieHandling;
+      (baseSettings as { skinsTieHandling: string }).skinsTieHandling =
+        st === "wash" ? "wash" : "carry";
+    }
+
+    const requestedHoles = body.holesCount ?? 18;
+    if (body.gameType === "skins" || body.gameType === "wolf") {
+      if (requestedHoles !== 9 && requestedHoles !== 18) {
+        return NextResponse.json(
+          { error: "holesCount must be 9 or 18 for Skins and Wolf." },
+          { status: 400 },
+        );
+      }
+    }
+
     const now = new Date();
     const [session] = await db
       .insert(gameSessions)
@@ -157,7 +174,7 @@ export async function POST(req: Request) {
         gameType: body.gameType,
         createdBy: user.id,
         roundId,
-        holesCount: body.holesCount ?? 18,
+        holesCount: requestedHoles,
         settings: { ...baseSettings, guestPlayers },
         updatedAt: now,
       })

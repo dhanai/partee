@@ -166,6 +166,13 @@ export default function RootLayout() {
                 headerBackTitle: "Games",
               }}
             />
+            <Stack.Screen
+              name="games/session/[sessionId]/settings"
+              options={{
+                title: "Game settings",
+                headerBackTitle: "Game",
+              }}
+            />
                 </Stack>
               </View>
             </KeyboardProvider>

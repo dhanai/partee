@@ -34,7 +34,7 @@ import {
 import { getGameDefinition } from "../../../lib/games-registry";
 import { letterLabelForUser } from "../../../lib/wolf-rotation";
 import type { WolfTeeOff } from "../../../lib/wolf-rotation";
-import { computeSkinsWins } from "../../../lib/skins-scoring";
+import { computeSkinsTotals, type SkinsTieHandling } from "../../../lib/skins-scoring";
 import { computeWolfTotals, type WolfTieHandling } from "../../../lib/wolf-scoring";
 import { buildWolfSessionRecapHighlights } from "../../../lib/wolf-session-recap-copy";
 import { colors } from "../../../lib/theme";
@@ -154,6 +154,8 @@ export default function GameSessionScreen() {
 
   const wolfTieHandling: WolfTieHandling =
     session?.settings?.wolfTieHandling === "wash" ? "wash" : "carry";
+  const skinsTieHandling: SkinsTieHandling =
+    session?.settings?.skinsTieHandling === "wash" ? "wash" : "carry";
   const wolfTotals = useMemo(() => {
     if (!session || session.gameType !== "wolf") return null;
     const ids = players.map((p) => p.userId);
@@ -168,8 +170,8 @@ export default function GameSessionScreen() {
   const skinsTotals = useMemo(() => {
     if (!session || session.gameType !== "skins") return null;
     const ids = players.map((p) => p.userId);
-    return computeSkinsWins(holes, ids);
-  }, [session, holes, players]);
+    return computeSkinsTotals(holes, ids, skinsTieHandling, session.holesCount);
+  }, [session, holes, players, skinsTieHandling]);
 
   const priorWolfHoles = useMemo(() => {
     if (editorHole == null) return [];
@@ -555,6 +557,7 @@ export default function GameSessionScreen() {
               <SkinsHoleEditor
                 holeNumber={editorHole}
                 players={players}
+                tieHandling={skinsTieHandling}
                 initial={
                   (editorPayload?.payload as SkinsPayload | { result: "carry"; winnerUserIds?: string[] }) ??
                   null
@@ -586,6 +589,17 @@ export default function GameSessionScreen() {
           visible={gameMenuOpen}
           onClose={() => setGameMenuOpen(false)}
           items={[
+            {
+              key: "settings",
+              label: "Game settings",
+              onPress: () => {
+                if (!sessionId) return;
+                router.push({
+                  pathname: "/games/session/[sessionId]/settings",
+                  params: { sessionId },
+                });
+              },
+            },
             {
               key: "refresh",
               label: "Refresh",

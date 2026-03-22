@@ -39,7 +39,9 @@ export default function CreateGameScreen() {
   const [error, setError] = useState<string | null>(null);
   /** One string per write-in row; server assigns stable ids. */
   const [guestInputs, setGuestInputs] = useState<string[]>([]);
-  const [wolfHolesCount, setWolfHolesCount] = useState(18);
+  const [wolfHolesCount, setWolfHolesCount] = useState<9 | 18>(18);
+  const [skinsHolesCount, setSkinsHolesCount] = useState<9 | 18>(18);
+  const [skinsTieHandling, setSkinsTieHandling] = useState<"carry" | "wash">("carry");
   const [wolfTeeOff, setWolfTeeOff] = useState<WolfTeeOff>("first");
   const [wolfTieHandling, setWolfTieHandling] = useState<"carry" | "wash">("carry");
 
@@ -209,11 +211,49 @@ export default function CreateGameScreen() {
       <Text style={styles.head}>{def.title}</Text>
       <Text style={styles.sub}>{def.subtitle}</Text>
 
+      {gameType === "skins" ? (
+        <View style={styles.wolfSetup}>
+          <Text style={styles.label}>Holes to play</Text>
+          <View style={styles.chipRow}>
+            {([9, 18] as const).map((n) => (
+              <Pressable
+                key={n}
+                style={[styles.optChip, skinsHolesCount === n && styles.optChipOn]}
+                onPress={() => setSkinsHolesCount(n)}
+              >
+                <Text style={[styles.optChipText, skinsHolesCount === n && styles.optChipTextOn]}>
+                  {n}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.label}>If the hole ties</Text>
+          <View style={styles.chipRow}>
+            {(
+              [
+                ["carry", "Carry"],
+                ["wash", "Wash"],
+              ] as const
+            ).map(([v, label]) => (
+              <Pressable
+                key={v}
+                style={[styles.optChip, skinsTieHandling === v && styles.optChipOn]}
+                onPress={() => setSkinsTieHandling(v)}
+              >
+                <Text style={[styles.optChipText, skinsTieHandling === v && styles.optChipTextOn]}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       {gameType === "wolf" ? (
         <View style={styles.wolfSetup}>
           <Text style={styles.label}>Holes to play</Text>
           <View style={styles.chipRow}>
-            {[9, 12, 18, 27].map((n) => (
+            {([9, 18] as const).map((n) => (
               <Pressable
                 key={n}
                 style={[styles.optChip, wolfHolesCount === n && styles.optChipOn]}
@@ -226,9 +266,6 @@ export default function CreateGameScreen() {
             ))}
           </View>
           <Text style={styles.label}>Wolf tees</Text>
-          <Text style={styles.mutedSmall}>
-            “First” = wolf hits first on their hole; “last” = wolf is last in the group order.
-          </Text>
           <View style={styles.chipRow}>
             {(
               [
@@ -251,8 +288,8 @@ export default function CreateGameScreen() {
           <View style={styles.chipRow}>
             {(
               [
-                ["carry", "Carry (next hole 2×, 4×, …)"],
-                ["wash", "Wash (no carry)"],
+                ["carry", "Carry"],
+                ["wash", "Wash"],
               ] as const
             ).map(([v, label]) => (
               <Pressable
@@ -266,10 +303,6 @@ export default function CreateGameScreen() {
               </Pressable>
             ))}
           </View>
-          <Text style={styles.mutedSmall}>
-            Exactly 4 golfers — you plus up to 3 friends or guests. Tee letters A–D are assigned at
-            random when you start.
-          </Text>
         </View>
       ) : null}
 
@@ -360,10 +393,6 @@ export default function CreateGameScreen() {
       {!loading ? (
         <View style={styles.guestSection}>
           <Text style={styles.label}>Guest golfers</Text>
-          <Text style={styles.mutedSmall}>
-            Type a name for someone without a Parfade account. They’re only stored on this game (for
-            scores); they won’t get notifications or a profile.
-          </Text>
           {guestInputs.map((line, i) => (
             <View key={`g-${i}`} style={styles.guestRow}>
               <TextInput
@@ -390,11 +419,6 @@ export default function CreateGameScreen() {
               <Text style={styles.addGuestBtnText}>Add guest name</Text>
             </Pressable>
           ) : null}
-          {maxGuestSlots === 0 ? (
-            <Text style={styles.mutedSmall}>
-              Roster full ({rosterCap} players with Parfade accounts) — no guest slots.
-            </Text>
-          ) : null}
         </View>
       ) : null}
 
@@ -402,9 +426,7 @@ export default function CreateGameScreen() {
 
       {!loading && !hasEnoughPlayers ? (
         <Text style={styles.needMoreHint}>
-          {def.title} needs {minPlayers} golfers total ({registeredCount} Parfade
-          {guestFilled > 0 ? `, ${guestFilled} guest${guestFilled === 1 ? "" : "s"}` : ""}).
-          {maxGuestSlots > 0 ? " Add friends or guest names." : ""}
+          {def.title} needs {minPlayers} golfers total. Add friends or guest names.
         </Text>
       ) : null}
 

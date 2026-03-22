@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { GamePlayerRow } from "../../lib/games-api";
+import type { SkinsTieHandling } from "../../lib/skins-scoring";
 import { colors } from "../../lib/theme";
 
 export type SkinsPayload = {
@@ -16,6 +17,8 @@ type Props = {
   holeNumber: number;
   players: GamePlayerRow[];
   initial?: SkinsHoleInitial | null;
+  /** Carry = tied hole adds to next pot; wash = tie clears carry. */
+  tieHandling?: SkinsTieHandling;
   onSave: (payload: SkinsPayload) => void;
   onCancel: () => void;
 };
@@ -33,7 +36,14 @@ function initialLowPicks(initial: SkinsHoleInitial | null | undefined): Set<stri
   return new Set();
 }
 
-export function SkinsHoleEditor({ holeNumber, players, initial, onSave, onCancel }: Props) {
+export function SkinsHoleEditor({
+  holeNumber,
+  players,
+  initial,
+  tieHandling = "carry",
+  onSave,
+  onCancel,
+}: Props) {
   const [lowPick, setLowPick] = useState<Set<string>>(() => initialLowPicks(initial));
 
   /** One row per golfer (avoids duplicate keys / toggling the same id twice). */
@@ -51,9 +61,11 @@ export function SkinsHoleEditor({ holeNumber, players, initial, onSave, onCancel
 
   const summaryLine = useMemo(() => {
     if (n === 0) return "Tap everyone who had the lowest score on this hole.";
-    if (soleLow) return "Sole low — this player takes the skin.";
-    return "Tied for low — the skin carries over (same as a tie).";
-  }, [n, soleLow]);
+    if (soleLow) return "Sole low — this player takes the skin (and any carried skins).";
+    return tieHandling === "wash"
+      ? "Tied for low — pot washes; next hole is a single skin again."
+      : "Tied for low — the skin carries to the next hole (pot grows).";
+  }, [n, soleLow, tieHandling]);
 
   function toggle(id: string) {
     setLowPick((prev) => {

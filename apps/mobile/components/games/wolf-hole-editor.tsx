@@ -165,9 +165,7 @@ export function WolfHoleEditor({
     if (o === "wolf_won") return "Team Wolf wins the points";
     if (o === "pack_won") return "Team Pack wins the points";
     // outcome === "tie": no one wins wolf points (e.g. low gross split across both sides)
-    return tieHandling === "carry"
-      ? "No wolf points. Carry: next hole’s stake multiplier increases."
-      : "No wolf points. Wash: next hole stays 1× — this tie doesn’t add carry.";
+    return "No wolf points this hole.";
   }
 
   const tieForLow = winnerPick.size >= 2;
@@ -225,9 +223,6 @@ export function WolfHoleEditor({
                         {" "}
                         ({letterLabelForUser(letterOrderUserIds, expectedWolf!)})
                       </Text>
-                    </Text>
-                    <Text style={styles.teeNote}>
-                      Tees {wolfTeeOff === "first" ? "first" : "last"} · A→D below
                     </Text>
                   </View>
                 </View>
@@ -481,7 +476,6 @@ const styles = StyleSheet.create({
   },
   wolfContextName: { fontSize: 17, fontWeight: "800", color: colors.text },
   wolfLetter: { fontWeight: "700", color: colors.muted, fontSize: 16 },
-  teeNote: { fontSize: 12, color: colors.muted, marginTop: 4, lineHeight: 16 },
   teeLetterPrefix: { fontWeight: "800", color: colors.muted },
   sectionEyebrow: {
     fontSize: 11,
