@@ -34,6 +34,18 @@ export function timestampMs(v: Date | string | null | undefined): number | null 
   return Number.isNaN(n) ? null : n;
 }
 
+/** Nullable timestamptz: empty string or invalid parses as null (avoid 500 on odd DB rows). */
+export function toIsoTimestampOrNull(v: Date | string | null | undefined): string | null {
+  if (v == null) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  if (v instanceof Date) {
+    const n = v.getTime();
+    return Number.isNaN(n) ? null : v.toISOString();
+  }
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export function haversineMiles(
   lat1: number,
   lon1: number,

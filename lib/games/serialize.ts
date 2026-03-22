@@ -1,5 +1,5 @@
 import type { gameSessions } from "@/db/schema";
-import { toIsoTimestamp } from "@/lib/utils";
+import { toIsoTimestamp, toIsoTimestampOrNull } from "@/lib/utils";
 
 type GameSessionRow = typeof gameSessions.$inferSelect;
 
@@ -15,13 +15,22 @@ export function serializeGameSessionForApi(s: GameSessionRow) {
     holesCount: s.holesCount,
     settings: s.settings,
     startedAt: toIsoTimestamp(s.startedAt),
-    endedAt: s.endedAt != null ? toIsoTimestamp(s.endedAt) : null,
+    endedAt: toIsoTimestampOrNull(s.endedAt),
     createdAt: toIsoTimestamp(s.createdAt),
     updatedAt: toIsoTimestamp(s.updatedAt),
   };
 }
 
+function pgErrorCode(e: unknown): string | null {
+  if (typeof e !== "object" || e === null || !("code" in e)) return null;
+  const c = (e as { code?: unknown }).code;
+  return typeof c === "string" ? c : null;
+}
+
 export function missingGamesSchemaMessage(e: unknown): string | null {
+  if (pgErrorCode(e) === "42P01") {
+    return "Games tables are missing. Run npm run db:migrate (migration 0012_games) on this database.";
+  }
   const msg = e instanceof Error ? e.message : String(e);
   if (/does not exist/i.test(msg) && /game_sessions/i.test(msg)) {
     return "Games tables are missing. Run npm run db:migrate (migration 0012_games) on this database.";

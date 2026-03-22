@@ -7,9 +7,15 @@ export async function GET(req: Request) {
   try {
     const user = await requireDbUser(req);
     const sessions = await listSessionsForUser(user.id, 50);
-    return NextResponse.json({
-      sessions: sessions.map((s) => serializeGameSessionForApi(s)),
-    });
+    const serialized: ReturnType<typeof serializeGameSessionForApi>[] = [];
+    for (const s of sessions) {
+      try {
+        serialized.push(serializeGameSessionForApi(s));
+      } catch (rowErr) {
+        console.error("games/mine: skip row", s.id, rowErr);
+      }
+    }
+    return NextResponse.json({ sessions: serialized });
   } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
