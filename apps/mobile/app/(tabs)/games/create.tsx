@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
@@ -35,6 +36,8 @@ export default function CreateGameScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** One string per write-in row; server assigns stable ids. */
+  const [guestInputs, setGuestInputs] = useState<string[]>([]);
 
   const toggle = useCallback((id: string) => {
     if (roundLockedIds) return;
@@ -85,29 +88,46 @@ export default function CreateGameScreen() {
     };
   }, [getToken, roundInviteToken]);
 
-  const minPlayers = def?.minPlayers ?? 2;
-  const totalPlayers =
+  const registeredCount =
     roundLockedIds != null ? roundLockedIds.length : 1 + selected.size;
+  const maxGuestSlots = Math.max(0, 8 - registeredCount);
+  const guestFilled = guestInputs.filter((s) => s.trim().length > 0).length;
+
+  useEffect(() => {
+    setGuestInputs((prev) =>
+      prev.length > maxGuestSlots ? prev.slice(0, maxGuestSlots) : prev,
+    );
+  }, [maxGuestSlots]);
+
+  const minPlayers = def?.minPlayers ?? 2;
+  const totalPlayers = registeredCount + guestFilled;
   const hasEnoughPlayers = Boolean(def) && totalPlayers >= minPlayers;
   const canStart = Boolean(def) && !loading && !submitting && hasEnoughPlayers;
+
+  const addGuestRow = useCallback(() => {
+    setGuestInputs((prev) => (prev.length < maxGuestSlots ? [...prev, ""] : prev));
+  }, [maxGuestSlots]);
+
+  const removeGuestRow = useCallback((index: number) => {
+    setGuestInputs((prev) => prev.filter((_, j) => j !== index));
+  }, []);
+
+  const setGuestLine = useCallback((index: number, text: string) => {
+    setGuestInputs((prev) => {
+      const next = [...prev];
+      next[index] = text;
+      return next;
+    });
+  }, []);
 
   async function submit() {
     if (!def?.implemented || !gameType) return;
     setError(null);
     const playerUserIds = roundLockedIds ?? [...selected];
-    if (roundLockedIds) {
-      if (playerUserIds.length < minPlayers) {
-        setError(
-          `This round needs at least ${minPlayers} golfers for ${def.title} (currently ${playerUserIds.length}).`,
-        );
-        return;
-      }
-    } else if (selected.size < 1) {
-      setError("Select at least one person from your network (you’re included automatically).");
-      return;
-    } else if (totalPlayers < minPlayers) {
+    const guestNames = guestInputs.map((s) => s.trim()).filter(Boolean);
+    if (totalPlayers < minPlayers) {
       setError(
-        `${def.title} needs at least ${minPlayers} players including you (currently ${totalPlayers}).`,
+        `${def.title} needs at least ${minPlayers} golfers (Parfade + guests). You have ${totalPlayers}.`,
       );
       return;
     }
@@ -117,6 +137,7 @@ export default function CreateGameScreen() {
       const body: Parameters<typeof createGameSession>[1] = {
         gameType: gameType as GameTypeId,
         playerUserIds,
+        ...(guestNames.length > 0 ? { guestNames } : {}),
       };
       if (roundInviteToken) {
         body.roundInviteToken = String(roundInviteToken);
@@ -219,13 +240,52 @@ export default function CreateGameScreen() {
         </>
       )}
 
+      {!loading ? (
+        <View style={styles.guestSection}>
+          <Text style={styles.label}>Guest golfers</Text>
+          <Text style={styles.mutedSmall}>
+            Type a name for someone without a Parfade account. They’re only stored on this game (for
+            scores); they won’t get notifications or a profile.
+          </Text>
+          {guestInputs.map((line, i) => (
+            <View key={`g-${i}`} style={styles.guestRow}>
+              <TextInput
+                style={styles.guestInput}
+                placeholder="Name"
+                placeholderTextColor={colors.muted}
+                value={line}
+                onChangeText={(t) => setGuestLine(i, t)}
+                autoCapitalize="words"
+                autoCorrect
+              />
+              <Pressable
+                onPress={() => removeGuestRow(i)}
+                hitSlop={8}
+                style={styles.guestRemove}
+              >
+                <Ionicons name="close-circle" size={22} color={colors.muted} />
+              </Pressable>
+            </View>
+          ))}
+          {maxGuestSlots > 0 && guestInputs.length < maxGuestSlots ? (
+            <Pressable style={styles.addGuestBtn} onPress={addGuestRow}>
+              <Ionicons name="add-circle-outline" size={20} color={colors.fairway} />
+              <Text style={styles.addGuestBtnText}>Add guest name</Text>
+            </Pressable>
+          ) : null}
+          {maxGuestSlots === 0 ? (
+            <Text style={styles.mutedSmall}>Roster full (8 Parfade players) — no guest slots.</Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {!loading && !hasEnoughPlayers ? (
         <Text style={styles.needMoreHint}>
-          {roundLockedIds == null
-            ? `${def.title} needs ${minPlayers} players including you. Select ${Math.max(0, minPlayers - totalPlayers)} more from your network.`
-            : `${def.title} needs ${minPlayers} players; this round has ${totalPlayers}.`}
+          {def.title} needs {minPlayers} golfers total ({registeredCount} Parfade
+          {guestFilled > 0 ? `, ${guestFilled} guest${guestFilled === 1 ? "" : "s"}` : ""}).
+          {maxGuestSlots > 0 ? " Add friends or guest names." : ""}
         </Text>
       ) : null}
 
@@ -284,6 +344,29 @@ const styles = StyleSheet.create({
   },
   lockedName: { flex: 1, fontSize: 16, fontWeight: "600", color: colors.text },
   hint: { fontSize: 13, color: colors.muted, marginTop: 8, marginBottom: 16 },
+  mutedSmall: { fontSize: 12, color: colors.muted, lineHeight: 17, marginBottom: 10 },
+  guestSection: { marginTop: 8, marginBottom: 4 },
+  guestRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  guestInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: colors.surface,
+  },
+  guestRemove: { padding: 4 },
+  addGuestBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    paddingVertical: 6,
+  },
+  addGuestBtnText: { fontSize: 15, fontWeight: "600", color: colors.fairway },
   needMoreHint: {
     fontSize: 13,
     color: colors.muted,

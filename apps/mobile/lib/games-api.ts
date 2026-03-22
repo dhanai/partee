@@ -21,6 +21,8 @@ export type GamePlayerRow = {
   teamId: string | null;
   name: string;
   avatar: string | null;
+  /** Write-in golfer; `userId` is a stable id in `session.settings.guestPlayers`, not `users.id`. */
+  isGuest?: boolean;
 };
 
 export type GameHoleRow = {
@@ -36,6 +38,8 @@ export async function createGameSession(
   body: {
     gameType: GameTypeId;
     playerUserIds: string[];
+    /** Display names only; server assigns ids and stores under session `settings.guestPlayers`. */
+    guestNames?: string[];
     roundInviteToken?: string;
     holesCount?: number;
   },

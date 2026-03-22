@@ -10,13 +10,16 @@ import {
   playerIdsAllowedForRound,
   viewerCanLinkGameToRound,
 } from "@/lib/games/round-game-access";
+import { buildGuestPlayersFromNames } from "@/lib/games/guest-players";
 import { serializeGameSessionForApi } from "@/lib/games/serialize";
 
 const createGameSchema = z
   .object({
     gameType: z.enum(["skins", "wolf", "best_ball", "nassau"]),
-    /** Other golfers (mobile omits the creator; server adds `createdBy`). Round flows may include everyone. */
-    playerUserIds: z.array(z.string().uuid()).min(1).max(8),
+    /** Parfade accounts only (mobile omits the creator; server adds `createdBy`). */
+    playerUserIds: z.array(z.string().uuid()).max(8).default([]),
+    /** Write-in names; stored in `settings.guestPlayers` with server-generated ids. */
+    guestNames: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
     roundInviteToken: z.string().trim().min(8).max(64).optional(),
     roundId: z.string().uuid().optional(),
     holesCount: z.number().int().min(1).max(27).optional(),
@@ -62,6 +65,17 @@ export async function POST(req: Request) {
     }
 
     const playerIds = [...new Set([user.id, ...body.playerUserIds])];
+    const maxGuests = Math.max(0, 8 - playerIds.length);
+    if (body.guestNames.length > maxGuests) {
+      return NextResponse.json(
+        {
+          error: `At most ${maxGuests} guest name(s) allowed (${playerIds.length} Parfade player(s) already).`,
+        },
+        { status: 400 },
+      );
+    }
+    const guestPlayers = buildGuestPlayersFromNames(body.guestNames);
+    const totalRoster = playerIds.length + guestPlayers.length;
 
     const minPlayersForGame: Record<(typeof body)["gameType"], number> = {
       skins: 2,
@@ -70,16 +84,16 @@ export async function POST(req: Request) {
       nassau: 2,
     };
     const requiredPlayers = minPlayersForGame[body.gameType];
-    if (playerIds.length < requiredPlayers) {
+    if (totalRoster < requiredPlayers) {
       return NextResponse.json(
         {
-          error: `At least ${requiredPlayers} players are required for ${body.gameType.replace(/_/g, " ")}.`,
+          error: `At least ${requiredPlayers} golfers are required for ${body.gameType.replace(/_/g, " ")} (Parfade + guests).`,
         },
         { status: 400 },
       );
     }
-    if (playerIds.length > 8) {
-      return NextResponse.json({ error: "At most 8 players" }, { status: 400 });
+    if (totalRoster > 8) {
+      return NextResponse.json({ error: "At most 8 players total." }, { status: 400 });
     }
 
     if (!(await allUsersExist(playerIds))) {
@@ -99,6 +113,12 @@ export async function POST(req: Request) {
       }
     }
 
+    const baseSettings =
+      body.settings && typeof body.settings === "object" && !Array.isArray(body.settings)
+        ? { ...body.settings }
+        : {};
+    delete (baseSettings as { guestPlayers?: unknown }).guestPlayers;
+
     const now = new Date();
     const [session] = await db
       .insert(gameSessions)
@@ -107,7 +127,7 @@ export async function POST(req: Request) {
         createdBy: user.id,
         roundId,
         holesCount: body.holesCount ?? 18,
-        settings: body.settings ?? {},
+        settings: { ...baseSettings, guestPlayers },
         updatedAt: now,
       })
       .returning();

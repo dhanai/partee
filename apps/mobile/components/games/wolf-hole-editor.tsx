@@ -17,6 +17,10 @@ type Props = {
   onCancel: () => void;
 };
 
+function displayName(p: GamePlayerRow) {
+  return p.isGuest ? `${p.name} (guest)` : p.name;
+}
+
 export function WolfHoleEditor({ players, initial, onSave, onCancel }: Props) {
   const [wolfId, setWolfId] = useState<string | null>(initial?.wolfUserId ?? players[0]?.userId ?? null);
   const [wentAlone, setWentAlone] = useState(initial?.wentAlone ?? false);
@@ -53,7 +57,7 @@ export function WolfHoleEditor({ players, initial, onSave, onCancel }: Props) {
             if (partnerId === p.userId) setPartnerId(null);
           }}
         >
-          <Text style={styles.playerName}>{p.name}</Text>
+          <Text style={styles.playerName}>{displayName(p)}</Text>
         </Pressable>
       ))}
 
@@ -76,7 +80,7 @@ export function WolfHoleEditor({ players, initial, onSave, onCancel }: Props) {
               style={[styles.playerRow, partnerId === p.userId && styles.playerRowOn]}
               onPress={() => setPartnerId(p.userId)}
             >
-              <Text style={styles.playerName}>{p.name}</Text>
+              <Text style={styles.playerName}>{displayName(p)}</Text>
             </Pressable>
           ))}
         </>

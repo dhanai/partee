@@ -35,6 +35,7 @@ export async function GET(req: Request, context: RouteContext) {
         teamId: p.teamId,
         name: p.name,
         avatar: p.avatar,
+        isGuest: p.isGuest,
       })),
       holes: data.holes.map((h) => ({
         holeNumber: h.holeNumber,

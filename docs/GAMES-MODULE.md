@@ -18,7 +18,7 @@ In [`lib/games/payload-schemas.ts`](../lib/games/payload-schemas.ts):
 
 Hole writes go through [`app/api/games/[id]/holes/[holeNumber]/route.ts`](../app/api/games/[id]/holes/[holeNumber]/route.ts) — no changes needed if `parseHolePayload` handles the type.
 
-Session creation is [`POST /api/games`](../app/api/games/route.ts) — no change unless the new game needs **session-level** `settings` fields (still use JSON `settings` on `game_sessions`).
+Session creation is [`POST /api/games`](../app/api/games/route.ts). **Guest (write-in) golfers** are stored only in `game_sessions.settings.guestPlayers` as `{ id: uuid, name }` (see [`lib/games/guest-players.ts`](../lib/games/guest-players.ts)); hole payloads reference those ids like real `users.id`. No `game_session_players` row for guests.
 
 ## 4. Mobile registry and UI
 

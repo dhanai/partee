@@ -15,6 +15,10 @@ type Props = {
   onCancel: () => void;
 };
 
+function displayName(p: GamePlayerRow) {
+  return p.isGuest ? `${p.name} (guest)` : p.name;
+}
+
 export function SkinsHoleEditor({ players, initial, onSave, onCancel }: Props) {
   const [result, setResult] = useState<SkinsPayload["result"]>(initial?.result ?? "tie");
   const [winnerId, setWinnerId] = useState<string | null>(
@@ -64,7 +68,7 @@ export function SkinsHoleEditor({ players, initial, onSave, onCancel }: Props) {
               style={[styles.playerRow, winnerId === p.userId && styles.playerRowOn]}
               onPress={() => setWinnerId(p.userId)}
             >
-              <Text style={styles.playerName}>{p.name}</Text>
+              <Text style={styles.playerName}>{displayName(p)}</Text>
             </Pressable>
           ))}
         </>

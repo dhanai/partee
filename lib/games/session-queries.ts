@@ -6,6 +6,7 @@ import {
   gameSessions,
   users,
 } from "@/db/schema";
+import { mergeDbPlayersWithGuests, parseGuestPlayersFromSettings } from "@/lib/games/guest-players";
 
 export async function userIsGameParticipant(sessionId: string, userId: string) {
   const [session] = await db
@@ -31,7 +32,7 @@ export async function loadSessionWithPlayers(sessionId: string) {
   const [session] = await db.select().from(gameSessions).where(eq(gameSessions.id, sessionId));
   if (!session) return null;
 
-  const players = await db
+  const dbPlayers = await db
     .select({
       userId: gameSessionPlayers.userId,
       sortOrder: gameSessionPlayers.sortOrder,
@@ -43,6 +44,9 @@ export async function loadSessionWithPlayers(sessionId: string) {
     .innerJoin(users, eq(gameSessionPlayers.userId, users.id))
     .where(eq(gameSessionPlayers.sessionId, sessionId))
     .orderBy(gameSessionPlayers.sortOrder, gameSessionPlayers.userId);
+
+  const guests = parseGuestPlayersFromSettings(session.settings as Record<string, unknown>);
+  const players = mergeDbPlayersWithGuests(dbPlayers, guests);
 
   const holes = await db
     .select()
