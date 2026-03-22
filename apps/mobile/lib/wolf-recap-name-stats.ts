@@ -1,6 +1,6 @@
 /**
  * Wolf recap copy using player names (not “Team Wolf / Team Pack”).
- * Next.js API — mirror of `apps/mobile/lib/wolf-recap-name-stats.ts` (Metro only bundles under apps/mobile).
+ * Keep in sync with `lib/games/wolf-recap-name-stats.ts` (Next API).
  */
 
 export type WolfNameStatsAgg = {
@@ -39,9 +39,6 @@ function ensureLone(agg: WolfNameStatsAgg, wolfId: string) {
   return agg.lone.get(wolfId)!;
 }
 
-/**
- * Merge hole-level outcomes into `agg`. `playerUserIds` is the full session roster for that hole’s game.
- */
 export function addHolesToWolfNameStats(
   agg: WolfNameStatsAgg,
   holes: ReadonlyArray<{ payload: Record<string, unknown> }>,
@@ -142,7 +139,6 @@ export function wolfNameStatsToHighlightLines(
   return lines;
 }
 
-/** One-shot for a single session’s holes + roster names. */
 export function buildWolfNameRecapLinesForSession(
   holes: ReadonlyArray<{ payload: Record<string, unknown> }>,
   players: ReadonlyArray<{ userId: string; name: string }>,

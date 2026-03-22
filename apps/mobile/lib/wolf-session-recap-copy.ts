@@ -2,7 +2,7 @@ import type { GameHoleRow, GamePlayerRow } from "./games-api";
 import {
   buildWolfNameRecapLinesForSession,
   firstName,
-} from "../../../lib/games/wolf-recap-name-stats";
+} from "./wolf-recap-name-stats";
 
 export { firstName };
 
