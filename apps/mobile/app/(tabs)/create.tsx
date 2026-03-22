@@ -9,6 +9,7 @@ import * as ImagePicker from "expo-image-picker";
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -465,7 +466,11 @@ export default function CreateScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.title}>
         {createType === "planning"
           ? "Planning Round"
@@ -540,6 +545,7 @@ export default function CreateScreen() {
                   key={item.label}
                   style={styles.listRow}
                   onPress={() => {
+                    Keyboard.dismiss();
                     setPlanningLocation(item.label);
                     setPlanningLocationIsValidated(true);
                     setLocationResults([]);
@@ -549,9 +555,6 @@ export default function CreateScreen() {
                   <Text style={styles.listTitle}>{item.label}</Text>
                 </Pressable>
               ))}
-            {!planningLocationIsValidated && planningLocation.trim().length > 0 ? (
-              <Text style={styles.loadingHint}>Select a suggested city/state.</Text>
-            ) : null}
           </>
         ) : isScheduledRound ? (
           <>
@@ -594,6 +597,7 @@ export default function CreateScreen() {
                 key={course.id}
                 style={styles.listRow}
                 onPress={() => {
+                  Keyboard.dismiss();
                   setSelectedCourse(course);
                   setQuery(course.name);
                   setResults([]);

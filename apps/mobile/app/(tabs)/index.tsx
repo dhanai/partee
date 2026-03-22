@@ -295,6 +295,7 @@ export default function DiscoverScreen() {
       const currentLabel = locationLabel.trim();
       if (q.length < 2) {
         if (active) {
+          setLocationSearchLoading(false);
           setLocationResults([]);
           setShowLocationResults(false);
         }
@@ -698,9 +699,13 @@ export default function DiscoverScreen() {
                 onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
                 placeholder="Search City, State"
                 placeholderTextColor={colors.muted}
-                style={styles.locationInput}
+                style={[styles.locationInput, styles.locationInputWithAccessory]}
               />
-              {locationQuery.trim().length > 0 ? (
+              {locationSearchLoading && locationQuery.trim().length >= 2 ? (
+                <View style={styles.locationInputAccessory} accessibilityLabel="Searching locations">
+                  <ActivityIndicator size="small" color={colors.muted} />
+                </View>
+              ) : locationQuery.trim().length > 0 ? (
                 <Pressable
                   style={styles.locationInputClearBtn}
                   onPress={() => {
@@ -714,9 +719,6 @@ export default function DiscoverScreen() {
                 </Pressable>
               ) : null}
             </View>
-            {locationSearchLoading ? (
-              <Text style={styles.locationHint}>Searching locations...</Text>
-            ) : null}
             {showLocationResults &&
               locationResults.map((item) => (
                 <Pressable
@@ -910,8 +912,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 12,
-    paddingRight: 42,
     color: colors.text,
+  },
+  locationInputWithAccessory: {
+    paddingRight: 38,
+  },
+  locationInputAccessory: {
+    position: "absolute",
+    right: 10,
+    top: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ece8e1",
   },
   locationInputClearBtn: {
     position: "absolute",

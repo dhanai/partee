@@ -36,10 +36,7 @@ import { letterLabelForUser } from "../../../lib/wolf-rotation";
 import type { WolfTeeOff } from "../../../lib/wolf-rotation";
 import { computeSkinsWins } from "../../../lib/skins-scoring";
 import { computeWolfTotals, type WolfTieHandling } from "../../../lib/wolf-scoring";
-import {
-  buildWolfSessionRecapHighlights,
-  countWolfHoleOutcomes,
-} from "../../../lib/wolf-session-recap-copy";
+import { buildWolfSessionRecapHighlights } from "../../../lib/wolf-session-recap-copy";
 import { colors } from "../../../lib/theme";
 
 function parseWolfLetterOrder(settings: Record<string, unknown>): string[] {
@@ -162,8 +159,6 @@ export default function GameSessionScreen() {
     const ids = players.map((p) => p.userId);
     return computeWolfTotals(holes, ids, wolfTieHandling);
   }, [session, holes, players, wolfTieHandling]);
-
-  const wolfOutcomeCounts = useMemo(() => countWolfHoleOutcomes(holes), [holes]);
 
   const wolfRecapHighlightLines = useMemo(() => {
     if (!session || session.gameType !== "wolf" || wolfTotals == null) return [];
@@ -375,14 +370,6 @@ export default function GameSessionScreen() {
 
           {error ? <Text style={styles.banner}>{error}</Text> : null}
 
-          {recapOnly && session.gameType === "wolf" ? (
-            <WolfRecapFunBlock
-              highlights={wolfRecapHighlightLines}
-              holesLogged={holesLogged}
-              tieHoles={wolfOutcomeCounts.tieHoles}
-            />
-          ) : null}
-
           {session.gameType === "wolf" && wolfTotals ? (
             <View style={styles.scoreCard}>
               <View style={styles.scoreCardHead}>
@@ -427,6 +414,10 @@ export default function GameSessionScreen() {
                   );
                 })}
             </View>
+          ) : null}
+
+          {recapOnly && session.gameType === "wolf" ? (
+            <WolfRecapFunBlock highlights={wolfRecapHighlightLines} />
           ) : null}
 
           {session.gameType === "skins" && skinsTotals ? (

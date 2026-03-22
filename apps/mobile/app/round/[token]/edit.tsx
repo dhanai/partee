@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -580,6 +581,7 @@ export default function EditRoundScreen() {
                   key={item.label}
                   style={styles.listRow}
                   onPress={() => {
+                    Keyboard.dismiss();
                     setPlanningLocation(item.label);
                     setPlanningLocationIsValidated(true);
                     setLocationResults([]);
@@ -589,9 +591,6 @@ export default function EditRoundScreen() {
                   <Text style={styles.listTitle}>{item.label}</Text>
                 </Pressable>
               ))}
-            {!planningLocationIsValidated && planningLocation.trim().length > 0 ? (
-              <Text style={styles.loadingHint}>Select a suggested city/state.</Text>
-            ) : null}
           </>
         ) : (
           <>
@@ -635,6 +634,7 @@ export default function EditRoundScreen() {
                   key={course.id}
                   style={styles.listRow}
                   onPress={() => {
+                    Keyboard.dismiss();
                     setSelectedCourse(course);
                     setQuery(course.name);
                     setResults([]);
@@ -824,7 +824,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontWeight: "500",
   },
-  loadingHint: { color: colors.muted, fontSize: 12, marginTop: 6 },
   listRow: {
     backgroundColor: "#f9f7f3",
     borderRadius: 12,

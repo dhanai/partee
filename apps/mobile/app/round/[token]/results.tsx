@@ -92,7 +92,7 @@ export default function RoundResultsScreen() {
     );
   }
 
-  const { round, wolfSummary, standings, highlights } = data;
+  const { round, standings, highlights } = data;
 
   return (
     <ScrollView
@@ -111,42 +111,6 @@ export default function RoundResultsScreen() {
           </View>
         ) : null}
       </View>
-
-      {highlights.length > 0 ? (
-        <View style={styles.highlightsBlock}>
-          <Text style={styles.sectionTitle}>Highlights</Text>
-          {highlights.map((line, i) => (
-            <View key={i} style={styles.highlightCard}>
-              <Ionicons name="sparkles" size={20} color={colors.fairway} style={styles.highlightIcon} />
-              <Text style={styles.highlightText}>{line}</Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {wolfSummary ? (
-        <View style={styles.wolfStats}>
-          <Text style={styles.sectionTitle}>Wolf snapshot</Text>
-          <View style={styles.statRow}>
-            <View style={styles.statChip}>
-              <Text style={styles.statNum}>{wolfSummary.completedSessions}</Text>
-              <Text style={styles.statLabel}>games</Text>
-            </View>
-            <View style={styles.statChip}>
-              <Text style={styles.statNum}>{wolfSummary.holesRecorded}</Text>
-              <Text style={styles.statLabel}>holes logged</Text>
-            </View>
-          </View>
-          {wolfSummary.tieHoles > 0 ? (
-            <View style={styles.statRow}>
-              <View style={styles.statChipWide}>
-                <Text style={styles.statEm}>{wolfSummary.tieHoles}</Text>
-                <Text style={styles.statLabel}>split holes (no wolf points)</Text>
-              </View>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
 
       <Text style={styles.sectionTitle}>Standings</Text>
       <Text style={styles.sectionHint}>Wolf points from completed games linked to this round</Text>
@@ -187,6 +151,18 @@ export default function RoundResultsScreen() {
           </View>
         );
       })}
+
+      {highlights.length > 0 ? (
+        <View style={styles.statsBlock}>
+          <Text style={styles.sectionTitle}>Stats</Text>
+          {highlights.map((line, i) => (
+            <View key={i} style={styles.highlightCard}>
+              <Ionicons name="sparkles" size={20} color={colors.fairway} style={styles.highlightIcon} />
+              <Text style={styles.highlightText}>{line}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <Pressable
         style={styles.backBtn}
@@ -241,7 +217,7 @@ const styles = StyleSheet.create({
   donePillText: { fontSize: 12, fontWeight: "800", color: "#fff" },
   sectionTitle: { fontSize: 17, fontWeight: "800", color: colors.text, marginBottom: 8 },
   sectionHint: { fontSize: 13, color: colors.muted, marginTop: -4, marginBottom: 12 },
-  highlightsBlock: { marginBottom: 20 },
+  statsBlock: { marginTop: 8, marginBottom: 20 },
   highlightCard: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -255,29 +231,6 @@ const styles = StyleSheet.create({
   },
   highlightIcon: { marginTop: 2 },
   highlightText: { flex: 1, fontSize: 15, fontWeight: "600", color: colors.text, lineHeight: 22 },
-  wolfStats: { marginBottom: 20 },
-  statRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
-  statChip: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-  },
-  statChipWide: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-  },
-  statNum: { fontSize: 22, fontWeight: "800", color: colors.fairway },
-  statEm: { fontSize: 15, fontWeight: "800", color: colors.text, textAlign: "center" },
-  statLabel: { fontSize: 11, fontWeight: "700", color: colors.muted, marginTop: 4, textTransform: "uppercase" },
   row: {
     flexDirection: "row",
     alignItems: "center",

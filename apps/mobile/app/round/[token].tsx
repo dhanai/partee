@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -42,7 +41,6 @@ import {
 import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calendar";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-last-initial";
-import { completeRound } from "../../lib/round-results-api";
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
 
@@ -119,8 +117,6 @@ export default function RoundDetailsScreen() {
   const [roundMenuOpen, setRoundMenuOpen] = useState(false);
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [completeBusy, setCompleteBusy] = useState(false);
   const debouncedFinalizeQuery = useDebounce(finalizeQuery, 320);
   const [selectedFriends, setSelectedFriends] = useState<InviteSelectionUser[]>([]);
   const [inviteBusy, setInviteBusy] = useState(false);
@@ -411,35 +407,18 @@ export default function RoundDetailsScreen() {
     }
   }
 
-  async function performCompleteRound() {
-    if (!token || !round?.isHost || completeBusy) return;
-    setCompleteBusy(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const authToken = await getToken();
-      await completeRound(authToken, token);
-      emitRoundListsShouldRefresh();
-      await loadRound({ silent: true });
-      router.replace({ pathname: "/round/[token]/results", params: { token } });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not complete round.");
-    } finally {
-      setCompleteBusy(false);
-    }
-  }
-
-  function confirmCompleteRound() {
+  function confirmDeleteRound() {
+    if (!round?.isHost || deleteBusy) return;
     Alert.alert(
-      "Mark round complete?",
-      "The group will see this round as finished. You’ll open a recap with Wolf highlights and standings.",
+      "Delete round?",
+      "This will permanently remove the round and all RSVP activity.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Complete",
-          style: "default",
+          text: "Delete",
+          style: "destructive",
           onPress: () => {
-            setTimeout(() => void performCompleteRound(), 0);
+            setTimeout(() => void deleteRound(), 0);
           },
         },
       ],
@@ -454,7 +433,6 @@ export default function RoundDetailsScreen() {
     try {
       const authToken = await getToken();
       await apiDelete<{ ok: boolean }>(`/api/rounds/${token}`, authToken);
-      setDeleteConfirmOpen(false);
       emitRoundListsShouldRefresh();
       if (router.canGoBack()) {
         router.back();
@@ -756,31 +734,6 @@ export default function RoundDetailsScreen() {
         </Pressable>
       ) : null}
 
-      {round.isHost && round.status !== "completed" ? (
-        <Pressable
-          style={({ pressed }) => [
-            styles.chatPreviewRow,
-            pressed && styles.chatPreviewRowPressed,
-            completeBusy && styles.disabledButton,
-          ]}
-          onPress={() => confirmCompleteRound()}
-          disabled={completeBusy}
-          accessibilityLabel="Mark round complete"
-          accessibilityRole="button"
-        >
-          <View style={styles.chatPreviewIconWrap}>
-            <Ionicons name="flag" size={22} color={colors.fairway} />
-          </View>
-          <View style={styles.chatPreviewTextCol}>
-            <Text style={styles.chatPreviewTitle}>Mark round complete</Text>
-            <Text style={styles.chatPreviewSubtitle} numberOfLines={2}>
-              Host only — locks the round and shows a recap with Wolf stats.
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-        </Pressable>
-      ) : null}
-
       {round.status === "completed" ? (
         <Pressable
           style={({ pressed }) => [styles.chatPreviewRow, pressed && styles.chatPreviewRowPressed]}
@@ -976,37 +929,6 @@ export default function RoundDetailsScreen() {
         minimumDate={new Date()}
       />
 
-      <Modal visible={deleteConfirmOpen} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setDeleteConfirmOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
-            <Text style={styles.modalTitle}>Delete round?</Text>
-            <Text style={styles.listMeta}>
-              This will permanently remove the round and all RSVP activity.
-            </Text>
-            <View style={styles.inlineRow}>
-              <Pressable
-                style={[btn.button, btn.secondaryButton]}
-                onPress={() => setDeleteConfirmOpen(false)}
-              >
-                <Text style={btn.secondaryText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[btn.button, styles.hostDeleteButton, deleteBusy && styles.disabledButton]}
-                onPress={() => {
-                  setDeleteConfirmOpen(false);
-                  void deleteRound();
-                }}
-                disabled={deleteBusy}
-              >
-                <Text style={styles.hostDeleteText}>
-                  {deleteBusy ? "Deleting..." : "Delete"}
-                </Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
       <TimePickerModal
         visible={timePickerOpen}
         title="Select tee time"
@@ -1043,7 +965,7 @@ export default function RoundDetailsScreen() {
                 {
                   key: "delete",
                   label: "Delete round",
-                  onPress: () => setDeleteConfirmOpen(true),
+                  onPress: () => confirmDeleteRound(),
                   destructive: true,
                 },
               ]
@@ -1180,13 +1102,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  hostDeleteButton: {
-    backgroundColor: "#fee4e2",
-    borderWidth: 1,
-    borderColor: "#fbc6c2",
-  },
   disabledButton: { opacity: 0.5 },
-  hostDeleteText: { color: colors.danger, fontWeight: "700" },
   errorText: {
     color: colors.danger,
     backgroundColor: "#fee4e2",
@@ -1264,17 +1180,4 @@ const styles = StyleSheet.create({
   },
   listTitle: { color: colors.text, fontWeight: "600" },
   listMeta: { color: colors.muted, fontSize: 12 },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    gap: 12,
-  },
-  modalTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
 });
