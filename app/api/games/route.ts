@@ -15,7 +15,8 @@ import { serializeGameSessionForApi } from "@/lib/games/serialize";
 const createGameSchema = z
   .object({
     gameType: z.enum(["skins", "wolf", "best_ball", "nassau"]),
-    playerUserIds: z.array(z.string().uuid()).min(2).max(8),
+    /** Other golfers (mobile omits the creator; server adds `createdBy`). Round flows may include everyone. */
+    playerUserIds: z.array(z.string().uuid()).min(1).max(8),
     roundInviteToken: z.string().trim().min(8).max(64).optional(),
     roundId: z.string().uuid().optional(),
     holesCount: z.number().int().min(1).max(27).optional(),
@@ -61,6 +62,12 @@ export async function POST(req: Request) {
     }
 
     const playerIds = [...new Set([user.id, ...body.playerUserIds])];
+    if (playerIds.length < 2) {
+      return NextResponse.json(
+        { error: "At least two players are required (you plus one other)." },
+        { status: 400 },
+      );
+    }
     if (playerIds.length > 8) {
       return NextResponse.json({ error: "At most 8 players" }, { status: 400 });
     }
