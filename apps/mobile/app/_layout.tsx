@@ -97,6 +97,13 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="round/[token]/results"
+              options={{
+                title: "Recap",
+                headerBackTitle: "Round",
+              }}
+            />
+            <Stack.Screen
               name="profile/[userId]/index"
               options={{
                 title: "Profile",

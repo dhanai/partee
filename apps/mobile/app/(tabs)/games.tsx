@@ -127,12 +127,27 @@ export default function GamesScreen() {
             <Pressable
               key={s.id}
               style={({ pressed }) => [styles.sessionRow, pressed && styles.sessionRowPressed]}
-              onPress={() =>
+              onPress={() => {
+                if (s.status === "completed") {
+                  const invite = s.roundInviteToken?.trim();
+                  if (invite) {
+                    router.push({
+                      pathname: "/round/[token]/results",
+                      params: { token: invite },
+                    });
+                  } else {
+                    router.push({
+                      pathname: "/games/session/[sessionId]",
+                      params: { sessionId: s.id, recap: "1" },
+                    });
+                  }
+                  return;
+                }
                 router.push({
                   pathname: "/games/session/[sessionId]",
                   params: { sessionId: s.id },
-                })
-              }
+                });
+              }}
             >
               <View style={styles.sessionTextCol}>
                 <Text style={styles.sessionTitle}>{def?.title ?? s.gameType}</Text>

@@ -162,9 +162,9 @@ export function WolfHoleEditor({
   const saveEnabled = step === "result" && partnerStepValid && winnersPicked;
 
   function teamOutcomeCaption(o: WolfPayload["outcome"]) {
-    if (o === "wolf_won") return "Wolf’s team wins the points";
-    if (o === "pack_won") return "The pack wins the points";
-    // outcome === "tie": no one wins wolf points (e.g. wolf and pack tied for low gross)
+    if (o === "wolf_won") return "Team Wolf wins the points";
+    if (o === "pack_won") return "Team Pack wins the points";
+    // outcome === "tie": no one wins wolf points (e.g. low gross split across both sides)
     return tieHandling === "carry"
       ? "No wolf points. Carry: next hole’s stake multiplier increases."
       : "No wolf points. Wash: next hole stays 1× — this tie doesn’t add carry.";
@@ -173,7 +173,7 @@ export function WolfHoleEditor({
   const tieForLow = winnerPick.size >= 2;
   const soleWinner = winnerPick.size === 1;
 
-  const stepEyebrow = step === "partner" ? "Partner" : "Low gross";
+  const stepEyebrow = step === "partner" ? "Partner" : "Results";
 
   return (
     <View style={styles.wrap}>
@@ -186,11 +186,6 @@ export function WolfHoleEditor({
           <View style={styles.editorHeroPills}>
             <View style={styles.heroPill}>
               <Text style={styles.heroPillText}>{stake}× stake</Text>
-            </View>
-            <View style={[styles.heroPill, styles.heroPillMuted]}>
-              <Text style={styles.heroPillTextMuted}>
-                {tieHandling === "carry" ? "Ties: stack next" : "Ties: no stack"}
-              </Text>
             </View>
           </View>
         </View>
@@ -280,7 +275,7 @@ export function WolfHoleEditor({
               disabled={!partnerStepValid}
               onPress={() => setStep("result")}
             >
-              <Text style={styles.footerPrimaryText}>Best score →</Text>
+              <Text style={styles.footerPrimaryText}>Results →</Text>
             </Pressable>
           </View>
         </>
@@ -298,7 +293,7 @@ export function WolfHoleEditor({
                 {(
                   [
                     ["wolf_won", "Wolf side"],
-                    ["pack_won", "Pack"],
+                    ["pack_won", "Opponents"],
                     ["tie", "Tie"],
                   ] as const
                 ).map(([key, label]) => (
@@ -316,8 +311,7 @@ export function WolfHoleEditor({
             </>
           ) : (
             <>
-              <Text style={styles.sectionEyebrow}>Tee order</Text>
-              <Text style={styles.sectionLabel}>Best gross</Text>
+              <Text style={styles.sectionLabel}>Who shot the lowest?</Text>
               {playersInTeeOrder.map((p) => {
                 const on = winnerPick.has(p.userId);
                 return (
@@ -349,25 +343,41 @@ export function WolfHoleEditor({
                 <Text style={styles.tieHint}>
                   {tieForLow
                     ? derivedTeamOutcome === "tie"
-                      ? "Low gross is split across wolf and pack — no wolf points (see Points for carry or wash)."
-                      : "Same best gross — those players tied for low."
+                      ? "Lowest score split between Team Wolf and Team Pack — no wolf points (see Points)."
+                      : "Same lowest score — those players tied."
                     : soleWinner
-                      ? "Only player with the best score on the hole."
+                      ? "Only player with the lowest score on this hole."
                       : ""}
                 </Text>
-              ) : (
-                <Text style={styles.pickHint}>Select at least one player to save.</Text>
-              )}
-
-              {derivedTeamOutcome ? (
-                <View style={styles.pointsCard}>
-                  <View style={styles.pointsCardHead}>
-                    <Ionicons name="trophy-outline" size={18} color={colors.fairway} />
-                    <Text style={styles.pointsLabel}>Points</Text>
-                  </View>
-                  <Text style={styles.pointsBody}>{teamOutcomeCaption(derivedTeamOutcome)}</Text>
-                </View>
               ) : null}
+
+              <View
+                style={[
+                  styles.pointsCard,
+                  winnerPick.size === 0 && styles.pointsCardPending,
+                ]}
+              >
+                <View style={styles.pointsCardHead}>
+                  <Ionicons
+                    name={winnerPick.size === 0 ? "hourglass-outline" : "trophy-outline"}
+                    size={18}
+                    color={winnerPick.size === 0 ? colors.muted : colors.fairway}
+                  />
+                  <Text style={styles.pointsLabel}>Points</Text>
+                </View>
+                <Text
+                  style={[
+                    styles.pointsBody,
+                    winnerPick.size === 0 && styles.pointsBodyPending,
+                  ]}
+                >
+                  {winnerPick.size === 0
+                    ? "Pending results — tap everyone who shot the lowest."
+                    : derivedTeamOutcome != null
+                      ? teamOutcomeCaption(derivedTeamOutcome)
+                      : ""}
+                </Text>
+              </View>
             </>
           )}
 
@@ -437,14 +447,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.22)",
   },
-  heroPillMuted: { backgroundColor: "rgba(255,255,255,0.14)" },
   heroPillText: { fontSize: 13, fontWeight: "800", color: "#fff" },
-  heroPillTextMuted: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.9)",
-    textTransform: "capitalize",
-  },
   stepBlock: { gap: 6, marginBottom: 0 },
   wolfContextCard: {
     borderRadius: 14,
@@ -547,7 +550,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.fairwaySoft,
   },
-  pickHint: { fontSize: 14, color: colors.muted, fontStyle: "italic", marginTop: 4 },
   tieHint: {
     fontSize: 14,
     fontWeight: "600",
@@ -578,6 +580,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   pointsBody: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 8, lineHeight: 22 },
+  pointsCardPending: {
+    borderStyle: "dashed",
+    backgroundColor: colors.background,
+  },
+  pointsBodyPending: { fontWeight: "600", color: colors.muted },
   legacyRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 8 },
   legacyChip: {
     paddingVertical: 12,

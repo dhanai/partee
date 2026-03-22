@@ -5,12 +5,16 @@ type GameSessionRow = typeof gameSessions.$inferSelect;
 
 export const toIso = toIsoTimestamp;
 
-export function serializeGameSessionForApi(s: GameSessionRow) {
+export function serializeGameSessionForApi(
+  s: GameSessionRow,
+  opts?: { roundInviteToken?: string | null },
+) {
   return {
     id: s.id,
     gameType: s.gameType,
     createdBy: s.createdBy,
     roundId: s.roundId,
+    roundInviteToken: opts?.roundInviteToken ?? null,
     status: s.status,
     holesCount: s.holesCount,
     settings: s.settings,

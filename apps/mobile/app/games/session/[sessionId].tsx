@@ -20,6 +20,7 @@ import {
 import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
 import { RoundOverflowMenuSheet } from "../../../components/round-overflow-menu-sheet";
 import { SkinsHoleEditor, type SkinsPayload } from "../../../components/games/skins-hole-editor";
+import { WolfRecapFunBlock } from "../../../components/games/wolf-recap-fun-block";
 import { WolfHoleEditor, type WolfPayload } from "../../../components/games/wolf-hole-editor";
 import {
   deleteGameSession,
@@ -33,7 +34,12 @@ import {
 import { getGameDefinition } from "../../../lib/games-registry";
 import { letterLabelForUser } from "../../../lib/wolf-rotation";
 import type { WolfTeeOff } from "../../../lib/wolf-rotation";
+import { computeSkinsWins } from "../../../lib/skins-scoring";
 import { computeWolfTotals, type WolfTieHandling } from "../../../lib/wolf-scoring";
+import {
+  buildWolfSessionRecapHighlights,
+  countWolfHoleOutcomes,
+} from "../../../lib/wolf-session-recap-copy";
 import { colors } from "../../../lib/theme";
 
 function parseWolfLetterOrder(settings: Record<string, unknown>): string[] {
@@ -68,8 +74,12 @@ export default function GameSessionScreen() {
   const router = useRouter();
   /** Root stack (same bar as title “Game” / back to Games). Leaf `useNavigation()` targets an inner navigator for this route depth. */
   const rootNavigation = useNavigation("/");
-  const { sessionId: sessionIdRaw } = useLocalSearchParams<{ sessionId?: string | string[] }>();
+  const { sessionId: sessionIdRaw, recap: recapRaw } = useLocalSearchParams<{
+    sessionId?: string | string[];
+    recap?: string | string[];
+  }>();
   const sessionId = normalizeRouteParam(sessionIdRaw);
+  const recapParam = normalizeRouteParam(recapRaw);
   const { getToken } = useAuth();
   const [session, setSession] = useState<GameSessionSummary | null>(null);
   const [players, setPlayers] = useState<GamePlayerRow[]>([]);
@@ -111,15 +121,23 @@ export default function GameSessionScreen() {
     }, [load]),
   );
 
+  const recapOnly =
+    Boolean(sessionId) &&
+    recapParam === "1" &&
+    session != null &&
+    session.status === "completed";
+
   useLayoutEffect(() => {
     if (!sessionId || loading || !session) {
       rootNavigation.setOptions({
+        title: "Game",
         headerRight: undefined,
         headerRightContainerStyle: undefined,
       });
       return;
     }
     rootNavigation.setOptions({
+      title: recapOnly ? "Recap" : "Game",
       headerRightContainerStyle: { paddingRight: 10 },
       headerRight: () => (
         <Pressable
@@ -132,7 +150,7 @@ export default function GameSessionScreen() {
         </Pressable>
       ),
     });
-  }, [rootNavigation, sessionId, loading, session]);
+  }, [rootNavigation, sessionId, loading, session, recapOnly]);
 
   const holeMap = new Map(holes.map((h) => [h.holeNumber, h]));
   const editorPayload = editorHole != null ? holeMap.get(editorHole) : undefined;
@@ -144,6 +162,19 @@ export default function GameSessionScreen() {
     const ids = players.map((p) => p.userId);
     return computeWolfTotals(holes, ids, wolfTieHandling);
   }, [session, holes, players, wolfTieHandling]);
+
+  const wolfOutcomeCounts = useMemo(() => countWolfHoleOutcomes(holes), [holes]);
+
+  const wolfRecapHighlightLines = useMemo(() => {
+    if (!session || session.gameType !== "wolf" || wolfTotals == null) return [];
+    return buildWolfSessionRecapHighlights(holes, players, wolfTotals);
+  }, [session, holes, players, wolfTotals]);
+
+  const skinsTotals = useMemo(() => {
+    if (!session || session.gameType !== "skins") return null;
+    const ids = players.map((p) => p.userId);
+    return computeSkinsWins(holes, ids);
+  }, [session, holes, players]);
 
   const priorWolfHoles = useMemo(() => {
     if (editorHole == null) return [];
@@ -289,12 +320,14 @@ export default function GameSessionScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {session.gameType === "wolf" ? (
+          {session.gameType === "wolf" || session.gameType === "skins" ? (
             <View style={styles.wolfHero}>
               <View style={styles.wolfHeroTop}>
                 <View>
                   <Text style={styles.wolfHeroEyebrow}>Side game</Text>
-                  <Text style={styles.wolfHeroTitle}>Wolf</Text>
+                  <Text style={styles.wolfHeroTitle}>
+                    {session.gameType === "wolf" ? "Wolf" : "Skins"}
+                  </Text>
                 </View>
                 <View
                   style={[
@@ -319,7 +352,9 @@ export default function GameSessionScreen() {
                 </View>
               </View>
               <Text style={styles.wolfHeroSub} numberOfLines={2}>
-                {def?.subtitle ?? "Rotating wolf, pick a partner or go lone each hole."}
+                {session.gameType === "wolf"
+                  ? def?.subtitle ?? "Rotating wolf, pick a partner or go lone each hole."
+                  : def?.subtitle ?? "Tap who shot lowest on each hole."}
               </Text>
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
@@ -339,6 +374,14 @@ export default function GameSessionScreen() {
           )}
 
           {error ? <Text style={styles.banner}>{error}</Text> : null}
+
+          {recapOnly && session.gameType === "wolf" ? (
+            <WolfRecapFunBlock
+              highlights={wolfRecapHighlightLines}
+              holesLogged={holesLogged}
+              tieHoles={wolfOutcomeCounts.tieHoles}
+            />
+          ) : null}
 
           {session.gameType === "wolf" && wolfTotals ? (
             <View style={styles.scoreCard}>
@@ -386,48 +429,110 @@ export default function GameSessionScreen() {
             </View>
           ) : null}
 
-          <View style={styles.holesSection}>
-            <View style={styles.holesSectionHead}>
-              <Text style={styles.holesSectionTitle}>Holes</Text>
-              <Text style={styles.holesSectionMeta}>
-                {holesLogged}/{holesCount} done
-              </Text>
-            </View>
-            {holeRows.map((row, ri) => (
-              <View
-                key={`row-${ri}`}
-                style={[styles.holeGridRow, { marginBottom: HOLE_GRID_GAP, gap: HOLE_GRID_GAP }]}
-              >
-                {row.map((n) => {
-                  const h = holeMap.get(n);
-                  const label = h ? `Hole ${n}, logged` : `Hole ${n}, not logged`;
+          {session.gameType === "skins" && skinsTotals ? (
+            <View style={styles.scoreCard}>
+              <View style={styles.scoreCardHead}>
+                <Ionicons name="trophy-outline" size={20} color={colors.fairway} />
+                <Text style={styles.scoreTitle}>Skins won</Text>
+              </View>
+              {players
+                .map((p) => ({ p, n: skinsTotals[p.userId] ?? 0 }))
+                .sort((a, b) => b.n - a.n)
+                .map(({ p, n }, index) => {
+                  const rank = index + 1;
                   return (
-                    <Pressable
-                      key={n}
-                      accessibilityLabel={label}
-                      accessibilityRole="button"
+                    <View
+                      key={p.userId}
                       style={[
-                        styles.holeTile,
-                        {
-                          width: holeTileSize,
-                          minHeight: holeTileSize * 0.88,
-                        },
-                        h ? styles.holeTileDone : styles.holeTileOpen,
+                        styles.scoreRow,
+                        rank === 1 && styles.scoreRowFirst,
+                        rank === 2 && styles.scoreRowSecond,
+                        rank === 3 && styles.scoreRowThird,
                       ]}
-                      onPress={() => setEditorHole(n)}
                     >
-                      <Text style={[styles.holeTileNum, h && styles.holeTileNumDone]}>{n}</Text>
-                      {h ? (
-                        <Ionicons name="checkmark-circle" size={22} color={colors.fairway} />
-                      ) : (
-                        <Text style={styles.holeTileHint}>Tap</Text>
-                      )}
-                    </Pressable>
+                      <View style={styles.scoreRowLeft}>
+                        <Text style={[styles.scoreRank, rank <= 3 && styles.scoreRankTop]}>
+                          {rank}
+                        </Text>
+                        <Text style={styles.scoreName} numberOfLines={1}>
+                          {p.isGuest ? `${p.name} (guest)` : p.name}
+                        </Text>
+                      </View>
+                      <Text style={styles.scorePts}>{n}</Text>
+                    </View>
                   );
                 })}
+            </View>
+          ) : null}
+
+          {recapOnly && session.gameType !== "wolf" ? (
+            <View style={styles.recapBlurb}>
+              <Text style={styles.sub}>
+                Game finished — {holesLogged} of {holesCount} holes logged. Use hole-by-hole to review
+                or tweak scores.
+              </Text>
+            </View>
+          ) : null}
+
+          {recapOnly ? (
+            <Pressable
+              style={styles.completeBtn}
+              onPress={() => {
+                if (!sessionId) return;
+                router.push({
+                  pathname: "/games/session/[sessionId]",
+                  params: { sessionId },
+                });
+              }}
+            >
+              <Text style={styles.completeBtnText}>Hole-by-hole breakdown</Text>
+            </Pressable>
+          ) : null}
+
+          {!recapOnly ? (
+            <View style={styles.holesSection}>
+              <View style={styles.holesSectionHead}>
+                <Text style={styles.holesSectionTitle}>Holes</Text>
+                <Text style={styles.holesSectionMeta}>
+                  {holesLogged}/{holesCount} done
+                </Text>
               </View>
-            ))}
-          </View>
+              {holeRows.map((row, ri) => (
+                <View
+                  key={`row-${ri}`}
+                  style={[styles.holeGridRow, { marginBottom: HOLE_GRID_GAP, gap: HOLE_GRID_GAP }]}
+                >
+                  {row.map((n) => {
+                    const h = holeMap.get(n);
+                    const label = h ? `Hole ${n}, logged` : `Hole ${n}, not logged`;
+                    return (
+                      <Pressable
+                        key={n}
+                        accessibilityLabel={label}
+                        accessibilityRole="button"
+                        style={[
+                          styles.holeTile,
+                          {
+                            width: holeTileSize,
+                            minHeight: holeTileSize * 0.88,
+                          },
+                          h ? styles.holeTileDone : styles.holeTileOpen,
+                        ]}
+                        onPress={() => setEditorHole(n)}
+                      >
+                        <Text style={[styles.holeTileNum, h && styles.holeTileNumDone]}>{n}</Text>
+                        {h ? (
+                          <Ionicons name="checkmark-circle" size={22} color={colors.fairway} />
+                        ) : (
+                          <Text style={styles.holeTileHint}>Tap</Text>
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           {session.status === "active" ? (
             <Pressable style={styles.completeBtn} onPress={() => void markComplete()}>
@@ -444,7 +549,7 @@ export default function GameSessionScreen() {
           backdropAccessibilityLabel="Dismiss hole editor"
           sheetStyle={[styles.holeEditorSheet, { maxHeight: holeEditorSheetMax }]}
         >
-          {session.gameType !== "wolf" ? (
+          {session.gameType !== "wolf" && session.gameType !== "skins" ? (
             <Text style={styles.holeEditorTitle}>Hole {editorHole}</Text>
           ) : null}
           <ScrollView
@@ -455,10 +560,14 @@ export default function GameSessionScreen() {
           >
             {saving ? (
               <ActivityIndicator color={colors.fairway} style={{ marginVertical: 20 }} />
-            ) : session.gameType === "skins" ? (
+            ) : session.gameType === "skins" && editorHole != null ? (
               <SkinsHoleEditor
+                holeNumber={editorHole}
                 players={players}
-                initial={(editorPayload?.payload as SkinsPayload) ?? null}
+                initial={
+                  (editorPayload?.payload as SkinsPayload | { result: "carry"; winnerUserIds?: string[] }) ??
+                  null
+                }
                 onCancel={() => setEditorHole(null)}
                 onSave={(p) => void saveHole(p)}
               />
@@ -682,6 +791,7 @@ const styles = StyleSheet.create({
   banner: { color: colors.danger, marginBottom: 8 },
   error: { color: colors.danger },
   muted: { fontSize: 14, color: colors.muted },
+  recapBlurb: { marginBottom: 4 },
   completeBtn: {
     marginTop: 20,
     paddingVertical: 14,

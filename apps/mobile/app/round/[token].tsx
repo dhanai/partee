@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import {
+  Alert,
   Share,
   ActivityIndicator,
   Image,
@@ -41,6 +42,7 @@ import {
 import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calendar";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-last-initial";
+import { completeRound } from "../../lib/round-results-api";
 import { colors } from "../../lib/theme";
 import { RoundDetails } from "../../types/round";
 
@@ -118,6 +120,7 @@ export default function RoundDetailsScreen() {
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [completeBusy, setCompleteBusy] = useState(false);
   const debouncedFinalizeQuery = useDebounce(finalizeQuery, 320);
   const [selectedFriends, setSelectedFriends] = useState<InviteSelectionUser[]>([]);
   const [inviteBusy, setInviteBusy] = useState(false);
@@ -406,6 +409,41 @@ export default function RoundDetailsScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function performCompleteRound() {
+    if (!token || !round?.isHost || completeBusy) return;
+    setCompleteBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const authToken = await getToken();
+      await completeRound(authToken, token);
+      emitRoundListsShouldRefresh();
+      await loadRound({ silent: true });
+      router.replace({ pathname: "/round/[token]/results", params: { token } });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not complete round.");
+    } finally {
+      setCompleteBusy(false);
+    }
+  }
+
+  function confirmCompleteRound() {
+    Alert.alert(
+      "Mark round complete?",
+      "The group will see this round as finished. You’ll open a recap with Wolf highlights and standings.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Complete",
+          style: "default",
+          onPress: () => {
+            setTimeout(() => void performCompleteRound(), 0);
+          },
+        },
+      ],
+    );
   }
 
   async function deleteRound() {
@@ -712,6 +750,56 @@ export default function RoundDetailsScreen() {
             <Text style={styles.chatPreviewTitle}>Side games</Text>
             <Text style={styles.chatPreviewSubtitle} numberOfLines={2}>
               Skins, Wolf, and more with everyone in this round.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </Pressable>
+      ) : null}
+
+      {round.isHost && round.status !== "completed" ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.chatPreviewRow,
+            pressed && styles.chatPreviewRowPressed,
+            completeBusy && styles.disabledButton,
+          ]}
+          onPress={() => confirmCompleteRound()}
+          disabled={completeBusy}
+          accessibilityLabel="Mark round complete"
+          accessibilityRole="button"
+        >
+          <View style={styles.chatPreviewIconWrap}>
+            <Ionicons name="flag" size={22} color={colors.fairway} />
+          </View>
+          <View style={styles.chatPreviewTextCol}>
+            <Text style={styles.chatPreviewTitle}>Mark round complete</Text>
+            <Text style={styles.chatPreviewSubtitle} numberOfLines={2}>
+              Host only — locks the round and shows a recap with Wolf stats.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </Pressable>
+      ) : null}
+
+      {round.status === "completed" ? (
+        <Pressable
+          style={({ pressed }) => [styles.chatPreviewRow, pressed && styles.chatPreviewRowPressed]}
+          onPress={() =>
+            router.push({
+              pathname: "/round/[token]/results",
+              params: { token },
+            })
+          }
+          accessibilityLabel="View round recap"
+          accessibilityRole="button"
+        >
+          <View style={styles.chatPreviewIconWrap}>
+            <Ionicons name="podium-outline" size={22} color={colors.fairway} />
+          </View>
+          <View style={styles.chatPreviewTextCol}>
+            <Text style={styles.chatPreviewTitle}>Round recap</Text>
+            <Text style={styles.chatPreviewSubtitle} numberOfLines={2}>
+              Highlights and Wolf standings from games linked to this round.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.muted} />

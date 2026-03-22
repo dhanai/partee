@@ -3,8 +3,8 @@ export type WolfHoleOutcome = "wolf_won" | "pack_won" | "tie";
 /**
  * Derive wolf hole outcome from who had the best (lowest) score(s) on the hole.
  * Callers should pass at least one id (stroke play always has a best score among the group).
- * - Winners all on wolf’s team → wolf_won
- * - Winners all on pack → pack_won
+ * - Winners all on Team Wolf → wolf_won
+ * - Winners all on Team Pack → pack_won (everyone not on wolf’s side: 3 if lone wolf, else 2 unpicked)
  * - Winners span both teams → `tie` (no wolf points that hole; carry/wash still affects next hole’s stake).
  * Empty array returns tie (defensive only; API rejects empty winnerUserIds).
  */

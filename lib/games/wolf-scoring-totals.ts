@@ -1,18 +1,21 @@
-import type { GameHoleRow } from "./games-api";
-import type { WolfPayload } from "./wolf-payload";
+import type { WolfHolePayload } from "@/lib/games/payload-schemas";
 
 export type WolfTieHandling = "carry" | "wash";
 
-/** Stake multiplier for this hole (from prior ties). */
-export function wolfStakeMultiplierForHole(
-  holesSortedAsc: GameHoleRow[],
+export type WolfHoleRow = {
+  holeNumber: number;
+  payload: Record<string, unknown>;
+};
+
+function wolfStakeMultiplierForHole(
+  holesSortedAsc: WolfHoleRow[],
   currentHole: number,
   tieHandling: WolfTieHandling,
 ): number {
   let m = 1;
   for (const row of holesSortedAsc) {
     if (row.holeNumber >= currentHole) break;
-    const p = row.payload as WolfPayload;
+    const p = row.payload as WolfHolePayload;
     if (p?.outcome === "tie") {
       if (tieHandling === "carry") m *= 2;
       else m = 1;
@@ -23,17 +26,8 @@ export function wolfStakeMultiplierForHole(
   return m;
 }
 
-/**
- * Points earned on one settled hole (not on ties). `stake` is the carry multiplier (1, 2, 4, …).
- *
- * **Lone wolf (4 players):** totals stay balanced — Team Wolf wins → +3×stake to wolf; Team Pack wins → +1×stake
- * to each of the three pack members (3×1 = 3 vs 3). Same pattern at 6 vs 2+2+2, 9 vs 3+3+3, etc.
- *
- * **Wolf + partner:** Team Wolf wins → wolf +1×stake, partner +1×stake; Team Pack wins → +1×stake to each
- * of the two other players (2 vs 2).
- */
 function pointsForSettledHole(
-  p: WolfPayload,
+  p: WolfHolePayload,
   stake: number,
   playerIds: string[],
 ): Record<string, number> {
@@ -65,12 +59,9 @@ function pointsForSettledHole(
   return out;
 }
 
-/**
- * Running totals: ties = 0 for that hole; carry only affects the stake on later holes
- * (see `wolfStakeMultiplierForHole` per hole when recording).
- */
-export function computeWolfTotals(
-  holes: GameHoleRow[],
+/** Same rules as the mobile Wolf scorer — for server-side round rollups. */
+export function computeWolfTotalsFromHoles(
+  holes: WolfHoleRow[],
   playerUserIds: string[],
   tieHandling: WolfTieHandling,
 ): Record<string, number> {
@@ -79,7 +70,7 @@ export function computeWolfTotals(
   for (const id of playerUserIds) totals[id] = 0;
 
   for (const row of sorted) {
-    const p = row.payload as WolfPayload;
+    const p = row.payload as WolfHolePayload;
     if (!p?.wolfUserId || !p.outcome) continue;
     const stake = wolfStakeMultiplierForHole(sorted, row.holeNumber, tieHandling);
     const delta = pointsForSettledHole(p, stake, playerUserIds);
@@ -88,4 +79,22 @@ export function computeWolfTotals(
     }
   }
   return totals;
+}
+
+export function countWolfHoleOutcomes(holes: WolfHoleRow[]): {
+  teamWolfHoles: number;
+  teamPackHoles: number;
+  tieHoles: number;
+} {
+  let teamWolfHoles = 0;
+  let teamPackHoles = 0;
+  let tieHoles = 0;
+  for (const row of holes) {
+    const p = row.payload as WolfHolePayload;
+    const o = p?.outcome;
+    if (o === "wolf_won") teamWolfHoles += 1;
+    else if (o === "pack_won") teamPackHoles += 1;
+    else if (o === "tie") tieHoles += 1;
+  }
+  return { teamWolfHoles, teamPackHoles, tieHoles };
 }

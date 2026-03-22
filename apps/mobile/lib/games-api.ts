@@ -6,6 +6,8 @@ export type GameSessionSummary = {
   gameType: GameTypeId;
   createdBy: string;
   roundId: string | null;
+  /** Present when the session is linked to a round; used to open round recap. */
+  roundInviteToken: string | null;
   status: "active" | "completed" | "abandoned";
   holesCount: number;
   settings: Record<string, unknown>;

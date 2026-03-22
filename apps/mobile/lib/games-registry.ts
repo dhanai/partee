@@ -16,7 +16,7 @@ export const GAME_DEFINITIONS: GameDefinition[] = [
   {
     id: "skins",
     title: "Skins",
-    subtitle: "Win the hole, carry ties — classic pot builder.",
+    subtitle: "Tap who shot lowest — one takes the skin; two+ tied and it carries.",
     implemented: true,
     minPlayers: 2,
   },

@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
   gameHoleEvents,
   gameSessionPlayers,
   gameSessions,
+  rounds,
   users,
 } from "@/db/schema";
 import { mergeDbPlayersWithGuests, parseGuestPlayersFromSettings } from "@/lib/games/guest-players";
@@ -74,8 +75,12 @@ export async function listSessionsForUser(userId: string, limit = 50) {
   if (ids.length === 0) return [];
 
   return db
-    .select()
+    .select({
+      ...getTableColumns(gameSessions),
+      roundInviteToken: rounds.inviteToken,
+    })
     .from(gameSessions)
+    .leftJoin(rounds, eq(gameSessions.roundId, rounds.id))
     .where(inArray(gameSessions.id, ids))
     .orderBy(desc(gameSessions.updatedAt))
     .limit(limit);

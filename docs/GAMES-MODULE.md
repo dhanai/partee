@@ -38,15 +38,25 @@ Hole **`PUT`** validates `payload.wolfUserId` against [`lib/games/wolf-rotation.
 
 Wolf hole **`payload`** (normalized on write):
 
-- **`winnerUserIds`**: every player who had the **best (lowest) stroke count** on the hole (all who tied that number). At least one id when using the modern payload. **`outcome`** is derived via [`lib/games/wolf-outcome.ts`](../lib/games/wolf-outcome.ts): all lows on wolf’s team → `wolf_won`; all on pack → `pack_won`; lows **span both** teams (e.g. lone wolf and a pack player tied for gross) → **`tie`** = **no wolf points** that hole; carry/wash still applies to the **next** hole’s stake multiplier. Older rows may omit `winnerUserIds` and only store **`outcome`**.
+- **`winnerUserIds`**: every player who had the **best (lowest) stroke count** on the hole (all who tied that number). At least one id when using the modern payload. **`outcome`** is derived via [`lib/games/wolf-outcome.ts`](../lib/games/wolf-outcome.ts): all lows on **Team Wolf** → `wolf_won`; all on **Team Pack** → `pack_won`; lows **span both** teams → **`tie`** = **no wolf points** that hole; carry/wash still applies to the **next** hole’s stake multiplier. Older rows may omit `winnerUserIds` and only store **`outcome`**.
 
 **Wolf points (mobile totals in [`apps/mobile/lib/wolf-scoring.ts`](../apps/mobile/lib/wolf-scoring.ts)):** after a hole with `outcome === "tie"`, `wolfTieHandling === "carry"` multiplies the stake chain for subsequent holes; **`wash`** resets so that tie does not increase the multiplier. All point amounts below scale by the active stake for that hole.
 
-| Situation | Wolf side wins | Pack wins |
-|-----------|----------------|-----------|
-| **Lone wolf** (3 vs 1) | Wolf **+3×stake** | Each of the **three** pack players **+1×stake** (3 vs 3 total) |
-| **Wolf + partner** (2 vs 2) | Wolf **+1×stake**, partner **+1×stake** | Each of the **two** pack players **+1×stake** (2 vs 2 total) |
-| **No wolf points** (`tie`: low gross split across wolf team and pack) | — | **0** that hole; next-hole stake follows **carry** or **wash** |
+**Terms (UI):** **Team Wolf** = the wolf plus their partner when they pick one (otherwise just the wolf). **Team Pack** = everyone else: the **three** other players if the wolf went **lone**, or the **two** unpicked players in 2v2.
+
+| Situation | Team Wolf wins (`wolf_won`) | Team Pack wins (`pack_won`) |
+|-----------|----------------------------|----------------------------|
+| **Lone wolf** (3 vs 1) | Wolf **+3×stake** | Each of the **three** Team Pack players **+1×stake** (3 vs 3 total) |
+| **Wolf + partner** (2 vs 2) | Wolf **+1×stake**, partner **+1×stake** | Each of the **two** Team Pack players **+1×stake** (2 vs 2 total) |
+| **No wolf points** (`tie`: low gross split across both teams) | — | **0** that hole; next-hole stake follows **carry** or **wash** |
+
+### Skins hole payload
+
+Mobile matches Wolf-style **who shot lowest** picks: **`won`** = exactly one `winnerUserIds` (sole low gross wins the skin); **`tie`** = two or more ids (tied low → skin carries). Legacy **`carry`** is normalized to **`tie`**. Older rows may have **`tie`** with empty `winnerUserIds` (undifferentiated carry). Skin counts for standings: [`apps/mobile/lib/skins-scoring.ts`](../apps/mobile/lib/skins-scoring.ts) (`computeSkinsWins`).
+
+### Wolf recap copy (names, not “teams”)
+
+Round and session recaps use [`lib/games/wolf-recap-name-stats.ts`](../lib/games/wolf-recap-name-stats.ts): **wolf+partner** pair wins, **opposing side** wins (who beat the wolf), and **lone wolf** W/L/splits per player — all with **first names**, not “Team Wolf / Team Pack.”
 
 ## 5. Stats / leaderboards (later)
 

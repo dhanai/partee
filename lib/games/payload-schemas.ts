@@ -7,32 +7,23 @@ import { deriveWolfHoleOutcome } from "@/lib/games/wolf-outcome";
 
 export type GameTypeKey = "skins" | "wolf" | "best_ball" | "nassau";
 
-/** Skins: hole result for stats and carry tracking. */
+/**
+ * Skins: tap everyone who shot the lowest gross on the hole.
+ * Exactly one → skin won; two or more → tied low, skin carries (same as legacy “carry”).
+ * Incoming `carry` normalizes to `tie`.
+ */
+/** Shape-only parse; win/tie length rules run in `parseHolePayload` after roster canonicalization. */
 export const skinsHolePayloadSchema = z
   .object({
     result: z.enum(["won", "tie", "carry"]),
-    /** Present when result is won; each id must be a session player. */
-    winnerUserIds: z.array(z.string().uuid()).default([]),
+    winnerUserIds: z.array(z.string().trim().min(1)).default([]),
   })
-  .superRefine((data, ctx) => {
-    if (data.result === "won") {
-      if (data.winnerUserIds.length < 1) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "winnerUserIds required when result is won",
-          path: ["winnerUserIds"],
-        });
-      }
-    } else if (data.winnerUserIds.length > 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "winnerUserIds must be empty unless result is won",
-        path: ["winnerUserIds"],
-      });
-    }
-  });
+  .transform((d) => ({
+    result: d.result === "carry" ? ("tie" as const) : d.result,
+    winnerUserIds: [...new Set(d.winnerUserIds.map((s) => s.trim()))],
+  }));
 
-export type SkinsHolePayload = z.infer<typeof skinsHolePayloadSchema>;
+export type SkinsHolePayload = { result: "won" | "tie"; winnerUserIds: string[] };
 
 /** Wolf: per-hole roles; `winnerUserIds` drives stats (who had low / tied for low). */
 export const wolfHolePayloadSchema = z
@@ -97,6 +88,23 @@ function assertSubset(playerSet: Set<string>, ids: string[], label: string) {
   }
 }
 
+/** Map client ids to roster ids (case-insensitive) and drop duplicates. */
+function canonicalizeSkinsWinnerIds(ids: string[], rosterUserIds: string[]): string[] {
+  const lowerToCanon = new Map(rosterUserIds.map((id) => [id.toLowerCase(), id]));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of ids) {
+    const c = lowerToCanon.get(raw.trim().toLowerCase());
+    if (!c) {
+      throw new Error("winnerUserIds must be session players");
+    }
+    if (seen.has(c)) continue;
+    seen.add(c);
+    out.push(c);
+  }
+  return out;
+}
+
 export function parseHolePayload(
   gameType: GameTypeKey,
   raw: unknown,
@@ -105,8 +113,20 @@ export function parseHolePayload(
   const set = new Set(playerUserIds);
   if (gameType === "skins") {
     const data = skinsHolePayloadSchema.parse(raw);
-    assertSubset(set, data.winnerUserIds, "winnerUserIds");
-    return data as unknown as Record<string, unknown>;
+    const winnerUserIds = canonicalizeSkinsWinnerIds(data.winnerUserIds, playerUserIds);
+    if (data.result === "won") {
+      if (winnerUserIds.length !== 1) {
+        throw new Error("Exactly one winner when a skin is won");
+      }
+    } else {
+      const n = winnerUserIds.length;
+      if (n === 1) {
+        throw new Error(
+          "One player with the low score wins the skin (use won), or select everyone who tied for low",
+        );
+      }
+    }
+    return { result: data.result, winnerUserIds } as Record<string, unknown>;
   }
   if (gameType === "wolf") {
     const data = wolfHolePayloadSchema.parse(raw);

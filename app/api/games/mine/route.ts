@@ -8,11 +8,16 @@ export async function GET(req: Request) {
     const user = await requireDbUser(req);
     const sessions = await listSessionsForUser(user.id, 50);
     const serialized: ReturnType<typeof serializeGameSessionForApi>[] = [];
-    for (const s of sessions) {
+    for (const row of sessions) {
       try {
-        serialized.push(serializeGameSessionForApi(s));
+        const { roundInviteToken, ...session } = row;
+        serialized.push(
+          serializeGameSessionForApi(session, {
+            roundInviteToken: roundInviteToken ?? null,
+          }),
+        );
       } catch (rowErr) {
-        console.error("games/mine: skip row", s.id, rowErr);
+        console.error("games/mine: skip row", row.id, rowErr);
       }
     }
     return NextResponse.json({ sessions: serialized });
