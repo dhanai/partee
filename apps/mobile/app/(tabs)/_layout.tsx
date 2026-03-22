@@ -1,3 +1,4 @@
+import { getFocusedRouteNameFromRoute } from "@react-navigation/native";
 import { Tabs, Redirect, router } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -132,13 +133,17 @@ export default function TabsLayout() {
         />
         <Tabs.Screen
           name="games"
-          options={{
-            title: "Games",
-            /** Nested `games/_layout` Stack draws its own header (logo + pushes). Tab header would duplicate ParfadeLogo. */
-            headerShown: false,
-            tabBarIcon: ({ color, focused }) => (
-              <Ionicons name={focused ? "flag" : "flag-outline"} size={22} color={color} />
-            ),
+          options={({ route }) => {
+            const focused = getFocusedRouteNameFromRoute(route) ?? "index";
+            /** Landing uses tab header (logo left, room for actions). Pushed screens use stack header + back. */
+            const showMainTabHeader = focused === "index";
+            return {
+              title: "Games",
+              headerShown: showMainTabHeader,
+              tabBarIcon: ({ color, focused }) => (
+                <Ionicons name={focused ? "flag" : "flag-outline"} size={22} color={color} />
+              ),
+            };
           }}
         />
         <Tabs.Screen

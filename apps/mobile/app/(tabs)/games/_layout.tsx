@@ -1,5 +1,4 @@
 import { Stack } from "expo-router";
-import { ParfadeLogo } from "../../../components/parfade-logo";
 import { colors } from "../../../lib/theme";
 
 export default function GamesStackLayout() {
@@ -10,15 +9,10 @@ export default function GamesStackLayout() {
         headerTintColor: colors.text,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.background },
+        headerTitleAlign: "left",
       }}
     >
-      <Stack.Screen
-        name="index"
-        options={{
-          headerTitle: () => <ParfadeLogo compact />,
-          headerTitleAlign: "left",
-        }}
-      />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="create" options={{ title: "New game" }} />
       <Stack.Screen name="session/[sessionId]" options={{ title: "Game" }} />
     </Stack>
