@@ -112,6 +112,15 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
+          name="games"
+          options={{
+            title: "Games",
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons name={focused ? "flag" : "flag-outline"} size={22} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="create"
           options={{
             title: "Create",

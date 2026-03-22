@@ -43,6 +43,19 @@ export const notificationEventEnum = pgEnum("notification_event_type", [
   "round_rsvp_declined",
 ]);
 
+export const gameTypeEnum = pgEnum("game_type", [
+  "skins",
+  "wolf",
+  "best_ball",
+  "nassau",
+]);
+
+export const gameSessionStatusEnum = pgEnum("game_session_status", [
+  "active",
+  "completed",
+  "abandoned",
+]);
+
 export const users = pgTable(
   "users",
   {
@@ -190,6 +203,92 @@ export const spots = pgTable(
   }),
 );
 
+/** Modular side games (skins, wolf, …); optional link to a round. */
+export const gameSessions = pgTable(
+  "game_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    gameType: gameTypeEnum("game_type").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    roundId: uuid("round_id").references(() => rounds.id, {
+      onDelete: "set null",
+    }),
+    status: gameSessionStatusEnum("status").notNull().default("active"),
+    holesCount: integer("holes_count").notNull().default(18),
+    settings: jsonb("settings")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    createdByIdx: index("game_sessions_created_by_idx").on(table.createdBy),
+    roundIdIdx: index("game_sessions_round_id_idx").on(table.roundId),
+    statusIdx: index("game_sessions_status_idx").on(table.status),
+    holesCountCheck: check(
+      "game_sessions_holes_count_check",
+      sql`${table.holesCount} >= 1 AND ${table.holesCount} <= 27`,
+    ),
+  }),
+);
+
+export const gameSessionPlayers = pgTable(
+  "game_session_players",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => gameSessions.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+    teamId: text("team_id"),
+  },
+  (table) => ({
+    sessionIdx: index("game_session_players_session_idx").on(table.sessionId),
+    sessionUserUnique: uniqueIndex("game_session_players_session_user_unique").on(
+      table.sessionId,
+      table.userId,
+    ),
+  }),
+);
+
+/** Latest row per (session, hole_number) — upsert with version for optimistic locking. */
+export const gameHoleEvents = pgTable(
+  "game_hole_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => gameSessions.id, { onDelete: "cascade" }),
+    holeNumber: integer("hole_number").notNull(),
+    version: integer("version").notNull().default(1),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionHoleUnique: uniqueIndex("game_hole_events_session_hole_unique").on(
+      table.sessionId,
+      table.holeNumber,
+    ),
+    sessionIdx: index("game_hole_events_session_idx").on(table.sessionId),
+    holeNumberCheck: check(
+      "game_hole_events_hole_number_check",
+      sql`${table.holeNumber} >= 1 AND ${table.holeNumber} <= 27`,
+    ),
+  }),
+);
+
 /** Group chat: host + confirmed players only (enforced in API). */
 export const roundMessages = pgTable(
   "round_messages",
@@ -250,3 +349,6 @@ export type Course = typeof courses.$inferSelect;
 export type UserFollow = typeof userFollows.$inferSelect;
 export type InAppNotification = typeof inAppNotifications.$inferSelect;
 export type RoundMessage = typeof roundMessages.$inferSelect;
+export type GameSession = typeof gameSessions.$inferSelect;
+export type GameSessionPlayer = typeof gameSessionPlayers.$inferSelect;
+export type GameHoleEvent = typeof gameHoleEvents.$inferSelect;

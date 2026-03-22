@@ -4,6 +4,8 @@ import * as SplashScreen from "expo-splash-screen";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { useEffect } from "react";
+import { View } from "react-native";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { BuildConfigMissingScreen } from "../components/build-config-missing-screen";
 import { ParfadeAppRealtimeGate } from "../components/parfade-app-realtime";
 import { AblyChatProviders } from "../lib/ably-chat-context";
@@ -57,17 +59,19 @@ export default function RootLayout() {
       <NotificationBadgeProvider>
         <InAppToastProvider>
           <AblyChatProviders>
-            <ParfadeAppRealtimeGate />
-            <NotificationDeepLinkEffects />
-          <StatusBar style="dark" />
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.text,
-              headerShadowVisible: false,
-              contentStyle: { backgroundColor: colors.background },
-            }}
-          >
+            <KeyboardProvider>
+              <ParfadeAppRealtimeGate />
+              <NotificationDeepLinkEffects />
+              <StatusBar style="dark" />
+              <View style={{ flex: 1 }}>
+                <Stack
+                  screenOptions={{
+                    headerStyle: { backgroundColor: colors.background },
+                    headerTintColor: colors.text,
+                    headerShadowVisible: false,
+                    contentStyle: { backgroundColor: colors.background },
+                  }}
+                >
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -141,7 +145,9 @@ export default function RootLayout() {
                 headerBackTitle: "Back",
               }}
             />
-          </Stack>
+                </Stack>
+              </View>
+            </KeyboardProvider>
           </AblyChatProviders>
         </InAppToastProvider>
       </NotificationBadgeProvider>

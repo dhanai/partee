@@ -103,6 +103,14 @@ export async function apiPatch<T>(
   return requestJson<T>(path, { method: "PATCH", body, token });
 }
 
+export async function apiPut<T>(
+  path: string,
+  body: unknown,
+  token?: string | null,
+): Promise<T> {
+  return requestJson<T>(path, { method: "PUT", body, token });
+}
+
 export async function apiDelete<T>(path: string, token?: string | null): Promise<T> {
   return requestJson<T>(path, { method: "DELETE", token });
 }

@@ -1,20 +1,13 @@
 import { ChatMessageEventType } from "@ably/chat";
 import { useChatConnection, useMessages } from "@ably/chat/react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Image, ScrollView, Text, View } from "react-native";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
+import { RoundGroupChatComposer } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
 import {
   type ChatMessage,
@@ -55,7 +48,6 @@ export function RoundGroupChatConnected({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [draft, setDraft] = useState("");
   const [sendBusy, setSendBusy] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -222,50 +214,54 @@ export function RoundGroupChatConnected({
     return () => cancelAnimationFrame(t);
   }, [messages.length, pollActive]);
 
-  async function send() {
-    const text = draft.trim();
-    if (!text || sendBusy) return;
-    setSendBusy(true);
-    setLoadError(null);
-    try {
-      const authToken = await getTokenRef.current();
-      if (!authToken) {
-        setLoadError("Sign in to send a message.");
-        return;
-      }
-      const data = await apiPost<MessagesResponse & { message: ChatMessage }>(
-        `/api/rounds/${inviteToken}/messages`,
-        { body: text },
-        authToken,
-      );
-      const vidSend = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
-      if (vidSend) setViewerId(vidSend);
-      setDraft("");
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === data.message.id)) return prev;
-        return sortMessagesByTime([...prev, data.message]);
-      });
-
-      if (ablyConnected) {
-        try {
-          await sendMessage({
-            text: data.message.body,
-            headers: {
-              "x-msg-id": data.message.id,
-              "x-user-name": data.message.user.name,
-              "x-user-avatar": data.message.user.avatar ?? "",
-            },
-          });
-        } catch {
-          /* Realtime fan-out is best-effort; polling still works */
+  const handleSend = useCallback(
+    async (text: string): Promise<boolean> => {
+      const trimmed = text.trim();
+      if (!trimmed) return false;
+      setSendBusy(true);
+      setLoadError(null);
+      try {
+        const authToken = await getTokenRef.current();
+        if (!authToken) {
+          setLoadError("Sign in to send a message.");
+          return false;
         }
+        const data = await apiPost<MessagesResponse & { message: ChatMessage }>(
+          `/api/rounds/${inviteToken}/messages`,
+          { body: trimmed },
+          authToken,
+        );
+        const vidSend = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
+        if (vidSend) setViewerId(vidSend);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === data.message.id)) return prev;
+          return sortMessagesByTime([...prev, data.message]);
+        });
+
+        if (ablyConnected) {
+          try {
+            await sendMessage({
+              text: data.message.body,
+              headers: {
+                "x-msg-id": data.message.id,
+                "x-user-name": data.message.user.name,
+                "x-user-avatar": data.message.user.avatar ?? "",
+              },
+            });
+          } catch {
+            /* Realtime fan-out is best-effort; polling still works */
+          }
+        }
+        return true;
+      } catch (e) {
+        setLoadError(e instanceof Error ? e.message : "Could not send.");
+        return false;
+      } finally {
+        setSendBusy(false);
       }
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Could not send.");
-    } finally {
-      setSendBusy(false);
-    }
-  }
+    },
+    [ablyConnected, inviteToken, sendMessage],
+  );
 
   function formatTime(iso: string) {
     try {
@@ -275,7 +271,26 @@ export function RoundGroupChatConnected({
     }
   }
 
-  const chatBody = (
+  const composerStyles = useMemo(
+    () => ({
+      composerRow: styles.composerRow,
+      input: styles.input,
+      sendBtn: styles.sendBtn,
+      sendBtnDisabled: styles.sendBtnDisabled,
+    }),
+    [],
+  );
+
+  const composerRow = (
+    <RoundGroupChatComposer
+      styles={composerStyles}
+      sendBusy={sendBusy}
+      onSend={handleSend}
+      onComposerFocus={onComposerFocus}
+    />
+  );
+
+  const messagesColumn = (
     <>
       {loading && messages.length === 0 ? (
         <View style={styles.loaderWrap}>
@@ -343,47 +358,30 @@ export function RoundGroupChatConnected({
       {loadError && messages.length > 0 ? (
         <Text style={styles.errorInline}>{loadError}</Text>
       ) : null}
-
-      <View style={styles.composerRow}>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          onFocus={() => onComposerFocus?.()}
-          placeholder="Message the group…"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-          multiline
-          maxLength={2000}
-          editable={!sendBusy}
-        />
-        <Pressable
-          style={[styles.sendBtn, sendBusy && styles.sendBtnDisabled]}
-          onPress={() => void send()}
-          disabled={sendBusy || !draft.trim()}
-          accessibilityLabel="Send message"
-        >
-          {sendBusy ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Ionicons name="send" size={18} color="#fff" />
-          )}
-        </Pressable>
-      </View>
     </>
   );
 
   if (isFullscreen) {
+    const stickyClosedOffset = -(insets.bottom + 16);
     return (
-      <View
-        style={[
-          styles.fullscreenRoot,
-          { paddingBottom: insets.bottom + 10 },
-        ]}
-      >
-        {chatBody}
+      <View style={styles.fullscreenRoot}>
+        {messagesColumn}
+        <KeyboardStickyView
+          offset={{ closed: stickyClosedOffset, opened: 8 }}
+          style={styles.stickyComposerWrap}
+        >
+          {composerRow}
+        </KeyboardStickyView>
       </View>
     );
   }
+
+  const chatBody = (
+    <>
+      {messagesColumn}
+      {composerRow}
+    </>
+  );
 
   return (
     <RoundDetailSection

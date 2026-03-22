@@ -690,6 +690,34 @@ export default function RoundDetailsScreen() {
         </Pressable>
       ) : null}
 
+      {canUseGroupChat && token && round.confirmedPlayers.length >= 2 ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.chatPreviewRow,
+            pressed && styles.chatPreviewRowPressed,
+          ]}
+          onPress={() =>
+            router.push({
+              pathname: "/(tabs)/games",
+              params: { roundInviteToken: token },
+            })
+          }
+          accessibilityLabel="Open side games for this round"
+          accessibilityRole="button"
+        >
+          <View style={styles.chatPreviewIconWrap}>
+            <Ionicons name="flag-outline" size={22} color={colors.fairway} />
+          </View>
+          <View style={styles.chatPreviewTextCol}>
+            <Text style={styles.chatPreviewTitle}>Side games</Text>
+            <Text style={styles.chatPreviewSubtitle} numberOfLines={2}>
+              Skins, Wolf, and more with everyone in this round.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </Pressable>
+      ) : null}
+
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {message ? <Text style={styles.successText}>{message}</Text> : null}
 

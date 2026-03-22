@@ -1,19 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
+import { RoundGroupChatComposer } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
 
 export type ChatMessage = {
@@ -53,7 +45,6 @@ export function RoundGroupChatPoll({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [draft, setDraft] = useState("");
   const [sendBusy, setSendBusy] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -187,35 +178,39 @@ export function RoundGroupChatPoll({
     return () => cancelAnimationFrame(t);
   }, [messages.length, pollActive]);
 
-  async function send() {
-    const text = draft.trim();
-    if (!text || sendBusy) return;
-    setSendBusy(true);
-    setLoadError(null);
-    try {
-      const authToken = await getTokenRef.current();
-      if (!authToken) {
-        setLoadError("Sign in to send a message.");
-        return;
+  const handleSend = useCallback(
+    async (text: string): Promise<boolean> => {
+      const trimmed = text.trim();
+      if (!trimmed) return false;
+      setSendBusy(true);
+      setLoadError(null);
+      try {
+        const authToken = await getTokenRef.current();
+        if (!authToken) {
+          setLoadError("Sign in to send a message.");
+          return false;
+        }
+        const data = await apiPost<MessagesResponse & { message: ChatMessage }>(
+          `/api/rounds/${inviteToken}/messages`,
+          { body: trimmed },
+          authToken,
+        );
+        const vidSend = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
+        if (vidSend) setViewerId(vidSend);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === data.message.id)) return prev;
+          return [...prev, data.message];
+        });
+        return true;
+      } catch (e) {
+        setLoadError(e instanceof Error ? e.message : "Could not send.");
+        return false;
+      } finally {
+        setSendBusy(false);
       }
-      const data = await apiPost<MessagesResponse & { message: ChatMessage }>(
-        `/api/rounds/${inviteToken}/messages`,
-        { body: text },
-        authToken,
-      );
-      const vidSend = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
-      if (vidSend) setViewerId(vidSend);
-      setDraft("");
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === data.message.id)) return prev;
-        return [...prev, data.message];
-      });
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Could not send.");
-    } finally {
-      setSendBusy(false);
-    }
-  }
+    },
+    [inviteToken],
+  );
 
   function formatTime(iso: string) {
     try {
@@ -225,7 +220,26 @@ export function RoundGroupChatPoll({
     }
   }
 
-  const chatBody = (
+  const composerStyles = useMemo(
+    () => ({
+      composerRow: styles.composerRow,
+      input: styles.input,
+      sendBtn: styles.sendBtn,
+      sendBtnDisabled: styles.sendBtnDisabled,
+    }),
+    [],
+  );
+
+  const composerRow = (
+    <RoundGroupChatComposer
+      styles={composerStyles}
+      sendBusy={sendBusy}
+      onSend={handleSend}
+      onComposerFocus={onComposerFocus}
+    />
+  );
+
+  const messagesColumn = (
     <>
       {loading && messages.length === 0 ? (
         <View style={styles.loaderWrap}>
@@ -293,47 +307,30 @@ export function RoundGroupChatPoll({
       {loadError && messages.length > 0 ? (
         <Text style={styles.errorInline}>{loadError}</Text>
       ) : null}
-
-      <View style={styles.composerRow}>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          onFocus={() => onComposerFocus?.()}
-          placeholder="Message the group…"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-          multiline
-          maxLength={2000}
-          editable={!sendBusy}
-        />
-        <Pressable
-          style={[styles.sendBtn, sendBusy && styles.sendBtnDisabled]}
-          onPress={() => void send()}
-          disabled={sendBusy || !draft.trim()}
-          accessibilityLabel="Send message"
-        >
-          {sendBusy ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Ionicons name="send" size={18} color="#fff" />
-          )}
-        </Pressable>
-      </View>
     </>
   );
 
   if (isFullscreen) {
+    const stickyClosedOffset = -(insets.bottom + 16);
     return (
-      <View
-        style={[
-          styles.fullscreenRoot,
-          { paddingBottom: insets.bottom + 10 },
-        ]}
-      >
-        {chatBody}
+      <View style={styles.fullscreenRoot}>
+        {messagesColumn}
+        <KeyboardStickyView
+          offset={{ closed: stickyClosedOffset, opened: 8 }}
+          style={styles.stickyComposerWrap}
+        >
+          {composerRow}
+        </KeyboardStickyView>
       </View>
     );
   }
+
+  const chatBody = (
+    <>
+      {messagesColumn}
+      {composerRow}
+    </>
+  );
 
   return (
     <RoundDetailSection
@@ -392,6 +389,9 @@ const styles = StyleSheet.create({
   bubbleBodyMine: { color: "#fff" },
   bubbleTime: { fontSize: 10, color: colors.muted, marginTop: 4, alignSelf: "flex-end" },
   bubbleTimeMine: { color: "rgba(255,255,255,0.85)" },
+  /** Fullscreen: inset below input row + slight gap when keyboard is open. */
+  /** Extra space below the row; keyboard gap uses opened: 8 to match composerRow gap. */
+  stickyComposerWrap: { paddingBottom: 12 },
   composerRow: { flexDirection: "row", gap: 8, alignItems: "flex-end", marginTop: 4 },
   input: {
     flex: 1,
