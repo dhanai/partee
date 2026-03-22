@@ -7,6 +7,8 @@ export type ProfileCategoryStatsBlock = {
   headline: string;
   headlineLabel: string;
   subtitle: string;
+  /** Short labels for the profile card strip (2–4 columns). */
+  highlights: { label: string; value: string }[];
   rows: { label: string; value: string }[];
 };
 
@@ -23,6 +25,12 @@ export function buildGroupedProfileStats(s: UserStatsPayload): ProfileStatsGroup
       headline: fmt(s.wolfGamesCompleted),
       headlineLabel: "Wolf games",
       subtitle: `${fmt(s.wolfPointsTotal)} pts · ${fmt(s.loneWolfHolesWon)} lone · ${fmt(s.partnerWolfHolesWon)} partner`,
+      highlights: [
+        { label: "Games", value: fmt(s.wolfGamesCompleted) },
+        { label: "Lone W", value: fmt(s.loneWolfHolesWon) },
+        { label: "Partner W", value: fmt(s.partnerWolfHolesWon) },
+        { label: "Pack W", value: fmt(s.packHolesWon) },
+      ],
       rows: [
         { label: "Games finished", value: fmt(s.wolfGamesCompleted) },
         { label: "Lone wolf wins (holes)", value: fmt(s.loneWolfHolesWon) },
@@ -36,6 +44,11 @@ export function buildGroupedProfileStats(s: UserStatsPayload): ProfileStatsGroup
       headline: fmt(s.skinsGamesCompleted),
       headlineLabel: "Skins games",
       subtitle: `${fmt(s.skinsHolesWon)} skins won · ${fmt(s.skinsTieHoles)} pushes`,
+      highlights: [
+        { label: "Games", value: fmt(s.skinsGamesCompleted) },
+        { label: "Skins won", value: fmt(s.skinsHolesWon) },
+        { label: "Pushes", value: fmt(s.skinsTieHoles) },
+      ],
       rows: [
         { label: "Games finished", value: fmt(s.skinsGamesCompleted) },
         { label: "Skins won (holes)", value: fmt(s.skinsHolesWon) },
@@ -46,6 +59,12 @@ export function buildGroupedProfileStats(s: UserStatsPayload): ProfileStatsGroup
       headline: fmt(s.roundsPlayedCompleted),
       headlineLabel: "Rounds played",
       subtitle: `${fmt(s.distinctCoursesPlayed)} courses · ${fmt(s.gamesCreatedCompleted)} games started`,
+      highlights: [
+        { label: "Hosted", value: fmt(s.roundsHostedCompleted) },
+        { label: "Joined", value: fmt(s.roundsJoinedCompleted) },
+        { label: "Rounds", value: fmt(s.roundsPlayedCompleted) },
+        { label: "Courses", value: fmt(s.distinctCoursesPlayed) },
+      ],
       rows: [
         { label: "Rounds hosted", value: fmt(s.roundsHostedCompleted) },
         { label: "Rounds joined", value: fmt(s.roundsJoinedCompleted) },
