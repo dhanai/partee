@@ -134,6 +134,8 @@ export default function TabsLayout() {
           name="games"
           options={{
             title: "Games",
+            /** Nested `games/_layout` Stack draws its own header (logo + pushes). Tab header would duplicate ParfadeLogo. */
+            headerShown: false,
             tabBarIcon: ({ color, focused }) => (
               <Ionicons name={focused ? "flag" : "flag-outline"} size={22} color={color} />
             ),
