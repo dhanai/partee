@@ -10,6 +10,7 @@ import {
   playerIdsAllowedForRound,
   viewerCanLinkGameToRound,
 } from "@/lib/games/round-game-access";
+import { serializeGameSessionForApi } from "@/lib/games/serialize";
 
 const createGameSchema = z
   .object({
@@ -107,19 +108,7 @@ export async function POST(req: Request) {
     );
 
     return NextResponse.json({
-      session: {
-        id: session.id,
-        gameType: session.gameType,
-        createdBy: session.createdBy,
-        roundId: session.roundId,
-        status: session.status,
-        holesCount: session.holesCount,
-        settings: session.settings,
-        startedAt: session.startedAt.toISOString(),
-        endedAt: session.endedAt?.toISOString() ?? null,
-        createdAt: session.createdAt.toISOString(),
-        updatedAt: session.updatedAt.toISOString(),
-      },
+      session: serializeGameSessionForApi(session),
       playerUserIds: playerIds,
     });
   } catch (e) {

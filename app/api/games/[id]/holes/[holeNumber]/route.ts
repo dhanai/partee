@@ -6,6 +6,7 @@ import { gameHoleEvents, gameSessions } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import type { GameTypeKey } from "@/lib/games/payload-schemas";
 import { parseHolePayload } from "@/lib/games/payload-schemas";
+import { toIso } from "@/lib/games/serialize";
 import { loadSessionWithPlayers, userIsGameParticipant } from "@/lib/games/session-queries";
 
 type RouteContext = { params: Promise<{ id: string; holeNumber: string }> };
@@ -119,7 +120,7 @@ export async function PUT(req: Request, context: RouteContext) {
           version: row!.version,
           recordedBy: row!.recordedBy,
           payload: row!.payload,
-          updatedAt: row!.updatedAt.toISOString(),
+          updatedAt: toIso(row!.updatedAt),
         },
       });
     }
@@ -154,7 +155,7 @@ export async function PUT(req: Request, context: RouteContext) {
         version: row!.version,
         recordedBy: row!.recordedBy,
         payload: row!.payload,
-        updatedAt: row!.updatedAt.toISOString(),
+        updatedAt: toIso(row!.updatedAt),
       },
     });
   } catch (e) {

@@ -4,25 +4,10 @@ import { z } from "zod";
 import { db } from "@/db";
 import { gameSessions } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { serializeGameSessionForApi, toIso } from "@/lib/games/serialize";
 import { loadSessionWithPlayers, userIsGameParticipant } from "@/lib/games/session-queries";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-function serializeSession(s: typeof gameSessions.$inferSelect) {
-  return {
-    id: s.id,
-    gameType: s.gameType,
-    createdBy: s.createdBy,
-    roundId: s.roundId,
-    status: s.status,
-    holesCount: s.holesCount,
-    settings: s.settings,
-    startedAt: s.startedAt.toISOString(),
-    endedAt: s.endedAt?.toISOString() ?? null,
-    createdAt: s.createdAt.toISOString(),
-    updatedAt: s.updatedAt.toISOString(),
-  };
-}
 
 export async function GET(req: Request, context: RouteContext) {
   try {
@@ -43,7 +28,7 @@ export async function GET(req: Request, context: RouteContext) {
     }
 
     return NextResponse.json({
-      session: serializeSession(data.session),
+      session: serializeGameSessionForApi(data.session),
       players: data.players.map((p) => ({
         userId: p.userId,
         sortOrder: p.sortOrder,
@@ -56,7 +41,7 @@ export async function GET(req: Request, context: RouteContext) {
         version: h.version,
         recordedBy: h.recordedBy,
         payload: h.payload,
-        updatedAt: h.updatedAt.toISOString(),
+        updatedAt: toIso(h.updatedAt),
       })),
     });
   } catch (e) {
@@ -103,7 +88,7 @@ export async function PATCH(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ session: serializeSession(updated) });
+    return NextResponse.json({ session: serializeGameSessionForApi(updated) });
   } catch (e) {
     if (e instanceof z.ZodError) {
       return NextResponse.json(

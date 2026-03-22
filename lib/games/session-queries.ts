@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, exists, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   gameHoleEvents,
@@ -54,25 +54,20 @@ export async function loadSessionWithPlayers(sessionId: string) {
 }
 
 export async function listSessionsForUser(userId: string, limit = 50) {
-  const created = await db
-    .select({ id: gameSessions.id })
-    .from(gameSessions)
-    .where(eq(gameSessions.createdBy, userId));
-  const played = await db
-    .select({ sessionId: gameSessionPlayers.sessionId })
+  const asParticipant = db
+    .select()
     .from(gameSessionPlayers)
-    .where(eq(gameSessionPlayers.userId, userId));
-  const idSet = new Set<string>();
-  for (const r of created) idSet.add(r.id);
-  for (const r of played) idSet.add(r.sessionId);
-  const ids = [...idSet];
-  if (ids.length === 0) {
-    return [];
-  }
+    .where(
+      and(
+        eq(gameSessionPlayers.sessionId, gameSessions.id),
+        eq(gameSessionPlayers.userId, userId),
+      ),
+    );
+
   return db
     .select()
     .from(gameSessions)
-    .where(inArray(gameSessions.id, ids))
+    .where(or(eq(gameSessions.createdBy, userId), exists(asParticipant)))
     .orderBy(desc(gameSessions.updatedAt))
     .limit(limit);
 }
