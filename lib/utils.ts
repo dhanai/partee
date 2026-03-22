@@ -34,6 +34,16 @@ export function timestampMs(v: Date | string | null | undefined): number | null 
   return Number.isNaN(n) ? null : n;
 }
 
+/** Sort/filter rounds by schedule; Neon may return `tee_time` / `target_date` as strings. */
+export function effectiveRoundTimeMs(row: {
+  teeTime: Date | string | null;
+  targetDate: Date | string | null;
+}): number {
+  const tee = timestampMs(row.teeTime);
+  if (tee != null) return tee;
+  return timestampMs(row.targetDate) ?? 0;
+}
+
 /** Nullable timestamptz: empty string or invalid parses as null (avoid 500 on odd DB rows). */
 export function toIsoTimestampOrNull(v: Date | string | null | undefined): string | null {
   if (v == null) return null;

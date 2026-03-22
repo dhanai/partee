@@ -25,23 +25,35 @@ export async function GET(req: Request) {
       .orderBy(desc(inAppNotifications.createdAt))
       .limit(LIMIT);
 
-    return NextResponse.json({
-      items: rows.map((r) => {
+    const items = rows.flatMap((r) => {
+      try {
         const rawToken = (r.data as { inviteToken?: unknown }).inviteToken;
         const inviteToken = typeof rawToken === "string" ? rawToken : "";
-        return {
-          id: r.id,
-          type: r.type,
-          title: r.title,
-          body: r.body,
-          inviteToken,
-          createdAt: toIsoTimestamp(r.createdAt),
-        };
-      }),
+        return [
+          {
+            id: r.id,
+            type: r.type,
+            title: r.title,
+            body: r.body,
+            inviteToken,
+            createdAt: toIsoTimestamp(r.createdAt),
+          },
+        ];
+      } catch (rowErr) {
+        console.error("activity-notifications: skip row", r.id, rowErr);
+        return [];
+      }
     });
+
+    return NextResponse.json({ items });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const msg = error instanceof Error ? error.message : String(error);
+    if (/in_app_notifications/i.test(msg) && /does not exist/i.test(msg)) {
+      console.error("in_app_notifications table missing; returning empty feed", error);
+      return NextResponse.json({ items: [] });
     }
     console.error(error);
     return NextResponse.json({ error: "Unable to load notifications." }, { status: 500 });

@@ -21,15 +21,24 @@ export async function GET(req: Request) {
       .innerJoin(users, eq(users.id, userFollows.followerId))
       .where(and(eq(userFollows.followedId, viewer.id), eq(userFollows.status, "requested")));
 
-    return NextResponse.json({
-      requests: requests.map((r) => ({
-        id: r.id,
-        followerId: r.followerId,
-        name: r.name,
-        avatar: r.avatar,
-        createdAt: toIsoTimestamp(r.createdAt),
-      })),
+    const mapped = requests.flatMap((r) => {
+      try {
+        return [
+          {
+            id: r.id,
+            followerId: r.followerId,
+            name: r.name,
+            avatar: r.avatar,
+            createdAt: toIsoTimestamp(r.createdAt),
+          },
+        ];
+      } catch (rowErr) {
+        console.error("follow-requests: skip row", r.id, rowErr);
+        return [];
+      }
     });
+
+    return NextResponse.json({ requests: mapped });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

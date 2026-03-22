@@ -5,6 +5,7 @@ import { courses, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { requireDbUser } from "@/lib/auth";
 import { resolveRoundImageUrl } from "@/lib/round-images";
+import { effectiveRoundTimeMs } from "@/lib/utils";
 
 type MineRowWithImageFields = {
   courseId: string | null;
@@ -141,14 +142,11 @@ export async function GET(req: Request) {
       )
       .orderBy(asc(rounds.targetDate));
 
-    const sortByEffectiveDate = <T extends { teeTime: Date | null; targetDate: Date }>(
+    const sortByEffectiveDate = <
+      T extends { teeTime: Date | string | null; targetDate: Date | string | null },
+    >(
       items: T[],
-    ) =>
-      [...items].sort(
-        (a, b) =>
-          new Date(a.teeTime ?? a.targetDate).getTime() -
-          new Date(b.teeTime ?? b.targetDate).getTime(),
-      );
+    ) => [...items].sort((a, b) => effectiveRoundTimeMs(a) - effectiveRoundTimeMs(b));
 
     /** One row per round (duplicate spot rows for the same user+round would otherwise duplicate keys in the app). */
     function dedupeGuestRowsByRoundId<T extends { id: string }>(rows: T[]): T[] {
@@ -162,8 +160,9 @@ export async function GET(req: Request) {
       return out;
     }
 
+    const nowMs = now.getTime();
     const hostingUpcoming = sortByEffectiveDate(
-      hosting.filter((r) => new Date(r.teeTime ?? r.targetDate) >= now),
+      hosting.filter((r) => effectiveRoundTimeMs(r) >= nowMs),
     );
     const hostingRoundIds = hostingUpcoming.map((round) => round.id);
     const confirmedRows =
@@ -189,7 +188,7 @@ export async function GET(req: Request) {
 
     const confirmedByRound = new Map<
       string,
-      Array<{ id: string; name: string; avatar: string | null; claimedAt: Date }>
+      Array<{ id: string; name: string; avatar: string | null; claimedAt: Date | string }>
     >();
     for (const row of confirmedRows) {
       const existing = confirmedByRound.get(row.roundId) ?? [];
@@ -213,10 +212,10 @@ export async function GET(req: Request) {
     );
 
     const joinedUpcomingRows = dedupeGuestRowsByRoundId(
-      joined.filter((r) => new Date(r.teeTime ?? r.targetDate) >= now),
+      joined.filter((r) => effectiveRoundTimeMs(r) >= nowMs),
     );
     const invitedUpcomingRows = dedupeGuestRowsByRoundId(
-      invitedOnly.filter((r) => new Date(r.teeTime ?? r.targetDate) >= now),
+      invitedOnly.filter((r) => effectiveRoundTimeMs(r) >= nowMs),
     );
     const guestRoundIdList = [
       ...new Set([...joinedUpcomingRows.map((r) => r.id), ...invitedUpcomingRows.map((r) => r.id)]),
@@ -242,7 +241,7 @@ export async function GET(req: Request) {
 
     const guestConfirmedByRound = new Map<
       string,
-      Array<{ id: string; name: string; avatar: string | null; claimedAt: Date }>
+      Array<{ id: string; name: string; avatar: string | null; claimedAt: Date | string }>
     >();
     for (const row of guestConfirmedRows) {
       const existing = guestConfirmedByRound.get(row.roundId) ?? [];
@@ -294,21 +293,15 @@ export async function GET(req: Request) {
     return NextResponse.json({
       hosting: {
         upcoming: hostingPayload,
-        past: sortByEffectiveDate(
-          hosting.filter((r) => new Date(r.teeTime ?? r.targetDate) < now),
-        ),
+        past: sortByEffectiveDate(hosting.filter((r) => effectiveRoundTimeMs(r) < nowMs)),
       },
       joined: {
         upcoming: joinedPayload,
-        past: sortByEffectiveDate(
-          joined.filter((r) => new Date(r.teeTime ?? r.targetDate) < now),
-        ),
+        past: sortByEffectiveDate(joined.filter((r) => effectiveRoundTimeMs(r) < nowMs)),
       },
       invited: {
         upcoming: invitedPayload,
-        past: sortByEffectiveDate(
-          invitedOnly.filter((r) => new Date(r.teeTime ?? r.targetDate) < now),
-        ),
+        past: sortByEffectiveDate(invitedOnly.filter((r) => effectiveRoundTimeMs(r) < nowMs)),
       },
     });
   } catch (error) {

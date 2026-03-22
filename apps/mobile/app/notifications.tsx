@@ -60,7 +60,7 @@ export default function NotificationsScreen() {
 
   const fetchNotificationsData = useCallback(async () => {
     const authToken = await getTokenRef.current();
-    const [roundData, followData, activityData] = await Promise.all([
+    const [mineRes, followRes, activityRes] = await Promise.allSettled([
       apiGet<MineTabResponse>(
         "/api/rounds/mine?tab=joined&limit=50&includeInvited=1",
         authToken,
@@ -68,13 +68,48 @@ export default function NotificationsScreen() {
       apiGet<FollowRequestsResponse>("/api/users/me/follow-requests", authToken),
       apiGet<ActivityNotificationsResponse>("/api/users/me/activity-notifications", authToken),
     ]);
-    setInviteNotifications(
-      roundData.rounds.filter(
-        (round) => round.spotStatus === "invited" || round.spotStatus === "requested",
-      ),
-    );
-    setFollowRequestNotifications(followData.requests ?? []);
-    setActivityItems(activityData.items ?? []);
+
+    if (mineRes.status === "fulfilled") {
+      const roundData = mineRes.value;
+      setInviteNotifications(
+        roundData.rounds.filter(
+          (round) => round.spotStatus === "invited" || round.spotStatus === "requested",
+        ),
+      );
+    } else {
+      setInviteNotifications([]);
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.warn("[notifications] rounds/mine failed", mineRes.reason);
+      }
+    }
+
+    if (followRes.status === "fulfilled") {
+      setFollowRequestNotifications(followRes.value.requests ?? []);
+    } else {
+      setFollowRequestNotifications([]);
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.warn("[notifications] follow-requests failed", followRes.reason);
+      }
+    }
+
+    if (activityRes.status === "fulfilled") {
+      setActivityItems(activityRes.value.items ?? []);
+    } else {
+      setActivityItems([]);
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.warn("[notifications] activity-notifications failed", activityRes.reason);
+      }
+    }
+
+    const rejected = [mineRes, followRes, activityRes].filter((r) => r.status === "rejected");
+    if (rejected.length === 3) {
+      const first = rejected[0] as PromiseRejectedResult;
+      const msg =
+        first.reason instanceof Error
+          ? first.reason.message
+          : "Unable to load notifications.";
+      throw new Error(msg);
+    }
   }, []);
 
   useFocusEffect(
