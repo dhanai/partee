@@ -62,9 +62,19 @@ export async function POST(req: Request) {
     }
 
     const playerIds = [...new Set([user.id, ...body.playerUserIds])];
-    if (playerIds.length < 2) {
+
+    const minPlayersForGame: Record<(typeof body)["gameType"], number> = {
+      skins: 2,
+      wolf: 4,
+      best_ball: 2,
+      nassau: 2,
+    };
+    const requiredPlayers = minPlayersForGame[body.gameType];
+    if (playerIds.length < requiredPlayers) {
       return NextResponse.json(
-        { error: "At least two players are required (you plus one other)." },
+        {
+          error: `At least ${requiredPlayers} players are required for ${body.gameType.replace(/_/g, " ")}.`,
+        },
         { status: 400 },
       );
     }

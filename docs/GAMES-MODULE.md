@@ -22,7 +22,7 @@ Session creation is [`POST /api/games`](../app/api/games/route.ts) — no change
 
 ## 4. Mobile registry and UI
 
-- Add the game to [`apps/mobile/lib/games-registry.ts`](../apps/mobile/lib/games-registry.ts) (`implemented: true` when ready).
+- Add the game to [`apps/mobile/lib/games-registry.ts`](../apps/mobile/lib/games-registry.ts) (`implemented: true`, **`minPlayers`** for create UI + mirror the same minimum in [`POST /api/games`](../app/api/games/route.ts) `minPlayersForGame`).
 - Add a hole editor component under `apps/mobile/components/games/`.
 - Wire it in [`apps/mobile/app/(tabs)/games/session/[sessionId].tsx`](../apps/mobile/app/(tabs)/games/session/[sessionId].tsx) next to the existing `skins` / `wolf` branches.
 

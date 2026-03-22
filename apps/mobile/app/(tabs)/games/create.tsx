@@ -85,17 +85,30 @@ export default function CreateGameScreen() {
     };
   }, [getToken, roundInviteToken]);
 
+  const minPlayers = def?.minPlayers ?? 2;
+  const totalPlayers =
+    roundLockedIds != null ? roundLockedIds.length : 1 + selected.size;
+  const hasEnoughPlayers = Boolean(def) && totalPlayers >= minPlayers;
+  const canStart = Boolean(def) && !loading && !submitting && hasEnoughPlayers;
+
   async function submit() {
     if (!def?.implemented || !gameType) return;
     setError(null);
     const playerUserIds = roundLockedIds ?? [...selected];
     if (roundLockedIds) {
-      if (playerUserIds.length < 2) {
-        setError("Need at least two golfers on the round to start a game.");
+      if (playerUserIds.length < minPlayers) {
+        setError(
+          `This round needs at least ${minPlayers} golfers for ${def.title} (currently ${playerUserIds.length}).`,
+        );
         return;
       }
     } else if (selected.size < 1) {
       setError("Select at least one person from your network (you’re included automatically).");
+      return;
+    } else if (totalPlayers < minPlayers) {
+      setError(
+        `${def.title} needs at least ${minPlayers} players including you (currently ${totalPlayers}).`,
+      );
       return;
     }
     setSubmitting(true);
@@ -162,7 +175,10 @@ export default function CreateGameScreen() {
             );
           })}
           <Text style={styles.hint}>
-            Everyone listed is included. Need at least two golfers to start.
+            Everyone listed is included. {def.title} needs at least {minPlayers} golfers
+            {totalPlayers < minPlayers
+              ? ` (${totalPlayers} right now — add people to the round or pick another format).`
+              : "."}
           </Text>
         </>
       ) : (
@@ -205,10 +221,21 @@ export default function CreateGameScreen() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
+      {!loading && !hasEnoughPlayers ? (
+        <Text style={styles.needMoreHint}>
+          {roundLockedIds == null
+            ? `${def.title} needs ${minPlayers} players including you. Select ${Math.max(0, minPlayers - totalPlayers)} more from your network.`
+            : `${def.title} needs ${minPlayers} players; this round has ${totalPlayers}.`}
+        </Text>
+      ) : null}
+
       <Pressable
-        style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
+        style={[
+          styles.primaryBtn,
+          (submitting || !canStart) && styles.primaryBtnDisabled,
+        ]}
         onPress={() => void submit()}
-        disabled={submitting || loading}
+        disabled={!canStart}
       >
         <Text style={styles.primaryBtnText}>
           {submitting ? "Starting…" : "Start game"}
@@ -257,6 +284,12 @@ const styles = StyleSheet.create({
   },
   lockedName: { flex: 1, fontSize: 16, fontWeight: "600", color: colors.text },
   hint: { fontSize: 13, color: colors.muted, marginTop: 8, marginBottom: 16 },
+  needMoreHint: {
+    fontSize: 13,
+    color: colors.muted,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
   error: { color: colors.danger, marginBottom: 12, marginTop: 8 },
   primaryBtn: {
     marginTop: 20,
