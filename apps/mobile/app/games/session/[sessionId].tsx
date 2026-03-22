@@ -18,6 +18,10 @@ import {
   useRouter,
 } from "expo-router";
 import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
+import {
+  HoleCompletionAvatars,
+  StandingAvatar,
+} from "../../../components/games/hole-completion-avatars";
 import { RoundOverflowMenuSheet } from "../../../components/round-overflow-menu-sheet";
 import { SkinsHoleEditor, type SkinsPayload } from "../../../components/games/skins-hole-editor";
 import { WolfRecapFunBlock } from "../../../components/games/wolf-recap-fun-block";
@@ -31,7 +35,8 @@ import {
   type GamePlayerRow,
   type GameSessionSummary,
 } from "../../../lib/games-api";
-import { getGameDefinition } from "../../../lib/games-registry";
+import { holeCompletionAvatarUserIds } from "../../../lib/game-hole-display";
+import { getGameDefinition, type GameTypeId } from "../../../lib/games-registry";
 import { letterLabelForUser } from "../../../lib/wolf-rotation";
 import type { WolfTeeOff } from "../../../lib/wolf-rotation";
 import { computeSkinsTotals, type SkinsTieHandling } from "../../../lib/skins-scoring";
@@ -404,6 +409,7 @@ export default function GameSessionScreen() {
                         <Text style={[styles.scoreRank, rank <= 3 && styles.scoreRankTop]}>
                           {rank}
                         </Text>
+                        <StandingAvatar player={p} size={34} />
                         <Text style={styles.scoreName} numberOfLines={1}>
                           {letter ? (
                             <Text style={styles.scoreLetter}>{letter} · </Text>
@@ -447,6 +453,7 @@ export default function GameSessionScreen() {
                         <Text style={[styles.scoreRank, rank <= 3 && styles.scoreRankTop]}>
                           {rank}
                         </Text>
+                        <StandingAvatar player={p} size={34} />
                         <Text style={styles.scoreName} numberOfLines={1}>
                           {p.isGuest ? `${p.name} (guest)` : p.name}
                         </Text>
@@ -498,6 +505,16 @@ export default function GameSessionScreen() {
                   {row.map((n) => {
                     const h = holeMap.get(n);
                     const label = h ? `Hole ${n}, logged` : `Hole ${n}, not logged`;
+                    const avatarSize = Math.max(20, Math.min(26, Math.round(holeTileSize * 0.24)));
+                    const avatarOverlap = Math.max(7, Math.round(holeTileSize * 0.085));
+                    const completionIds =
+                      h != null
+                        ? holeCompletionAvatarUserIds(
+                            session.gameType as GameTypeId,
+                            h.payload as Record<string, unknown>,
+                            players,
+                          )
+                        : [];
                     return (
                       <Pressable
                         key={n}
@@ -515,7 +532,12 @@ export default function GameSessionScreen() {
                       >
                         <Text style={[styles.holeTileNum, h && styles.holeTileNumDone]}>{n}</Text>
                         {h ? (
-                          <Ionicons name="checkmark-circle" size={22} color={colors.fairway} />
+                          <HoleCompletionAvatars
+                            userIds={completionIds}
+                            players={players}
+                            size={avatarSize}
+                            overlap={avatarOverlap}
+                          />
                         ) : (
                           <Text style={styles.holeTileHint}>Tap</Text>
                         )}
