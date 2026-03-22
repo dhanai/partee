@@ -11,9 +11,9 @@ import {
 import { useAuth } from "@clerk/clerk-expo";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { GAME_DEFINITIONS, getGameDefinition } from "../../../lib/games-registry";
-import { listMyGameSessions, type GameSessionSummary } from "../../../lib/games-api";
-import { colors } from "../../../lib/theme";
+import { GAME_DEFINITIONS, getGameDefinition } from "../../lib/games-registry";
+import { listMyGameSessions, type GameSessionSummary } from "../../lib/games-api";
+import { colors } from "../../lib/theme";
 
 function statusLabel(s: GameSessionSummary["status"]) {
   if (s === "active") return "Active";
@@ -21,7 +21,7 @@ function statusLabel(s: GameSessionSummary["status"]) {
   return "Abandoned";
 }
 
-export default function GamesIndexScreen() {
+export default function GamesScreen() {
   const router = useRouter();
   const { roundInviteToken } = useLocalSearchParams<{ roundInviteToken?: string }>();
   const { getToken } = useAuth();
@@ -87,7 +87,7 @@ export default function GamesIndexScreen() {
             onPress={() => {
               if (!g.implemented) return;
               router.push({
-                pathname: "/(tabs)/games/create",
+                pathname: "/games/create",
                 params: {
                   gameType: g.id,
                   ...(roundInviteToken
@@ -129,7 +129,7 @@ export default function GamesIndexScreen() {
               style={({ pressed }) => [styles.sessionRow, pressed && styles.sessionRowPressed]}
               onPress={() =>
                 router.push({
-                  pathname: "/(tabs)/games/session/[sessionId]",
+                  pathname: "/games/session/[sessionId]",
                   params: { sessionId: s.id },
                 })
               }

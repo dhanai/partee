@@ -5,7 +5,9 @@ import { db } from "@/db";
 import { gameHoleEvents, gameSessions } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import type { GameTypeKey } from "@/lib/games/payload-schemas";
+import type { WolfHolePayload } from "@/lib/games/payload-schemas";
 import { parseHolePayload } from "@/lib/games/payload-schemas";
+import { validateWolfPayloadWolfUser } from "@/lib/games/wolf-hole-validation";
 import { toIso } from "@/lib/games/serialize";
 import { loadSessionWithPlayers, userIsGameParticipant } from "@/lib/games/session-queries";
 
@@ -58,6 +60,16 @@ export async function PUT(req: Request, context: RouteContext) {
         body.payload,
         playerUserIds,
       );
+      if (session.gameType === "wolf") {
+        const wolfErr = validateWolfPayloadWolfUser(
+          session.settings as Record<string, unknown>,
+          holeNumber,
+          validatedPayload as WolfHolePayload,
+        );
+        if (wolfErr) {
+          return NextResponse.json({ error: wolfErr }, { status: 400 });
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Invalid payload";
       if (err instanceof z.ZodError) {

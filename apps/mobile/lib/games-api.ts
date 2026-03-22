@@ -42,6 +42,8 @@ export async function createGameSession(
     guestNames?: string[];
     roundInviteToken?: string;
     holesCount?: number;
+    /** Merged into session `settings` (e.g. Wolf: wolfTeeOff, wolfTieHandling). */
+    settings?: Record<string, unknown>;
   },
 ): Promise<{ session: GameSessionSummary; playerUserIds: string[] }> {
   return apiPost("/api/games", body, token);
@@ -57,11 +59,21 @@ export async function getGameSession(
   token: string | null,
   sessionId: string,
 ): Promise<{
+  viewerIsCreator: boolean;
+  viewerUserId: string;
   session: GameSessionSummary;
   players: GamePlayerRow[];
   holes: GameHoleRow[];
 }> {
   return apiGet(`/api/games/${sessionId}`, token);
+}
+
+export async function deleteGameSession(
+  token: string | null,
+  sessionId: string,
+): Promise<{ ok: true }> {
+  // POST avoids 405 from proxies that block DELETE (common with Apache/MAMP in front of Node).
+  return apiPost(`/api/games/${sessionId}/delete`, {}, token);
 }
 
 export async function updateGameSessionStatus(

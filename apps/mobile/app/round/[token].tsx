@@ -698,7 +698,7 @@ export default function RoundDetailsScreen() {
           ]}
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/games",
+              pathname: "/games",
               params: { roundInviteToken: token },
             })
           }

@@ -11,6 +11,7 @@ import {
   viewerCanLinkGameToRound,
 } from "@/lib/games/round-game-access";
 import { buildGuestPlayersFromNames } from "@/lib/games/guest-players";
+import { shuffleUserIds } from "@/lib/games/wolf-rotation";
 import { serializeGameSessionForApi } from "@/lib/games/serialize";
 
 const createGameSchema = z
@@ -65,17 +66,6 @@ export async function POST(req: Request) {
     }
 
     const playerIds = [...new Set([user.id, ...body.playerUserIds])];
-    const maxGuests = Math.max(0, 8 - playerIds.length);
-    if (body.guestNames.length > maxGuests) {
-      return NextResponse.json(
-        {
-          error: `At most ${maxGuests} guest name(s) allowed (${playerIds.length} Parfade player(s) already).`,
-        },
-        { status: 400 },
-      );
-    }
-    const guestPlayers = buildGuestPlayersFromNames(body.guestNames);
-    const totalRoster = playerIds.length + guestPlayers.length;
 
     const minPlayersForGame: Record<(typeof body)["gameType"], number> = {
       skins: 2,
@@ -83,6 +73,34 @@ export async function POST(req: Request) {
       best_ball: 2,
       nassau: 2,
     };
+    const maxPlayersForGame: Record<(typeof body)["gameType"], number> = {
+      skins: 8,
+      wolf: 4,
+      best_ball: 8,
+      nassau: 8,
+    };
+    const rosterCap = maxPlayersForGame[body.gameType];
+    if (playerIds.length > rosterCap) {
+      return NextResponse.json(
+        {
+          error: `At most ${rosterCap} golfers for ${body.gameType.replace(/_/g, " ")} (Parfade accounts, including you).`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const maxGuests = Math.max(0, rosterCap - playerIds.length);
+    if (body.guestNames.length > maxGuests) {
+      return NextResponse.json(
+        {
+          error: `At most ${maxGuests} guest name(s) allowed (${playerIds.length} Parfade player(s) already; cap is ${rosterCap} for this game).`,
+        },
+        { status: 400 },
+      );
+    }
+    const guestPlayers = buildGuestPlayersFromNames(body.guestNames);
+    const totalRoster = playerIds.length + guestPlayers.length;
+
     const requiredPlayers = minPlayersForGame[body.gameType];
     if (totalRoster < requiredPlayers) {
       return NextResponse.json(
@@ -92,8 +110,11 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (totalRoster > 8) {
-      return NextResponse.json({ error: "At most 8 players total." }, { status: 400 });
+    if (totalRoster > rosterCap) {
+      return NextResponse.json(
+        { error: `At most ${rosterCap} players total for ${body.gameType.replace(/_/g, " ")}.` },
+        { status: 400 },
+      );
     }
 
     if (!(await allUsersExist(playerIds))) {
@@ -118,6 +139,16 @@ export async function POST(req: Request) {
         ? { ...body.settings }
         : {};
     delete (baseSettings as { guestPlayers?: unknown }).guestPlayers;
+
+    if (body.gameType === "wolf") {
+      const teeRaw = (baseSettings as { wolfTeeOff?: unknown }).wolfTeeOff;
+      const tieRaw = (baseSettings as { wolfTieHandling?: unknown }).wolfTieHandling;
+      (baseSettings as { wolfTeeOff: string }).wolfTeeOff = teeRaw === "last" ? "last" : "first";
+      (baseSettings as { wolfTieHandling: string }).wolfTieHandling =
+        tieRaw === "wash" ? "wash" : "carry";
+      const rosterIds = [...playerIds, ...guestPlayers.map((g) => g.id)];
+      (baseSettings as { wolfLetterOrder: string[] }).wolfLetterOrder = shuffleUserIds(rosterIds);
+    }
 
     const now = new Date();
     const [session] = await db

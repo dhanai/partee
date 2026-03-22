@@ -12,11 +12,12 @@ import { useAuth } from "@clerk/clerk-expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { apiGet, toAbsoluteUrl } from "../../../lib/api";
-import { createGameSession } from "../../../lib/games-api";
-import { getGameDefinition, type GameTypeId } from "../../../lib/games-registry";
-import type { RoundDetails } from "../../../types/round";
-import { colors } from "../../../lib/theme";
+import { apiGet, toAbsoluteUrl } from "../../lib/api";
+import { createGameSession } from "../../lib/games-api";
+import { getGameDefinition, type GameTypeId } from "../../lib/games-registry";
+import type { WolfTeeOff } from "../../lib/wolf-rotation";
+import type { RoundDetails } from "../../types/round";
+import { colors } from "../../lib/theme";
 
 type NetworkFriend = { id: string; name: string; avatar: string | null };
 
@@ -38,16 +39,28 @@ export default function CreateGameScreen() {
   const [error, setError] = useState<string | null>(null);
   /** One string per write-in row; server assigns stable ids. */
   const [guestInputs, setGuestInputs] = useState<string[]>([]);
+  const [wolfHolesCount, setWolfHolesCount] = useState(18);
+  const [wolfTeeOff, setWolfTeeOff] = useState<WolfTeeOff>("first");
+  const [wolfTieHandling, setWolfTieHandling] = useState<"carry" | "wash">("carry");
 
-  const toggle = useCallback((id: string) => {
-    if (roundLockedIds) return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, [roundLockedIds]);
+  const rosterCap = def?.maxPlayers ?? 8;
+
+  const toggle = useCallback(
+    (id: string) => {
+      if (roundLockedIds) return;
+      const cap = def?.maxPlayers ?? 8;
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else {
+          if (next.size >= cap - 1) return prev;
+          next.add(id);
+        }
+        return next;
+      });
+    },
+    [roundLockedIds, def?.maxPlayers],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -90,7 +103,7 @@ export default function CreateGameScreen() {
 
   const registeredCount =
     roundLockedIds != null ? roundLockedIds.length : 1 + selected.size;
-  const maxGuestSlots = Math.max(0, 8 - registeredCount);
+  const maxGuestSlots = Math.max(0, rosterCap - registeredCount);
   const guestFilled = guestInputs.filter((s) => s.trim().length > 0).length;
 
   useEffect(() => {
@@ -101,8 +114,15 @@ export default function CreateGameScreen() {
 
   const minPlayers = def?.minPlayers ?? 2;
   const totalPlayers = registeredCount + guestFilled;
+  const wolfRoundOverCap =
+    gameType === "wolf" && roundLockedIds != null && roundLockedIds.length > rosterCap;
   const hasEnoughPlayers = Boolean(def) && totalPlayers >= minPlayers;
-  const canStart = Boolean(def) && !loading && !submitting && hasEnoughPlayers;
+  const canStart =
+    Boolean(def) &&
+    !loading &&
+    !submitting &&
+    hasEnoughPlayers &&
+    !wolfRoundOverCap;
 
   const addGuestRow = useCallback(() => {
     setGuestInputs((prev) => (prev.length < maxGuestSlots ? [...prev, ""] : prev));
@@ -131,6 +151,12 @@ export default function CreateGameScreen() {
       );
       return;
     }
+    if (totalPlayers > rosterCap) {
+      setError(
+        `${def.title} allows at most ${rosterCap} golfers (Parfade + guests). You have ${totalPlayers}.`,
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       const token = await getToken();
@@ -139,12 +165,19 @@ export default function CreateGameScreen() {
         playerUserIds,
         ...(guestNames.length > 0 ? { guestNames } : {}),
       };
+      if (gameType === "wolf") {
+        body.holesCount = wolfHolesCount;
+        body.settings = {
+          wolfTeeOff,
+          wolfTieHandling,
+        };
+      }
       if (roundInviteToken) {
         body.roundInviteToken = String(roundInviteToken);
       }
       const created = await createGameSession(token, body);
       router.replace({
-        pathname: "/(tabs)/games/session/[sessionId]",
+        pathname: "/games/session/[sessionId]",
         params: { sessionId: created.session.id },
       });
     } catch (e) {
@@ -176,6 +209,70 @@ export default function CreateGameScreen() {
       <Text style={styles.head}>{def.title}</Text>
       <Text style={styles.sub}>{def.subtitle}</Text>
 
+      {gameType === "wolf" ? (
+        <View style={styles.wolfSetup}>
+          <Text style={styles.label}>Holes to play</Text>
+          <View style={styles.chipRow}>
+            {[9, 12, 18, 27].map((n) => (
+              <Pressable
+                key={n}
+                style={[styles.optChip, wolfHolesCount === n && styles.optChipOn]}
+                onPress={() => setWolfHolesCount(n)}
+              >
+                <Text style={[styles.optChipText, wolfHolesCount === n && styles.optChipTextOn]}>
+                  {n}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.label}>Wolf tees</Text>
+          <Text style={styles.mutedSmall}>
+            “First” = wolf hits first on their hole; “last” = wolf is last in the group order.
+          </Text>
+          <View style={styles.chipRow}>
+            {(
+              [
+                ["first", "Wolf first"],
+                ["last", "Wolf last"],
+              ] as const
+            ).map(([v, label]) => (
+              <Pressable
+                key={v}
+                style={[styles.optChip, wolfTeeOff === v && styles.optChipOn]}
+                onPress={() => setWolfTeeOff(v)}
+              >
+                <Text style={[styles.optChipText, wolfTeeOff === v && styles.optChipTextOn]}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.label}>If the hole ties</Text>
+          <View style={styles.chipRow}>
+            {(
+              [
+                ["carry", "Carry (next hole 2×, 4×, …)"],
+                ["wash", "Wash (no carry)"],
+              ] as const
+            ).map(([v, label]) => (
+              <Pressable
+                key={v}
+                style={[styles.optChip, wolfTieHandling === v && styles.optChipOn]}
+                onPress={() => setWolfTieHandling(v)}
+              >
+                <Text style={[styles.optChipText, wolfTieHandling === v && styles.optChipTextOn]}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.mutedSmall}>
+            Exactly 4 golfers — you plus up to 3 friends or guests. Tee letters A–D are assigned at
+            random when you start.
+          </Text>
+        </View>
+      ) : null}
+
       {loading ? (
         <ActivityIndicator color={colors.fairway} style={styles.loader} />
       ) : roundLockedIds ? (
@@ -196,15 +293,29 @@ export default function CreateGameScreen() {
             );
           })}
           <Text style={styles.hint}>
-            Everyone listed is included. {def.title} needs at least {minPlayers} golfers
+            Everyone listed is included.
+            {gameType === "wolf"
+              ? ` Wolf needs exactly ${minPlayers} golfers (this list has ${roundLockedIds.length}).`
+              : ` ${def.title} needs at least ${minPlayers} golfers.`}
             {totalPlayers < minPlayers
-              ? ` (${totalPlayers} right now — add people to the round or pick another format).`
-              : "."}
+              ? ` Add people to the round or pick another format.`
+              : ""}
           </Text>
+          {wolfRoundOverCap ? (
+            <Text style={styles.error}>
+              Wolf is limited to {rosterCap} players. Trim the group in the round or choose another
+              game.
+            </Text>
+          ) : null}
         </>
       ) : (
         <>
           <Text style={styles.label}>Who’s playing? (your network)</Text>
+          {gameType === "wolf" ? (
+            <Text style={styles.mutedSmall}>
+              Pick up to 3 other Parfade golfers (you’re the fourth).
+            </Text>
+          ) : null}
           {friends.length === 0 ? (
             <Text style={styles.muted}>
               Follow golfers in Parfade to invite them to side games here.
@@ -212,11 +323,17 @@ export default function CreateGameScreen() {
           ) : (
             friends.map((f) => {
               const on = selected.has(f.id);
+              const parfadeFull = !on && selected.size >= rosterCap - 1;
               return (
                 <Pressable
                   key={f.id}
-                  style={[styles.friendRow, on && styles.friendRowOn]}
+                  style={[
+                    styles.friendRow,
+                    on && styles.friendRowOn,
+                    parfadeFull && styles.friendRowDisabled,
+                  ]}
                   onPress={() => toggle(f.id)}
+                  disabled={parfadeFull}
                 >
                   {f.avatar ? (
                     <Image source={{ uri: toAbsoluteUrl(f.avatar) }} style={styles.avatar} />
@@ -274,7 +391,9 @@ export default function CreateGameScreen() {
             </Pressable>
           ) : null}
           {maxGuestSlots === 0 ? (
-            <Text style={styles.mutedSmall}>Roster full (8 Parfade players) — no guest slots.</Text>
+            <Text style={styles.mutedSmall}>
+              Roster full ({rosterCap} players with Parfade accounts) — no guest slots.
+            </Text>
           ) : null}
         </View>
       ) : null}
@@ -308,6 +427,27 @@ export default function CreateGameScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 40 },
+  wolfSetup: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: 8,
+  },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  optChip: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  optChipOn: { borderColor: colors.fairway, backgroundColor: colors.fairwaySoft },
+  optChipText: { fontSize: 14, fontWeight: "600", color: colors.text },
+  optChipTextOn: { color: colors.fairway },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   title: { fontSize: 20, fontWeight: "700", color: colors.text, marginBottom: 8 },
   head: { fontSize: 22, fontWeight: "800", color: colors.text, marginBottom: 6 },
@@ -328,6 +468,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   friendRowOn: { borderColor: colors.fairway, backgroundColor: colors.fairwaySoft },
+  friendRowDisabled: { opacity: 0.45 },
   avatar: { width: 40, height: 40, borderRadius: 999 },
   avatarFallback: {
     backgroundColor: colors.fairwaySoft,

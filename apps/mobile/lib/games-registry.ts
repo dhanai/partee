@@ -8,6 +8,8 @@ export type GameDefinition = {
   implemented: boolean;
   /** Total golfers including you (enforced on create + API). */
   minPlayers: number;
+  /** Upper bound including you; default 8 when omitted. */
+  maxPlayers?: number;
 };
 
 export const GAME_DEFINITIONS: GameDefinition[] = [
@@ -24,6 +26,7 @@ export const GAME_DEFINITIONS: GameDefinition[] = [
     subtitle: "Rotating wolf picks a partner or goes lone each hole.",
     implemented: true,
     minPlayers: 4,
+    maxPlayers: 4,
   },
   {
     id: "best_ball",

@@ -145,6 +145,20 @@ export default function RootLayout() {
                 headerBackTitle: "Back",
               }}
             />
+            <Stack.Screen
+              name="games/create"
+              options={{
+                title: "New game",
+                headerBackTitle: "Games",
+              }}
+            />
+            <Stack.Screen
+              name="games/session/[sessionId]"
+              options={{
+                title: "Game",
+                headerBackTitle: "Games",
+              }}
+            />
                 </Stack>
               </View>
             </KeyboardProvider>

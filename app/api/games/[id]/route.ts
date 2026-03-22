@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { gameSessions } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { serializeGameSessionForApi, toIso } from "@/lib/games/serialize";
+import { deleteGameSessionIfAllowed } from "@/lib/games/delete-session";
 import { loadSessionWithPlayers, userIsGameParticipant } from "@/lib/games/session-queries";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -27,7 +28,12 @@ export async function GET(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    const createdBy = data.session.createdBy;
+    const viewerUserId = user.id;
     return NextResponse.json({
+      viewerIsCreator: createdBy === viewerUserId,
+      /** DB user id for the authenticated viewer (for client host checks without relying on /me cache). */
+      viewerUserId,
       session: serializeGameSessionForApi(data.session),
       players: data.players.map((p) => ({
         userId: p.userId,
@@ -97,6 +103,24 @@ export async function PATCH(req: Request, context: RouteContext) {
         { status: 400 },
       );
     }
+    if (e instanceof Error && e.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.error(e);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request, context: RouteContext) {
+  try {
+    const user = await requireDbUser(req);
+    const { id } = await context.params;
+    const result = await deleteGameSessionIfAllowed(id, user.id);
+    if ("ok" in result) {
+      return NextResponse.json({ ok: true as const });
+    }
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

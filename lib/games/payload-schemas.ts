@@ -3,6 +3,7 @@
  * To add a game type, extend this module and follow docs/GAMES-MODULE.md.
  */
 import { z } from "zod";
+import { deriveWolfHoleOutcome } from "@/lib/games/wolf-outcome";
 
 export type GameTypeKey = "skins" | "wolf" | "best_ball" | "nassau";
 
@@ -33,13 +34,16 @@ export const skinsHolePayloadSchema = z
 
 export type SkinsHolePayload = z.infer<typeof skinsHolePayloadSchema>;
 
-/** Wolf: per-hole roles and outcome. */
+/** Wolf: per-hole roles; `winnerUserIds` drives stats (who had low / tied for low). */
 export const wolfHolePayloadSchema = z
   .object({
     wolfUserId: z.string().uuid(),
     wentAlone: z.boolean(),
     partnerUserId: z.string().uuid().nullable().optional(),
-    outcome: z.enum(["wolf_won", "pack_won", "tie"]),
+    /** Who won or tied for best score; empty = halved / no winner. Omitted = legacy (use outcome only). */
+    winnerUserIds: z.array(z.string().uuid()).optional(),
+    /** Legacy / redundant when winnerUserIds is sent; server normalizes from winners when present. */
+    outcome: z.enum(["wolf_won", "pack_won", "tie"]).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.wentAlone) {
@@ -65,6 +69,13 @@ export const wolfHolePayloadSchema = z
         code: z.ZodIssueCode.custom,
         message: "partner cannot be the wolf",
         path: ["partnerUserId"],
+      });
+    }
+    if (data.winnerUserIds === undefined && data.outcome === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide winnerUserIds (preferred) or legacy outcome",
+        path: ["winnerUserIds"],
       });
     }
   });
@@ -96,7 +107,35 @@ export function parseHolePayload(
     if (data.partnerUserId) {
       assertSubset(set, [data.partnerUserId], "partnerUserId");
     }
-    return data as unknown as Record<string, unknown>;
+    if (data.winnerUserIds !== undefined) {
+      const unique = [...new Set(data.winnerUserIds)];
+      assertSubset(set, unique, "winnerUserIds");
+      const derived = deriveWolfHoleOutcome(
+        unique,
+        data.wolfUserId,
+        data.wentAlone,
+        data.partnerUserId ?? null,
+      );
+      if (data.outcome !== undefined && data.outcome !== derived) {
+        throw new Error("outcome does not match which side won based on winnerUserIds");
+      }
+      return {
+        wolfUserId: data.wolfUserId,
+        wentAlone: data.wentAlone,
+        partnerUserId: data.wentAlone ? null : data.partnerUserId ?? null,
+        winnerUserIds: unique,
+        outcome: derived,
+      } as unknown as Record<string, unknown>;
+    }
+    if (data.outcome === undefined) {
+      throw new Error("Wolf hole requires outcome when winnerUserIds is omitted");
+    }
+    return {
+      wolfUserId: data.wolfUserId,
+      wentAlone: data.wentAlone,
+      partnerUserId: data.wentAlone ? null : data.partnerUserId ?? null,
+      outcome: data.outcome,
+    } as unknown as Record<string, unknown>;
   }
   throw new Error(`Hole payloads for game type "${gameType}" are not implemented yet`);
 }
