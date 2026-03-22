@@ -23,7 +23,15 @@ export function wolfStakeMultiplierForHole(
   return m;
 }
 
-/** Points earned on one settled hole (not on ties). */
+/**
+ * Points earned on one settled hole (not on ties). `stake` is the carry multiplier (1, 2, 4, …).
+ *
+ * **Lone wolf (4 players):** totals stay balanced — wolf wins → +3×stake to wolf; pack wins → +1×stake
+ * to each of the three pack members (3×1 = 3 vs 3). Same pattern at 6 vs 2+2+2, 9 vs 3+3+3, etc.
+ *
+ * **Wolf + partner:** wolf side wins → wolf +1×stake, partner +1×stake; pack wins → +1×stake to each
+ * of the two other players (2 vs 2).
+ */
 function pointsForSettledHole(
   p: WolfPayload,
   stake: number,

@@ -1,4 +1,4 @@
-/** Keep in sync with `lib/games/wolf-outcome.ts`. */
+/** Keep in sync with `lib/games/wolf-outcome.ts`. `tie` = no wolf points; carry/wash affects next hole’s stake. */
 
 export type WolfHoleOutcome = "wolf_won" | "pack_won" | "tie";
 

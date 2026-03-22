@@ -2,11 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "reac
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
@@ -17,6 +17,7 @@ import {
   useNavigation,
   useRouter,
 } from "expo-router";
+import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
 import { RoundOverflowMenuSheet } from "../../../components/round-overflow-menu-sheet";
 import { SkinsHoleEditor, type SkinsPayload } from "../../../components/games/skins-hole-editor";
 import { WolfHoleEditor, type WolfPayload } from "../../../components/games/wolf-hole-editor";
@@ -46,7 +47,24 @@ function normalizeRouteParam(p: string | string[] | undefined): string | undefin
   return Array.isArray(p) ? p[0] : p;
 }
 
+const HOLE_EDITOR_SHEET_HEIGHT_RATIO = 0.94;
+/** Title row + spacing inside sheet (below `AnimatedBottomSheetFrame` top padding). */
+const HOLE_EDITOR_SCROLL_INSET = 64;
+
+const SCROLL_PAD = 16;
+const HOLE_GRID_GAP = 10;
+const HOLE_COLS = 3;
+
+function chunkBy<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export default function GameSessionScreen() {
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const holeEditorSheetMax = windowHeight * HOLE_EDITOR_SHEET_HEIGHT_RATIO;
+  const holeEditorScrollMax = Math.max(holeEditorSheetMax - HOLE_EDITOR_SCROLL_INSET, 280);
   const router = useRouter();
   /** Root stack (same bar as title “Game” / back to Games). Leaf `useNavigation()` targets an inner navigator for this route depth. */
   const rootNavigation = useNavigation("/");
@@ -163,12 +181,22 @@ export default function GameSessionScreen() {
     }
   }
 
+  function exitSessionScreen() {
+    setTimeout(() => {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/games");
+      }
+    }, 0);
+  }
+
   async function markComplete() {
     if (!sessionId) return;
     try {
       const token = await getToken();
       await updateGameSessionStatus(token, sessionId, "completed");
-      setTimeout(() => router.replace("/games"), 0);
+      exitSessionScreen();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update");
     }
@@ -187,10 +215,7 @@ export default function GameSessionScreen() {
         return;
       }
       await deleteGameSession(token, sessionId);
-      // Replace stack target so we always land on Games (back() can no-op or leave you on another tab).
-      setTimeout(() => {
-        router.replace("/games");
-      }, 0);
+      exitSessionScreen();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not delete";
       setError(msg);
@@ -250,106 +275,212 @@ export default function GameSessionScreen() {
   const wolfTeeOffUi: WolfTeeOff =
     session.settings?.wolfTeeOff === "last" ? "last" : "first";
 
+  const holeTileSize =
+    (windowWidth - SCROLL_PAD * 2 - HOLE_GRID_GAP * (HOLE_COLS - 1)) / HOLE_COLS;
+  const holesLogged = holeNumbers.filter((n) => holeMap.has(n)).length;
+  const progressPct = holesCount > 0 ? Math.min(100, (holesLogged / holesCount) * 100) : 0;
+  const holeRows = chunkBy(holeNumbers, HOLE_COLS);
+
   return (
     <>
-      <View style={styles.root}>
-        <Text style={styles.head}>{def?.title ?? session.gameType}</Text>
-        <Text style={styles.sub}>
-          Tap a hole to record results · {session.status === "active" ? "Active" : session.status}
-        </Text>
-
-        {error ? <Text style={styles.banner}>{error}</Text> : null}
-
-        {session.gameType === "wolf" && wolfTotals ? (
-          <View style={styles.scoreCard}>
-            <Text style={styles.scoreTitle}>Standings</Text>
-            {players
-              .map((p) => ({
-                p,
-                pts: wolfTotals[p.userId] ?? 0,
-                letter:
-                  wolfLetterOrder.length > 0
-                    ? letterLabelForUser(wolfLetterOrder, p.userId)
-                    : null,
-              }))
-              .sort((a, b) => b.pts - a.pts)
-              .map(({ p, pts, letter }) => (
-                <View key={p.userId} style={styles.scoreRow}>
-                  <Text style={styles.scoreName} numberOfLines={1}>
-                    {letter ? `${letter} · ` : ""}
-                    {p.isGuest ? `${p.name} (guest)` : p.name}
-                  </Text>
-                  <Text style={styles.scorePts}>{pts}</Text>
-                </View>
-              ))}
-          </View>
-        ) : null}
-
+      <View style={styles.screen}>
         <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.holeStrip}
+          style={styles.scrollRoot}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          {holeNumbers.map((n) => {
-            const h = holeMap.get(n);
-            return (
-              <Pressable
-                key={n}
-                style={[styles.holeChip, h && styles.holeChipDone]}
-                onPress={() => setEditorHole(n)}
+          {session.gameType === "wolf" ? (
+            <View style={styles.wolfHero}>
+              <View style={styles.wolfHeroTop}>
+                <View>
+                  <Text style={styles.wolfHeroEyebrow}>Side game</Text>
+                  <Text style={styles.wolfHeroTitle}>Wolf</Text>
+                </View>
+                <View
+                  style={[
+                    styles.statusPill,
+                    session.status === "active" ? styles.statusPillLive : styles.statusPillMuted,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.statusDot,
+                      session.status === "active" && styles.statusDotLive,
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.statusPillText,
+                      session.status === "active" && styles.statusPillTextLive,
+                    ]}
+                  >
+                    {session.status === "active" ? "In play" : session.status}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.wolfHeroSub} numberOfLines={2}>
+                {def?.subtitle ?? "Rotating wolf, pick a partner or go lone each hole."}
+              </Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+              </View>
+              <Text style={styles.progressCaption}>
+                {holesLogged} of {holesCount} holes logged
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.head}>{def?.title ?? session.gameType}</Text>
+              <Text style={styles.sub}>
+                Tap a hole to record results ·{" "}
+                {session.status === "active" ? "Active" : session.status}
+              </Text>
+            </>
+          )}
+
+          {error ? <Text style={styles.banner}>{error}</Text> : null}
+
+          {session.gameType === "wolf" && wolfTotals ? (
+            <View style={styles.scoreCard}>
+              <View style={styles.scoreCardHead}>
+                <Ionicons name="trophy-outline" size={20} color={colors.fairway} />
+                <Text style={styles.scoreTitle}>Standings</Text>
+              </View>
+              {players
+                .map((p) => ({
+                  p,
+                  pts: wolfTotals[p.userId] ?? 0,
+                  letter:
+                    wolfLetterOrder.length > 0
+                      ? letterLabelForUser(wolfLetterOrder, p.userId)
+                      : null,
+                }))
+                .sort((a, b) => b.pts - a.pts)
+                .map(({ p, pts, letter }, index) => {
+                  const rank = index + 1;
+                  return (
+                    <View
+                      key={p.userId}
+                      style={[
+                        styles.scoreRow,
+                        rank === 1 && styles.scoreRowFirst,
+                        rank === 2 && styles.scoreRowSecond,
+                        rank === 3 && styles.scoreRowThird,
+                      ]}
+                    >
+                      <View style={styles.scoreRowLeft}>
+                        <Text style={[styles.scoreRank, rank <= 3 && styles.scoreRankTop]}>
+                          {rank}
+                        </Text>
+                        <Text style={styles.scoreName} numberOfLines={1}>
+                          {letter ? (
+                            <Text style={styles.scoreLetter}>{letter} · </Text>
+                          ) : null}
+                          {p.isGuest ? `${p.name} (guest)` : p.name}
+                        </Text>
+                      </View>
+                      <Text style={styles.scorePts}>{pts > 0 ? `+${pts}` : pts}</Text>
+                    </View>
+                  );
+                })}
+            </View>
+          ) : null}
+
+          <View style={styles.holesSection}>
+            <View style={styles.holesSectionHead}>
+              <Text style={styles.holesSectionTitle}>Holes</Text>
+              <Text style={styles.holesSectionMeta}>
+                {holesLogged}/{holesCount} done
+              </Text>
+            </View>
+            {holeRows.map((row, ri) => (
+              <View
+                key={`row-${ri}`}
+                style={[styles.holeGridRow, { marginBottom: HOLE_GRID_GAP, gap: HOLE_GRID_GAP }]}
               >
-                <Text style={styles.holeChipNum}>{n}</Text>
-                {h ? <Text style={styles.holeChipDot}>·</Text> : null}
-              </Pressable>
-            );
-          })}
+                {row.map((n) => {
+                  const h = holeMap.get(n);
+                  const label = h ? `Hole ${n}, logged` : `Hole ${n}, not logged`;
+                  return (
+                    <Pressable
+                      key={n}
+                      accessibilityLabel={label}
+                      accessibilityRole="button"
+                      style={[
+                        styles.holeTile,
+                        {
+                          width: holeTileSize,
+                          minHeight: holeTileSize * 0.88,
+                        },
+                        h ? styles.holeTileDone : styles.holeTileOpen,
+                      ]}
+                      onPress={() => setEditorHole(n)}
+                    >
+                      <Text style={[styles.holeTileNum, h && styles.holeTileNumDone]}>{n}</Text>
+                      {h ? (
+                        <Ionicons name="checkmark-circle" size={22} color={colors.fairway} />
+                      ) : (
+                        <Text style={styles.holeTileHint}>Tap</Text>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+
+          {session.status === "active" ? (
+            <Pressable style={styles.completeBtn} onPress={() => void markComplete()}>
+              <Text style={styles.completeBtnText}>Mark complete</Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
 
-        {session.status === "active" ? (
-          <Pressable style={styles.completeBtn} onPress={() => void markComplete()}>
-            <Text style={styles.completeBtnText}>Mark complete</Text>
-          </Pressable>
-        ) : null}
-
-        <Modal visible={editorHole != null} animationType="slide" transparent>
-          <Pressable style={styles.modalBackdrop} onPress={() => !saving && setEditorHole(null)}>
-            <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>Hole {editorHole}</Text>
-              <ScrollView
-                style={styles.modalScroll}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
-              >
-                {saving ? (
-                  <ActivityIndicator color={colors.fairway} style={{ marginVertical: 20 }} />
-                ) : session.gameType === "skins" ? (
-                  <SkinsHoleEditor
-                    players={players}
-                    initial={(editorPayload?.payload as SkinsPayload) ?? null}
-                    onCancel={() => setEditorHole(null)}
-                    onSave={(p) => void saveHole(p)}
-                  />
-                ) : session.gameType === "wolf" && editorHole != null ? (
-                  <WolfHoleEditor
-                    holeNumber={editorHole}
-                    letterOrderUserIds={wolfLetterOrder}
-                    wolfTeeOff={wolfTeeOffUi}
-                    tieHandling={wolfTieHandling}
-                    priorHoles={priorWolfHoles}
-                    players={players}
-                    initial={(editorPayload?.payload as WolfPayload) ?? null}
-                    onCancel={() => setEditorHole(null)}
-                    onSave={(p) => void saveHole(p)}
-                  />
-                ) : (
-                  <Text style={styles.muted}>
-                    Editing for {session.gameType} is not available in the app yet.
-                  </Text>
-                )}
-              </ScrollView>
-            </Pressable>
-          </Pressable>
-        </Modal>
+        <AnimatedBottomSheetFrame
+          visible={editorHole != null}
+          onClose={() => {
+            if (!saving) setEditorHole(null);
+          }}
+          backdropAccessibilityLabel="Dismiss hole editor"
+          sheetStyle={[styles.holeEditorSheet, { maxHeight: holeEditorSheetMax }]}
+        >
+          {session.gameType !== "wolf" ? (
+            <Text style={styles.holeEditorTitle}>Hole {editorHole}</Text>
+          ) : null}
+          <ScrollView
+            style={[styles.holeEditorScroll, { maxHeight: holeEditorScrollMax }]}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
+            {saving ? (
+              <ActivityIndicator color={colors.fairway} style={{ marginVertical: 20 }} />
+            ) : session.gameType === "skins" ? (
+              <SkinsHoleEditor
+                players={players}
+                initial={(editorPayload?.payload as SkinsPayload) ?? null}
+                onCancel={() => setEditorHole(null)}
+                onSave={(p) => void saveHole(p)}
+              />
+            ) : session.gameType === "wolf" && editorHole != null ? (
+              <WolfHoleEditor
+                holeNumber={editorHole}
+                letterOrderUserIds={wolfLetterOrder}
+                wolfTeeOff={wolfTeeOffUi}
+                tieHandling={wolfTieHandling}
+                priorHoles={priorWolfHoles}
+                players={players}
+                initial={(editorPayload?.payload as WolfPayload) ?? null}
+                onCancel={() => setEditorHole(null)}
+                onSave={(p) => void saveHole(p)}
+              />
+            ) : (
+              <Text style={styles.muted}>
+                Editing for {session.gameType} is not available in the app yet.
+              </Text>
+            )}
+          </ScrollView>
+        </AnimatedBottomSheetFrame>
 
         <RoundOverflowMenuSheet
           visible={gameMenuOpen}
@@ -376,62 +507,194 @@ export default function GameSessionScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background, padding: 16 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  scrollRoot: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: SCROLL_PAD,
+    paddingTop: SCROLL_PAD,
+    paddingBottom: 36,
+  },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  wolfHero: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    backgroundColor: colors.fairway,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  wolfHeroTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  wolfHeroEyebrow: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.65)",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  wolfHeroTitle: { fontSize: 28, fontWeight: "800", color: "#fff", letterSpacing: -0.5 },
+  wolfHeroSub: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.88)",
+    lineHeight: 20,
+    marginTop: 10,
+  },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  statusPillLive: { backgroundColor: "rgba(255,255,255,0.28)" },
+  statusPillMuted: { backgroundColor: "rgba(255,255,255,0.15)" },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  statusDotLive: { backgroundColor: "#7dffb1" },
+  statusPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.85)",
+    textTransform: "capitalize",
+  },
+  statusPillTextLive: { color: "#fff" },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    marginTop: 14,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: "#b8f5d0",
+  },
+  progressCaption: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 8,
+  },
   head: { fontSize: 22, fontWeight: "800", color: colors.text },
-  sub: { fontSize: 14, color: colors.muted, marginTop: 4, marginBottom: 12 },
+  sub: { fontSize: 14, color: colors.muted, marginTop: 4, marginBottom: 16 },
   scoreCard: {
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: 12,
-    marginBottom: 12,
-    gap: 8,
+    padding: 14,
+    marginBottom: 16,
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  scoreTitle: { fontSize: 12, fontWeight: "700", color: colors.muted, textTransform: "uppercase" },
-  scoreRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  scoreCardHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+  scoreTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: 0.3,
+  },
+  scoreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+  },
+  scoreRowFirst: {
+    backgroundColor: "#f7f2e4",
+    borderWidth: 1,
+    borderColor: "#e8d9b8",
+  },
+  scoreRowSecond: {
+    backgroundColor: "#f0f1f3",
+    borderWidth: 1,
+    borderColor: "#e0e2e6",
+  },
+  scoreRowThird: {
+    backgroundColor: "#faf0e8",
+    borderWidth: 1,
+    borderColor: "#edd9cc",
+  },
+  scoreRowLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, minWidth: 0 },
+  scoreRank: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: colors.muted,
+    width: 22,
+    textAlign: "center",
+  },
+  scoreRankTop: { color: colors.fairway },
+  scoreLetter: { fontWeight: "800", color: colors.muted },
   scoreName: { flex: 1, fontSize: 15, fontWeight: "600", color: colors.text },
-  scorePts: { fontSize: 16, fontWeight: "800", color: colors.fairway },
+  scorePts: { fontSize: 17, fontWeight: "800", color: colors.fairway, minWidth: 40, textAlign: "right" },
+  holesSection: { marginBottom: 8 },
+  holesSectionHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  holesSectionTitle: { fontSize: 17, fontWeight: "800", color: colors.text },
+  holesSectionMeta: { fontSize: 13, fontWeight: "600", color: colors.muted },
+  holeGridRow: { flexDirection: "row", flexWrap: "nowrap" },
+  holeTile: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    gap: 4,
+  },
+  holeTileOpen: {
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  holeTileDone: {
+    borderColor: colors.fairway,
+    backgroundColor: colors.fairwaySoft,
+  },
+  holeTileNum: { fontSize: 20, fontWeight: "800", color: colors.text },
+  holeTileNumDone: { color: colors.fairway },
+  holeTileHint: { fontSize: 11, fontWeight: "700", color: colors.muted, textTransform: "uppercase" },
   banner: { color: colors.danger, marginBottom: 8 },
   error: { color: colors.danger },
   muted: { fontSize: 14, color: colors.muted },
-  holeStrip: { gap: 8, paddingVertical: 12, paddingRight: 16 },
-  holeChip: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  holeChipDone: { borderColor: colors.fairway, backgroundColor: colors.fairwaySoft },
-  holeChipNum: { fontSize: 16, fontWeight: "800", color: colors.text },
-  holeChipDot: { fontSize: 10, color: colors.fairway, marginTop: -4 },
   completeBtn: {
-    marginTop: 16,
-    paddingVertical: 12,
+    marginTop: 20,
+    paddingVertical: 14,
     alignItems: "center",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.fairway,
   },
-  completeBtnText: { fontSize: 16, fontWeight: "700", color: colors.text },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "flex-end",
-  },
-  modalCard: {
+  completeBtnText: { fontSize: 16, fontWeight: "800", color: "#fff" },
+  holeEditorSheet: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
     backgroundColor: colors.background,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    paddingBottom: 36,
-    maxHeight: "88%",
   },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 12 },
-  modalScroll: { maxHeight: 420 },
+  holeEditorTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 12 },
+  holeEditorScroll: { flexGrow: 0 },
 });

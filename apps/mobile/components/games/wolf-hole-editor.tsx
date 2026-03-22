@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import type { GameHoleRow, GamePlayerRow } from "../../lib/games-api";
 import { colors } from "../../lib/theme";
 import {
@@ -17,7 +18,6 @@ export type { WolfPayload };
 
 type Props = {
   holeNumber: number;
-  /** From session.settings.wolfLetterOrder; empty = legacy sessions (pick wolf manually). */
   letterOrderUserIds: string[];
   wolfTeeOff: WolfTeeOff;
   tieHandling: WolfTieHandling;
@@ -63,36 +63,46 @@ export function WolfHoleEditor({
     return teeOrderForHole(letterOrderUserIds, holeNumber);
   }, [rotationMode, letterOrderUserIds, holeNumber, players]);
 
+  /** Roster rows in tee / letter order (A→D on this hole), not DB / host-pick order. */
+  const playersInTeeOrder = useMemo(() => {
+    return teeOrder
+      .map((id) => players.find((p) => p.userId === id))
+      .filter((p): p is GamePlayerRow => p != null);
+  }, [teeOrder, players]);
+
   const stake = wolfStakeMultiplierForHole(priorHoles, holeNumber, tieHandling);
 
   const [wolfId, setWolfId] = useState<string | null>(
     initial?.wolfUserId ?? expectedWolf ?? players[0]?.userId ?? null,
   );
   const [wentAlone, setWentAlone] = useState(initial?.wentAlone ?? false);
-  const [partnerId, setPartnerId] = useState<string | null>(
-    initial?.partnerUserId ?? null,
-  );
-  const [outcome, setOutcome] = useState<WolfPayload["outcome"]>(
-    initial?.outcome ?? "tie",
-  );
+  const [partnerId, setPartnerId] = useState<string | null>(initial?.partnerUserId ?? null);
+  const [outcome, setOutcome] = useState<WolfPayload["outcome"]>(initial?.outcome ?? "tie");
   const [winnerPick, setWinnerPick] = useState<Set<string>>(() => {
     if (initial != null && Array.isArray(initial.winnerUserIds)) {
       return new Set(initial.winnerUserIds);
     }
     return new Set<string>();
   });
-  const [step, setStep] = useState<"partner" | "result">(
-    initial?.wolfUserId ? "result" : "partner",
-  );
+
+  const [step, setStep] = useState<"partner" | "result">(() => {
+    if (!initial) return "partner";
+    if (useLegacyOutcomeOnly) return "result";
+    if (Object.prototype.hasOwnProperty.call(initial, "winnerUserIds")) return "result";
+    return "partner";
+  });
 
   const scheduledWolf = rotationMode ? expectedWolf : wolfId;
-  const packPlayers = scheduledWolf
-    ? players.filter((p) => p.userId !== scheduledWolf)
-    : players;
+  const packPlayers = useMemo(() => {
+    if (!scheduledWolf) return [];
+    return teeOrder
+      .filter((id) => id !== scheduledWolf)
+      .map((id) => players.find((p) => p.userId === id))
+      .filter((p): p is GamePlayerRow => p != null);
+  }, [scheduledWolf, teeOrder, players]);
 
   const partnerStepValid = Boolean(
-    scheduledWolf &&
-      (wentAlone || (partnerId != null && partnerId !== scheduledWolf)),
+    scheduledWolf && (wentAlone || (partnerId != null && partnerId !== scheduledWolf)),
   );
 
   const widForDerive = rotationMode ? expectedWolf : wolfId;
@@ -105,6 +115,16 @@ export function WolfHoleEditor({
       wentAlone ? null : partnerId,
     );
   }, [useLegacyOutcomeOnly, winnerPick, widForDerive, wentAlone, partnerId]);
+
+  function pickPartner(id: string) {
+    setWentAlone(false);
+    setPartnerId(id);
+  }
+
+  function pickLone() {
+    setWentAlone(true);
+    setPartnerId(null);
+  }
 
   function toggleWinnerPick(id: string) {
     setWinnerPick((prev) => {
@@ -138,128 +158,156 @@ export function WolfHoleEditor({
     });
   }
 
-  const saveEnabled = step === "result" && partnerStepValid;
+  const winnersPicked = useLegacyOutcomeOnly || winnerPick.size >= 1;
+  const saveEnabled = step === "result" && partnerStepValid && winnersPicked;
 
   function teamOutcomeCaption(o: WolfPayload["outcome"]) {
-    if (o === "wolf_won") return "Wolf’s team gets the points";
-    if (o === "pack_won") return "Pack gets the points";
-    return "No team points this hole (halved or split sides)";
+    if (o === "wolf_won") return "Wolf’s team wins the points";
+    if (o === "pack_won") return "The pack wins the points";
+    // outcome === "tie": no one wins wolf points (e.g. wolf and pack tied for low gross)
+    return tieHandling === "carry"
+      ? "No wolf points. Carry: next hole’s stake multiplier increases."
+      : "No wolf points. Wash: next hole stays 1× — this tie doesn’t add carry.";
   }
+
+  const tieForLow = winnerPick.size >= 2;
+  const soleWinner = winnerPick.size === 1;
+
+  const stepEyebrow = step === "partner" ? "Partner" : "Low gross";
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.hero}>
-        <Text style={styles.heroKicker}>Hole {holeNumber}</Text>
-        <Text style={styles.heroStake}>
-          This hole is worth{" "}
-          <Text style={styles.heroStakeNum}>{stake}×</Text> base points
-          {tieHandling === "carry" && stake > 1 ? " (carried from tie(s))" : ""}
-        </Text>
-      </View>
-
-      {rotationMode ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Tee order</Text>
-          <Text style={styles.cardBody}>
-            {teeOrder
-              .map(
-                (id) =>
-                  `${letterLabelForUser(letterOrderUserIds, id)} · ${nameById(players, id)}`,
-              )
-              .join(" → ")}
-          </Text>
-          <Text style={styles.wolfCallout}>
-            Wolf: {nameById(players, expectedWolf!)} (
-            {letterLabelForUser(letterOrderUserIds, expectedWolf!)}) — tees{" "}
-            {wolfTeeOff === "first" ? "first" : "last"} this hole
-          </Text>
+      <View style={styles.editorHero}>
+        <View style={styles.editorHeroTop}>
+          <View style={styles.editorHeroTitles}>
+            <Text style={styles.editorHeroEyebrow}>Wolf · {stepEyebrow}</Text>
+            <Text style={styles.editorHeroTitle}>Hole {holeNumber}</Text>
+          </View>
+          <View style={styles.editorHeroPills}>
+            <View style={styles.heroPill}>
+              <Text style={styles.heroPillText}>{stake}× stake</Text>
+            </View>
+            <View style={[styles.heroPill, styles.heroPillMuted]}>
+              <Text style={styles.heroPillTextMuted}>
+                {tieHandling === "carry" ? "Ties: stack next" : "Ties: no stack"}
+              </Text>
+            </View>
+          </View>
         </View>
-      ) : (
-        <>
-          <Text style={styles.label}>Wolf (legacy game)</Text>
-          {players.map((p) => (
-            <Pressable
-              key={p.userId}
-              style={[styles.playerRow, wolfId === p.userId && styles.playerRowOn]}
-              onPress={() => {
-                setWolfId(p.userId);
-                if (partnerId === p.userId) setPartnerId(null);
-              }}
-            >
-              <Text style={styles.playerName}>{displayName(p)}</Text>
-            </Pressable>
-          ))}
-        </>
-      )}
+      </View>
 
       {step === "partner" ? (
         <>
-          <Text style={styles.stepHint}>Step 1 of 2 — Wolf’s choice</Text>
-          <View style={styles.switchRow}>
-            <Text style={styles.label}>Lone wolf</Text>
-            <Switch
-              value={wentAlone}
-              onValueChange={setWentAlone}
-              trackColor={{ true: colors.fairwaySoft, false: colors.border }}
-              thumbColor={wentAlone ? colors.fairway : "#f4f3f4"}
-            />
+          <View style={styles.stepBlock}>
+            {!rotationMode ? (
+              <>
+                <Text style={styles.sectionEyebrow}>Manual</Text>
+                <Text style={styles.sectionLabel}>Who’s the wolf?</Text>
+                {playersInTeeOrder.map((p) => (
+                  <Pressable
+                    key={p.userId}
+                    style={[styles.choiceCard, wolfId === p.userId && styles.choiceCardOn]}
+                    onPress={() => {
+                      setWolfId(p.userId);
+                      if (partnerId === p.userId) setPartnerId(null);
+                    }}
+                  >
+                    <Text style={styles.choiceCardText}>{displayName(p)}</Text>
+                  </Pressable>
+                ))}
+              </>
+            ) : (
+              <View style={styles.wolfContextCard}>
+                <View style={styles.wolfContextRow}>
+                  <View style={styles.wolfContextIcon}>
+                    <Ionicons name="sparkles" size={16} color={colors.fairway} />
+                  </View>
+                  <View style={styles.wolfContextBody}>
+                    <Text style={styles.wolfContextLabel}>This hole’s wolf</Text>
+                    <Text style={styles.wolfContextName}>
+                      {nameById(players, expectedWolf!)}
+                      <Text style={styles.wolfLetter}>
+                        {" "}
+                        ({letterLabelForUser(letterOrderUserIds, expectedWolf!)})
+                      </Text>
+                    </Text>
+                    <Text style={styles.teeNote}>
+                      Tees {wolfTeeOff === "first" ? "first" : "last"} · A→D below
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
 
-          {!wentAlone ? (
-            <>
-              <Text style={styles.label}>Partner</Text>
-              {packPlayers.map((p) => (
-                <Pressable
-                  key={p.userId}
-                  style={[styles.playerRow, partnerId === p.userId && styles.playerRowOn]}
-                  onPress={() => setPartnerId(p.userId)}
-                >
-                  <Text style={styles.playerName}>{displayName(p)}</Text>
-                </Pressable>
-              ))}
-            </>
-          ) : null}
+          <Text style={styles.partnerPrompt}>Choose a partner or go lone</Text>
+
+          {packPlayers.map((p) => (
+            <Pressable
+              key={p.userId}
+              style={[
+                styles.choiceCard,
+                !wentAlone && partnerId === p.userId && styles.choiceCardOn,
+              ]}
+              onPress={() => pickPartner(p.userId)}
+            >
+              <Text style={styles.choiceCardText}>
+                {rotationMode ? (
+                  <Text style={styles.teeLetterPrefix}>
+                    {letterLabelForUser(letterOrderUserIds, p.userId)} ·{" "}
+                  </Text>
+                ) : null}
+                {displayName(p)}
+              </Text>
+            </Pressable>
+          ))}
 
           <Pressable
-            style={[styles.nextBtn, !partnerStepValid && styles.nextBtnDisabled]}
-            disabled={!partnerStepValid}
-            onPress={() => setStep("result")}
+            style={[styles.loneCard, wentAlone && styles.loneCardOn]}
+            onPress={pickLone}
           >
-            <Text style={styles.nextBtnText}>Next: who won?</Text>
+            <Text style={[styles.loneCardTitle, wentAlone && styles.loneCardTitleOn]}>
+              Go lone wolf
+            </Text>
           </Pressable>
+
+          <View style={styles.stepFooter}>
+            <Pressable style={styles.footerGhost} onPress={onCancel}>
+              <Text style={styles.footerGhostText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.footerPrimary, !partnerStepValid && styles.footerPrimaryOff]}
+              disabled={!partnerStepValid}
+              onPress={() => setStep("result")}
+            >
+              <Text style={styles.footerPrimaryText}>Best score →</Text>
+            </Pressable>
+          </View>
         </>
       ) : (
         <>
-          <Text style={styles.stepHint}>Step 2 of 2 — Hole result</Text>
-          {!wentAlone && partnerId && scheduledWolf ? (
-            <Text style={styles.summary}>
-              Wolf + partner: {nameById(players, scheduledWolf)} &{" "}
-              {nameById(players, partnerId)}
-            </Text>
-          ) : scheduledWolf ? (
-            <Text style={styles.summary}>Lone wolf: {nameById(players, scheduledWolf)}</Text>
-          ) : null}
           {useLegacyOutcomeOnly ? (
             <>
-              <Text style={styles.label}>Outcome (legacy hole)</Text>
-              <Text style={styles.mutedSmall}>
-                Older saves don’t record who scored low. Pick how points apply, or re-save with
-                winners after editing.
+              <Text style={styles.sectionEyebrow}>Legacy</Text>
+              <Text style={styles.sectionLabel}>How points count (legacy hole)</Text>
+              <Text style={styles.sectionSub}>
+                This hole was saved before winner picks. Choose how points apply, or go back and
+                re-save with winners.
               </Text>
-              <View style={styles.row}>
+              <View style={styles.legacyRow}>
                 {(
                   [
-                    ["wolf_won", "Wolf side wins"],
-                    ["pack_won", "Pack wins"],
+                    ["wolf_won", "Wolf side"],
+                    ["pack_won", "Pack"],
                     ["tie", "Tie"],
                   ] as const
                 ).map(([key, label]) => (
                   <Pressable
                     key={key}
-                    style={[styles.chip, outcome === key && styles.chipOn]}
+                    style={[styles.legacyChip, outcome === key && styles.legacyChipOn]}
                     onPress={() => setOutcome(key)}
                   >
-                    <Text style={[styles.chipText, outcome === key && styles.chipTextOn]}>
+                    <Text style={[styles.legacyChipText, outcome === key && styles.legacyChipTextOn]}>
                       {label}
                     </Text>
                   </Pressable>
@@ -268,181 +316,313 @@ export function WolfHoleEditor({
             </>
           ) : (
             <>
-              <Text style={styles.label}>Who had the best score?</Text>
-              <Text style={styles.mutedSmall}>
-                Tap everyone who tied for low — one golfer = sole winner; several = shared low.
-                Halved means no one wins the hole for points.
-              </Text>
-              <Pressable
-                style={[styles.halvedBtn, winnerPick.size === 0 && styles.halvedBtnOn]}
-                onPress={() => setWinnerPick(new Set())}
-              >
-                <Text
-                  style={[
-                    styles.halvedBtnText,
-                    winnerPick.size === 0 && styles.halvedBtnTextOn,
-                  ]}
-                >
-                  Halved — no winner
-                </Text>
-              </Pressable>
-              {players.map((p) => {
+              <Text style={styles.sectionEyebrow}>Tee order</Text>
+              <Text style={styles.sectionLabel}>Best gross</Text>
+              {playersInTeeOrder.map((p) => {
                 const on = winnerPick.has(p.userId);
                 return (
                   <Pressable
                     key={p.userId}
-                    style={[styles.playerRow, styles.winnerRow, on && styles.playerRowOn]}
+                    style={[styles.choiceCard, on && styles.choiceCardOn]}
                     onPress={() => toggleWinnerPick(p.userId)}
                   >
-                    <Text style={styles.playerName}>{displayName(p)}</Text>
-                    {on ? (
-                      <Text style={styles.pickedMark}>Low / tied</Text>
-                    ) : null}
+                    <View style={styles.winnerRowInner}>
+                      <Text style={styles.choiceCardText}>
+                        {rotationMode ? (
+                          <Text style={styles.teeLetterPrefix}>
+                            {letterLabelForUser(letterOrderUserIds, p.userId)} ·{" "}
+                          </Text>
+                        ) : null}
+                        {displayName(p)}
+                      </Text>
+                      {on ? (
+                        <Text style={styles.winnerBadge}>
+                          {tieForLow ? "Tied low" : "Low"}
+                        </Text>
+                      ) : null}
+                    </View>
                   </Pressable>
                 );
               })}
+
+              {winnerPick.size > 0 ? (
+                <Text style={styles.tieHint}>
+                  {tieForLow
+                    ? derivedTeamOutcome === "tie"
+                      ? "Low gross is split across wolf and pack — no wolf points (see Points for carry or wash)."
+                      : "Same best gross — those players tied for low."
+                    : soleWinner
+                      ? "Only player with the best score on the hole."
+                      : ""}
+                </Text>
+              ) : (
+                <Text style={styles.pickHint}>Select at least one player to save.</Text>
+              )}
+
               {derivedTeamOutcome ? (
-                <View style={styles.deriveBanner}>
-                  <Text style={styles.deriveLabel}>Points</Text>
-                  <Text style={styles.deriveBody}>{teamOutcomeCaption(derivedTeamOutcome)}</Text>
+                <View style={styles.pointsCard}>
+                  <View style={styles.pointsCardHead}>
+                    <Ionicons name="trophy-outline" size={18} color={colors.fairway} />
+                    <Text style={styles.pointsLabel}>Points</Text>
+                  </View>
+                  <Text style={styles.pointsBody}>{teamOutcomeCaption(derivedTeamOutcome)}</Text>
                 </View>
               ) : null}
             </>
           )}
 
-          <Pressable style={styles.backLink} onPress={() => setStep("partner")}>
-            <Text style={styles.backLinkText}>← Edit wolf choice</Text>
-          </Pressable>
+          <View style={styles.stepFooter}>
+            <Pressable style={styles.footerGhost} onPress={() => setStep("partner")}>
+              <Text style={styles.footerGhostText}>← Partner</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.footerPrimary, !saveEnabled && styles.footerPrimaryOff]}
+              onPress={save}
+              disabled={!saveEnabled}
+            >
+              <Text style={styles.footerPrimaryText}>Save hole</Text>
+            </Pressable>
+          </View>
         </>
       )}
-
-      <View style={styles.actions}>
-        <Pressable style={styles.secondary} onPress={onCancel}>
-          <Text style={styles.secondaryText}>Cancel</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.primary, !saveEnabled && styles.primaryDisabled]}
-          onPress={save}
-          disabled={!saveEnabled}
-        >
-          <Text style={styles.primaryText}>Save</Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { gap: 12 },
-  hero: { marginBottom: 4 },
-  heroKicker: { fontSize: 13, fontWeight: "700", color: colors.muted, letterSpacing: 0.5 },
-  heroStake: { fontSize: 15, color: colors.text, marginTop: 4 },
-  heroStakeNum: { fontWeight: "800", color: colors.fairway },
-  card: {
+  editorHero: {
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: colors.fairway,
+    marginBottom: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  editorHeroTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  editorHeroTitles: { flex: 1, minWidth: 0 },
+  editorHeroEyebrow: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.65)",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  editorHeroTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: -0.4,
+  },
+  partnerPrompt: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.text,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  editorHeroPills: { alignItems: "flex-end", gap: 6 },
+  heroPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.22)",
+  },
+  heroPillMuted: { backgroundColor: "rgba(255,255,255,0.14)" },
+  heroPillText: { fontSize: 13, fontWeight: "800", color: "#fff" },
+  heroPillTextMuted: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.9)",
+    textTransform: "capitalize",
+  },
+  stepBlock: { gap: 6, marginBottom: 0 },
+  wolfContextCard: {
+    borderRadius: 14,
     backgroundColor: colors.surface,
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 12,
-    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  cardTitle: { fontSize: 12, fontWeight: "700", color: colors.muted, textTransform: "uppercase" },
-  cardBody: { fontSize: 14, color: colors.text, lineHeight: 20 },
-  wolfCallout: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: colors.fairway,
-    marginTop: 4,
-  },
-  stepHint: { fontSize: 13, fontWeight: "600", color: colors.muted },
-  summary: { fontSize: 15, color: colors.text, fontWeight: "600" },
-  label: { fontSize: 14, fontWeight: "700", color: colors.text },
-  mutedSmall: { fontSize: 12, color: colors.muted, lineHeight: 17 },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 4,
-  },
-  chip: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+  wolfContextRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  wolfContextIcon: {
+    width: 36,
+    height: 36,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  chipOn: { borderColor: colors.fairway, backgroundColor: colors.fairwaySoft },
-  chipText: { fontSize: 13, fontWeight: "600", color: colors.text },
-  chipTextOn: { color: colors.fairway },
-  playerRow: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  winnerRow: {
-    flexDirection: "row",
+    backgroundColor: colors.fairwaySoft,
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
+    justifyContent: "center",
   },
-  playerRowOn: { borderColor: colors.fairway, backgroundColor: colors.fairwaySoft },
-  playerName: { fontSize: 16, fontWeight: "600", color: colors.text },
-  nextBtn: {
-    marginTop: 8,
-    backgroundColor: colors.fairway,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  nextBtnDisabled: { opacity: 0.45 },
-  nextBtnText: { fontSize: 16, fontWeight: "700", color: "#fff" },
-  backLink: { alignSelf: "flex-start", paddingVertical: 6 },
-  backLinkText: { fontSize: 14, fontWeight: "600", color: colors.fairway },
-  actions: { flexDirection: "row", gap: 10, marginTop: 16 },
-  secondary: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  secondaryText: { fontSize: 16, fontWeight: "600", color: colors.text },
-  primary: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderRadius: 12,
-    backgroundColor: colors.fairway,
-  },
-  primaryDisabled: { opacity: 0.5 },
-  primaryText: { fontSize: 16, fontWeight: "700", color: "#fff" },
-  halvedBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+  wolfContextBody: { flex: 1, minWidth: 0 },
+  wolfContextLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: colors.muted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
     marginBottom: 4,
   },
-  halvedBtnOn: { borderColor: colors.fairway, backgroundColor: colors.fairwaySoft },
-  halvedBtnText: { fontSize: 15, fontWeight: "600", color: colors.text, textAlign: "center" },
-  halvedBtnTextOn: { color: colors.fairway },
-  pickedMark: { fontSize: 12, fontWeight: "700", color: colors.fairway },
-  deriveBanner: {
-    marginTop: 8,
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: "#f1efea",
+  wolfContextName: { fontSize: 17, fontWeight: "800", color: colors.text },
+  wolfLetter: { fontWeight: "700", color: colors.muted, fontSize: 16 },
+  teeNote: { fontSize: 12, color: colors.muted, marginTop: 4, lineHeight: 16 },
+  teeLetterPrefix: { fontWeight: "800", color: colors.muted },
+  sectionEyebrow: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: colors.muted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginTop: 4,
+  },
+  sectionLabel: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: colors.text,
+    marginTop: 2,
+  },
+  sectionSub: { fontSize: 14, color: colors.muted, lineHeight: 20, marginTop: 6 },
+  choiceCard: {
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  choiceCardOn: {
+    borderColor: colors.fairway,
+    backgroundColor: colors.fairwaySoft,
+    shadowOpacity: 0.08,
+  },
+  choiceCardText: { fontSize: 17, fontWeight: "700", color: colors.text },
+  loneCard: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "#c5d4c9",
+    backgroundColor: "rgba(237, 244, 239, 0.35)",
+    marginTop: 4,
+  },
+  loneCardOn: {
+    borderStyle: "solid",
+    borderColor: colors.fairway,
+    backgroundColor: colors.fairwaySoft,
+  },
+  loneCardTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
+  loneCardTitleOn: { color: colors.text },
+  winnerRowInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  winnerBadge: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.fairway,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: colors.fairwaySoft,
+  },
+  pickHint: { fontSize: 14, color: colors.muted, fontStyle: "italic", marginTop: 4 },
+  tieHint: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.fairway,
+    textAlign: "center",
+    marginTop: 6,
+    lineHeight: 20,
+    paddingHorizontal: 8,
+  },
+  pointsCard: {
+    marginTop: 10,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  deriveLabel: { fontSize: 11, fontWeight: "700", color: colors.muted, textTransform: "uppercase" },
-  deriveBody: { fontSize: 14, fontWeight: "600", color: colors.text, marginTop: 4 },
+  pointsCardHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  pointsLabel: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: 0.2,
+  },
+  pointsBody: { fontSize: 15, fontWeight: "700", color: colors.text, marginTop: 8, lineHeight: 22 },
+  legacyRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 8 },
+  legacyChip: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  legacyChipOn: { borderColor: colors.fairway, backgroundColor: colors.fairwaySoft },
+  legacyChipText: { fontSize: 15, fontWeight: "700", color: colors.text },
+  legacyChipTextOn: { color: colors.text },
+  stepFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  footerGhost: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  footerGhostText: { fontSize: 16, fontWeight: "700", color: colors.muted },
+  footerPrimary: {
+    flex: 1.2,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    backgroundColor: colors.fairway,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  footerPrimaryOff: { opacity: 0.45 },
+  footerPrimaryText: { fontSize: 16, fontWeight: "800", color: "#fff" },
 });

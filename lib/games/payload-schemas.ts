@@ -40,7 +40,7 @@ export const wolfHolePayloadSchema = z
     wolfUserId: z.string().uuid(),
     wentAlone: z.boolean(),
     partnerUserId: z.string().uuid().nullable().optional(),
-    /** Who won or tied for best score; empty = halved / no winner. Omitted = legacy (use outcome only). */
+    /** Who had the best (lowest) stroke count on the hole — all players who tied that number. Omitted = legacy (use outcome only). */
     winnerUserIds: z.array(z.string().uuid()).optional(),
     /** Legacy / redundant when winnerUserIds is sent; server normalizes from winners when present. */
     outcome: z.enum(["wolf_won", "pack_won", "tie"]).optional(),
@@ -75,6 +75,13 @@ export const wolfHolePayloadSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Provide winnerUserIds (preferred) or legacy outcome",
+        path: ["winnerUserIds"],
+      });
+    }
+    if (data.winnerUserIds !== undefined && data.winnerUserIds.length < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Pick at least one player with the best (lowest) score on the hole",
         path: ["winnerUserIds"],
       });
     }
