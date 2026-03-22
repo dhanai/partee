@@ -315,6 +315,7 @@ export async function GET(req: Request) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    console.error(error);
     return NextResponse.json({ error: "Unable to load user rounds." }, { status: 500 });
   }
 }

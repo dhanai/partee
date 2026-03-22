@@ -26,14 +26,18 @@ export async function GET(req: Request) {
       .limit(LIMIT);
 
     return NextResponse.json({
-      items: rows.map((r) => ({
-        id: r.id,
-        type: r.type,
-        title: r.title,
-        body: r.body,
-        inviteToken: r.data.inviteToken,
-        createdAt: toIsoTimestamp(r.createdAt),
-      })),
+      items: rows.map((r) => {
+        const rawToken = (r.data as { inviteToken?: unknown }).inviteToken;
+        const inviteToken = typeof rawToken === "string" ? rawToken : "";
+        return {
+          id: r.id,
+          type: r.type,
+          title: r.title,
+          body: r.body,
+          inviteToken,
+          createdAt: toIsoTimestamp(r.createdAt),
+        };
+      }),
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
