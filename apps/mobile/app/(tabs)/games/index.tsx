@@ -65,6 +65,11 @@ export default function GamesIndexScreen() {
         />
       }
     >
+      <Text style={styles.heading}>Games</Text>
+      <Text style={styles.subheading}>
+        Side games with your group — start Skins, Wolf, or pick up where you left off.
+      </Text>
+
       {roundInviteToken ? (
         <View style={styles.roundBanner}>
           <Text style={styles.roundBannerText}>
@@ -147,6 +152,8 @@ export default function GamesIndexScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 32 },
+  heading: { fontSize: 28, fontWeight: "700", color: colors.text },
+  subheading: { color: colors.muted, marginBottom: 14 },
   sectionLabel: {
     fontSize: 13,
     fontWeight: "700",
