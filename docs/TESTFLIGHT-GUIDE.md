@@ -62,6 +62,21 @@ npx eas-cli secret:create --scope project --name EXPO_PUBLIC_API_BASE_URL --valu
 npx eas-cli secret:create --scope project --name EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY --value "pk_live_..." --type string
 ```
 
+### 3.1b AdMob (avoid sample ads in TestFlight)
+
+`lib/parfade-admob.ts` falls back to Google **TestIds** (sample creatives) when **unit** env vars are absent from the **bundle**. Changing only `apps/mobile/.env` does **not** affect EAS — mirror these on the **production** environment (Expo dashboard → Environment variables, or `eas env:create`).
+
+| Variable | Platform | Notes |
+|----------|----------|--------|
+| `EXPO_PUBLIC_ADMOB_NATIVE_DISCOVER_IOS` | iOS | Native Discover row (`ca-app-pub-…/…`, not the `~` **app** id). |
+| `EXPO_PUBLIC_ADMOB_INTERSTITIAL_GAME_END_IOS` | iOS | Game-end interstitial. |
+| `EXPO_PUBLIC_ADMOB_NATIVE_DISCOVER_ANDROID` | Android | For Play production builds. |
+| `EXPO_PUBLIC_ADMOB_INTERSTITIAL_GAME_END_ANDROID` | Android | |
+| `EXPO_PUBLIC_ADMOB_APP_ID_IOS` | iOS | Optional override for plugin `iosAppId`. |
+| `EXPO_PUBLIC_ADMOB_APP_ID_ANDROID` | Android | Optional; replace sample `394025…` app id without editing the repo. |
+
+**Production** iOS EAS builds **fail at `app.config`** if the two iOS **unit** variables are missing, so you don’t ship another IPA that only shows test ads by mistake.
+
 | 3.2 | Confirm secrets: `npx eas-cli secret:list` (or Expo dashboard → project → Secrets). |
 | 3.3 | **Rebuild** after changing secrets — old IPAs keep old env until you build again. |
 
