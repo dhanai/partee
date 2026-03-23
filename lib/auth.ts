@@ -33,6 +33,11 @@ export async function getDbUserByClerkId(clerkId: string) {
   return user ?? null;
 }
 
+async function getDbUserByEmail(email: string) {
+  const [user] = await db.select().from(users).where(eq(users.email, email));
+  return user ?? null;
+}
+
 export async function ensureDbUser(req?: Request) {
   const clerkId = await getCurrentClerkId(req);
   if (!clerkId) {
@@ -70,6 +75,28 @@ export async function ensureDbUser(req?: Request) {
       avatar = u.imageUrl ?? null;
     } catch {
       return null;
+    }
+  }
+
+  // Same email, new Clerk user id (new OAuth account, dev/prod Clerk switch, etc.) —
+  // insert would hit users_email_unique; re-link the existing row to this clerkId.
+  if (primaryEmail) {
+    const byEmail = await getDbUserByEmail(primaryEmail);
+    if (byEmail && byEmail.clerkId !== clerkId) {
+      const [migrated] = await db
+        .update(users)
+        .set({
+          clerkId,
+          name: derivedName,
+          avatar,
+          email: primaryEmail,
+        })
+        .where(eq(users.id, byEmail.id))
+        .returning();
+      return migrated ?? byEmail;
+    }
+    if (byEmail) {
+      return byEmail;
     }
   }
 

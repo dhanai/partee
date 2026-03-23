@@ -47,6 +47,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[POST /api/users/me/push-token]", error);
-    return NextResponse.json({ error: "Unable to save push token." }, { status: 500 });
+    const dev = process.env.NODE_ENV === "development";
+    const details =
+      dev && error instanceof Error ? error.message : dev ? String(error) : undefined;
+    return NextResponse.json(
+      { error: "Unable to save push token.", ...(details ? { details } : {}) },
+      { status: 500 },
+    );
   }
 }
