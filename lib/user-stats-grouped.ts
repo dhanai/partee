@@ -18,6 +18,13 @@ function fmt(n: number): string {
   return n.toLocaleString();
 }
 
+/** Skins won per completed game (4th highlight column + breakdown row). */
+function fmtSkinsPerGame(skinsGamesCompleted: number, skinsHolesWon: number): string {
+  if (skinsGamesCompleted <= 0) return "—";
+  const v = skinsHolesWon / skinsGamesCompleted;
+  return Number.isInteger(v) ? fmt(v) : v.toFixed(1);
+}
+
 /** Shapes flat DB stats into NYT-style category cards + drill-down rows. */
 export function buildGroupedProfileStats(s: UserStatsPayload): ProfileStatsGrouped {
   return {
@@ -48,11 +55,16 @@ export function buildGroupedProfileStats(s: UserStatsPayload): ProfileStatsGroup
         { label: "Games", value: fmt(s.skinsGamesCompleted) },
         { label: "Skins won", value: fmt(s.skinsHolesWon) },
         { label: "Pushes", value: fmt(s.skinsTieHoles) },
+        { label: "Avg / game", value: fmtSkinsPerGame(s.skinsGamesCompleted, s.skinsHolesWon) },
       ],
       rows: [
         { label: "Games finished", value: fmt(s.skinsGamesCompleted) },
         { label: "Skins won (holes)", value: fmt(s.skinsHolesWon) },
         { label: "Push holes (ties)", value: fmt(s.skinsTieHoles) },
+        {
+          label: "Avg skins won per game",
+          value: fmtSkinsPerGame(s.skinsGamesCompleted, s.skinsHolesWon),
+        },
       ],
     },
     social: {
