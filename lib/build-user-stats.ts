@@ -20,11 +20,13 @@ export type UserStatsPayload = {
   skinsGamesCompleted: number;
   skinsHolesWon: number;
   skinsTieHoles: number;
+  /** Rounds you host (forming / confirmed / completed). */
   roundsHostedCompleted: number;
+  /** Distinct rounds you joined with a confirmed spot, not as host (same statuses). */
   roundsJoinedCompleted: number;
-  /** Completed rounds you hosted or joined (distinct). */
+  /** Distinct rounds hosted or joined (same statuses). */
   roundsPlayedCompleted: number;
-  /** Distinct courses linked to completed rounds you played (non-null course only). */
+  /** Distinct courses on those rounds (non-null course only). */
   distinctCoursesPlayed: number;
   gamesCreatedCompleted: number;
   holesLogged: number;
@@ -43,8 +45,12 @@ function isSkinsPayload(p: Record<string, unknown>): p is SkinsHolePayload {
   return (p?.result === "won" || p?.result === "tie") && Array.isArray(p?.winnerUserIds);
 }
 
+/** Profile “Parfade” counts include active rounds; we do not require `rounds.status = completed` (that flow is optional / legacy). */
+const ROUND_STATUSES_FOR_SOCIAL_STATS = ["forming", "confirmed", "completed"] as const;
+
 /**
- * Aggregates Parfade activity for the profile stats landing (completed games & rounds only).
+ * Aggregates Parfade activity for the profile stats landing (completed **game sessions**;
+ * rounds use forming/confirmed/completed for hosted/joined/course counts).
  */
 export async function buildUserStats(userId: string): Promise<UserStatsPayload> {
   const [
@@ -58,7 +64,7 @@ export async function buildUserStats(userId: string): Promise<UserStatsPayload> 
     db
       .select({ n: count() })
       .from(rounds)
-      .where(and(eq(rounds.hostId, userId), eq(rounds.status, "completed"))),
+      .where(and(eq(rounds.hostId, userId), inArray(rounds.status, ROUND_STATUSES_FOR_SOCIAL_STATS))),
     db
       .select({ n: countDistinct(spots.roundId) })
       .from(spots)
@@ -67,7 +73,7 @@ export async function buildUserStats(userId: string): Promise<UserStatsPayload> 
         and(
           eq(spots.userId, userId),
           eq(spots.status, "confirmed"),
-          eq(rounds.status, "completed"),
+          inArray(rounds.status, ROUND_STATUSES_FOR_SOCIAL_STATS),
           ne(rounds.hostId, userId),
         ),
       ),
@@ -85,7 +91,7 @@ export async function buildUserStats(userId: string): Promise<UserStatsPayload> 
       .where(
         and(
           eq(rounds.hostId, userId),
-          eq(rounds.status, "completed"),
+          inArray(rounds.status, ROUND_STATUSES_FOR_SOCIAL_STATS),
           isNotNull(rounds.courseId),
         ),
       ),
@@ -97,7 +103,7 @@ export async function buildUserStats(userId: string): Promise<UserStatsPayload> 
         and(
           eq(spots.userId, userId),
           eq(spots.status, "confirmed"),
-          eq(rounds.status, "completed"),
+          inArray(rounds.status, ROUND_STATUSES_FOR_SOCIAL_STATS),
           isNotNull(rounds.courseId),
         ),
       ),
@@ -240,7 +246,7 @@ export async function buildUserStats(userId: string): Promise<UserStatsPayload> 
   const hostedRoundIds = await db
     .select({ id: rounds.id })
     .from(rounds)
-    .where(and(eq(rounds.hostId, userId), eq(rounds.status, "completed")));
+    .where(and(eq(rounds.hostId, userId), inArray(rounds.status, ROUND_STATUSES_FOR_SOCIAL_STATS)));
   const joinedRoundIds = await db
     .select({ roundId: spots.roundId })
     .from(spots)
@@ -249,7 +255,8 @@ export async function buildUserStats(userId: string): Promise<UserStatsPayload> 
       and(
         eq(spots.userId, userId),
         eq(spots.status, "confirmed"),
-        eq(rounds.status, "completed"),
+        inArray(rounds.status, ROUND_STATUSES_FOR_SOCIAL_STATS),
+        ne(rounds.hostId, userId),
       ),
     );
   const distinctRoundIds = new Set<string>();

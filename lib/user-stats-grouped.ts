@@ -69,7 +69,7 @@ export function buildGroupedProfileStats(s: UserStatsPayload): ProfileStatsGroup
     },
     social: {
       headline: fmt(s.roundsPlayedCompleted),
-      headlineLabel: "Rounds played",
+      headlineLabel: "Rounds",
       subtitle: `${fmt(s.distinctCoursesPlayed)} courses · ${fmt(s.gamesCreatedCompleted)} games started`,
       highlights: [
         { label: "Hosted", value: fmt(s.roundsHostedCompleted) },
@@ -80,7 +80,7 @@ export function buildGroupedProfileStats(s: UserStatsPayload): ProfileStatsGroup
       rows: [
         { label: "Rounds hosted", value: fmt(s.roundsHostedCompleted) },
         { label: "Rounds joined", value: fmt(s.roundsJoinedCompleted) },
-        { label: "Distinct rounds played", value: fmt(s.roundsPlayedCompleted) },
+        { label: "Distinct rounds (hosted or joined)", value: fmt(s.roundsPlayedCompleted) },
         { label: "Courses played", value: fmt(s.distinctCoursesPlayed) },
         { label: "Games you started", value: fmt(s.gamesCreatedCompleted) },
         { label: "Holes you logged", value: fmt(s.holesLogged) },
