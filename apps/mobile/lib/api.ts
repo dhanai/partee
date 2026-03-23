@@ -1,7 +1,10 @@
 import Constants from "expo-constants";
+import { ApiSessionInvalidError, notifyApiSessionInvalid } from "./api-session-invalid";
 
 type ApiError = {
   error?: string;
+  /** Server may attach this in development (e.g. push-token route). */
+  details?: string;
 };
 
 type RequestOptions = {
@@ -52,6 +55,11 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   });
 
   const raw = await res.text();
+
+  if (res.status === 401 && options.token) {
+    notifyApiSessionInvalid();
+  }
+
   let json: (T & ApiError) | null = null;
   if (raw.length > 0) {
     try {
@@ -75,7 +83,15 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     }
   }
   if (!res.ok) {
-    throw new Error(json?.error ?? `Request failed (${res.status})`);
+    if (res.status === 401) {
+      throw new ApiSessionInvalidError(
+        typeof json?.error === "string" ? json.error : "Unauthorized",
+      );
+    }
+    const base = json?.error ?? `Request failed (${res.status})`;
+    const details =
+      json?.details && typeof json.details === "string" ? json.details : null;
+    throw new Error(details ? `${base}\n${details}` : base);
   }
   if (!json) {
     throw new Error(`Empty response from server (${res.status}).`);
@@ -114,6 +130,8 @@ export async function apiPut<T>(
 export async function apiDelete<T>(path: string, token?: string | null): Promise<T> {
   return requestJson<T>(path, { method: "DELETE", token });
 }
+
+export { ApiSessionInvalidError } from "./api-session-invalid";
 
 export function toAbsoluteUrl(urlOrPath: string): string {
   if (/^https?:\/\//i.test(urlOrPath)) {

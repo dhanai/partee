@@ -20,13 +20,8 @@ const REVEAL_W = 86;
 const CIRCLE = 52;
 /** Rubber-band past full open (iOS-like resistance). */
 const RUBBER = 0.22;
-/** Past this (position or projected), row stays open; otherwise springs to 0. */
-const OPEN_COMMIT = REVEAL_W * 0.42;
-const POSITION_COMMIT = REVEAL_W * 0.58;
 /** px; scales gesture vx into release prediction. */
 const VELOCITY_WEIGHT = 95;
-/** Past this offset counts as “open”: that gesture may only close or re-open the same side. */
-const OPEN_GATE = REVEAL_W * 0.35;
 /** PanResponder vx above this (when closing) triggers overshoot + settle. */
 const CLOSE_FLING_VX = 0.36;
 /** px past 0 on a hard close, then ease back. */
@@ -52,6 +47,11 @@ type Props = {
   /** When false, renders children only (still respects `none` / web). */
   enabled: boolean;
   children: ReactNode;
+  /** When `variant` is `host`, overrides the left rail (default Edit / create-outline). */
+  hostLeftLabel?: string;
+  hostLeftIcon?: ComponentProps<typeof Ionicons>["name"];
+  /** Smaller reveal + circles for short rows (e.g. Games session list). */
+  compact?: boolean;
   onHostDelete?: () => void;
   onHostEdit?: () => void;
   onInviteClaim?: () => void;
@@ -99,17 +99,19 @@ function animateReleaseTarget(
   anim: Animated.Value,
   target: number,
   ctx: { start: number; v: number; vx: number },
+  revealW: number,
   onEnd?: () => void,
 ) {
   const { start, v, vx } = ctx;
+  const openGate = revealW * 0.35;
 
-  if (target === REVEAL_W) {
+  if (target === revealW) {
     if (vx > OPEN_FLING_VX) {
       const mag = Math.min(
         OPEN_OVERSHOOT_MAX,
         Math.max(OPEN_OVERSHOOT_MIN, vx * 15),
       );
-      const peak = REVEAL_W + mag;
+      const peak = revealW + mag;
       const outMs = Math.min(150, Math.round(88 + mag * 3));
       const backMs = Math.min(265, Math.round(168 + mag * 2.2));
       Animated.sequence([
@@ -120,7 +122,7 @@ function animateReleaseTarget(
           easing: Easing.out(Easing.cubic),
         }),
         Animated.timing(anim, {
-          toValue: REVEAL_W,
+          toValue: revealW,
           duration: backMs,
           useNativeDriver: true,
           easing: Easing.out(Easing.cubic),
@@ -130,17 +132,17 @@ function animateReleaseTarget(
       });
       return;
     }
-    easeSnapTo(anim, REVEAL_W, v, onEnd);
+    easeSnapTo(anim, revealW, v, onEnd);
     return;
   }
 
-  if (target === -REVEAL_W) {
+  if (target === -revealW) {
     if (vx < -OPEN_FLING_VX) {
       const mag = Math.min(
         OPEN_OVERSHOOT_MAX,
         Math.max(OPEN_OVERSHOOT_MIN, Math.abs(vx) * 15),
       );
-      const peak = -REVEAL_W - mag;
+      const peak = -revealW - mag;
       const outMs = Math.min(150, Math.round(88 + mag * 3));
       const backMs = Math.min(265, Math.round(168 + mag * 2.2));
       Animated.sequence([
@@ -151,7 +153,7 @@ function animateReleaseTarget(
           easing: Easing.out(Easing.cubic),
         }),
         Animated.timing(anim, {
-          toValue: -REVEAL_W,
+          toValue: -revealW,
           duration: backMs,
           useNativeDriver: true,
           easing: Easing.out(Easing.cubic),
@@ -161,7 +163,7 @@ function animateReleaseTarget(
       });
       return;
     }
-    easeSnapTo(anim, -REVEAL_W, v, onEnd);
+    easeSnapTo(anim, -revealW, v, onEnd);
     return;
   }
 
@@ -173,12 +175,12 @@ function animateReleaseTarget(
 
   if (
     vx < -CLOSE_FLING_VX &&
-    (start > OPEN_GATE || (start >= -OPEN_GATE && v > NEUTRAL_CLOSE_V))
+    (start > openGate || (start >= -openGate && v > NEUTRAL_CLOSE_V))
   ) {
     overshoot = -mag;
   } else if (
     vx > CLOSE_FLING_VX &&
-    (start < -OPEN_GATE || (start <= OPEN_GATE && v < -NEUTRAL_CLOSE_V))
+    (start < -openGate || (start <= openGate && v < -NEUTRAL_CLOSE_V))
   ) {
     overshoot = mag;
   }
@@ -217,6 +219,9 @@ type MailCircleActionProps = {
   onPress: () => void;
   /** Optical centering (e.g. pencil sits low-left in the glyph box). */
   iconStyle?: StyleProp<TextStyle>;
+  circleDiameter?: number;
+  iconSize?: number;
+  compactLabel?: boolean;
 };
 
 function MailCircleAction({
@@ -226,23 +231,33 @@ function MailCircleAction({
   iconColor,
   onPress,
   iconStyle,
+  circleDiameter = CIRCLE,
+  iconSize = 21,
+  compactLabel = false,
 }: MailCircleActionProps) {
   return (
     <Pressable
-      style={styles.mailActionCol}
+      style={[styles.mailActionCol, compactLabel && styles.mailActionColCompact]}
       onPress={onPress}
       accessibilityLabel={label}
       accessibilityRole="button"
     >
-      <View style={[styles.mailCircle, { backgroundColor: circleColor }]}>
-        <Ionicons
-          name={icon}
-          size={21}
-          color={iconColor}
-          style={iconStyle}
-        />
+      <View
+        style={[
+          styles.mailCircle,
+          {
+            width: circleDiameter,
+            height: circleDiameter,
+            borderRadius: circleDiameter / 2,
+            backgroundColor: circleColor,
+          },
+        ]}
+      >
+        <Ionicons name={icon} size={iconSize} color={iconColor} style={iconStyle} />
       </View>
-      <Text style={styles.mailActionLabel}>{label}</Text>
+      <Text style={[styles.mailActionLabel, compactLabel && styles.mailActionLabelCompact]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -251,6 +266,9 @@ export function SwipeableMineRoundRow({
   variant,
   enabled,
   children,
+  hostLeftLabel,
+  hostLeftIcon,
+  compact = false,
   onHostDelete,
   onHostEdit,
   onInviteClaim,
@@ -284,6 +302,13 @@ export function SwipeableMineRoundRow({
     }
   }, [variant, enabled, translateX]);
 
+  const revealW = compact ? 58 : REVEAL_W;
+  const circleSize = compact ? 32 : CIRCLE;
+  const peek = compact ? 8 : 14;
+  const openCommit = revealW * 0.42;
+  const positionCommit = revealW * 0.58;
+  const openGate = revealW * 0.35;
+
   /**
    * Run the action immediately, then close the row in parallel. Waiting for the close
    * animation before `router.push` / modal made taps feel dead on device and encouraged
@@ -298,15 +323,14 @@ export function SwipeableMineRoundRow({
     });
   };
 
-  const peek = 14;
   const leftOpacity = translateX.interpolate({
-    inputRange: [0, peek, REVEAL_W],
+    inputRange: [0, peek, revealW],
     outputRange: [0, 0.55, 1],
     extrapolate: "clamp",
   });
 
   const rightOpacity = translateX.interpolate({
-    inputRange: [-REVEAL_W, -peek, 0],
+    inputRange: [-revealW, -peek, 0],
     outputRange: [1, 0.55, 0],
     extrapolate: "clamp",
   });
@@ -355,12 +379,12 @@ export function SwipeableMineRoundRow({
             startXRef.current = v;
             const origin = gestureStartTranslateRef.current;
             let raw = v + lastDxRef.current;
-            if (origin > OPEN_GATE) {
+            if (origin > openGate) {
               raw = Math.max(0, raw);
-            } else if (origin < -OPEN_GATE) {
+            } else if (origin < -openGate) {
               raw = Math.min(0, raw);
             }
-            const next = rubberBand(raw, REVEAL_W);
+            const next = rubberBand(raw, revealW);
             translateX.setValue(next);
             lastTranslateXRef.current = next;
           });
@@ -370,12 +394,12 @@ export function SwipeableMineRoundRow({
           lastDxRef.current = g.dx;
           const origin = gestureStartTranslateRef.current;
           let raw = startXRef.current + g.dx;
-          if (origin > OPEN_GATE) {
+          if (origin > openGate) {
             raw = Math.max(0, raw);
-          } else if (origin < -OPEN_GATE) {
+          } else if (origin < -openGate) {
             raw = Math.min(0, raw);
           }
-          const next = rubberBand(raw, REVEAL_W);
+          const next = rubberBand(raw, revealW);
           translateX.setValue(next);
           lastTranslateXRef.current = next;
         },
@@ -383,35 +407,35 @@ export function SwipeableMineRoundRow({
           dragActiveRef.current = false;
           const gestureStart = gestureStartTranslateRef.current;
           let raw = startXRef.current + g.dx;
-          if (gestureStart > OPEN_GATE) {
+          if (gestureStart > openGate) {
             raw = Math.max(0, raw);
-          } else if (gestureStart < -OPEN_GATE) {
+          } else if (gestureStart < -openGate) {
             raw = Math.min(0, raw);
           }
 
-          const v = rubberBand(raw, REVEAL_W);
+          const v = rubberBand(raw, revealW);
           lastTranslateXRef.current = v;
           const vx = g.vx;
           const projected = v + vx * VELOCITY_WEIGHT;
 
           let target = 0;
-          if (gestureStart > OPEN_GATE) {
-            if (projected > OPEN_COMMIT || v > POSITION_COMMIT) {
-              target = REVEAL_W;
+          if (gestureStart > openGate) {
+            if (projected > openCommit || v > positionCommit) {
+              target = revealW;
             } else {
               target = 0;
             }
-          } else if (gestureStart < -OPEN_GATE) {
-            if (projected < -OPEN_COMMIT || v < -POSITION_COMMIT) {
-              target = -REVEAL_W;
+          } else if (gestureStart < -openGate) {
+            if (projected < -openCommit || v < -positionCommit) {
+              target = -revealW;
             } else {
               target = 0;
             }
           } else {
-            if (projected > OPEN_COMMIT || v > POSITION_COMMIT) {
-              target = REVEAL_W;
-            } else if (projected < -OPEN_COMMIT || v < -POSITION_COMMIT) {
-              target = -REVEAL_W;
+            if (projected > openCommit || v > positionCommit) {
+              target = revealW;
+            } else if (projected < -openCommit || v < -positionCommit) {
+              target = -revealW;
             } else {
               target = 0;
             }
@@ -419,10 +443,16 @@ export function SwipeableMineRoundRow({
 
           rowPanActiveRef.current = false;
           verticalScrollIntentRef.current = false;
-          animateReleaseTarget(translateX, target, { start: gestureStart, v, vx }, () => {
-            lastTranslateXRef.current = target;
-            onSwipeActiveChangeRef.current?.(false);
-          });
+          animateReleaseTarget(
+            translateX,
+            target,
+            { start: gestureStart, v, vx },
+            revealW,
+            () => {
+              lastTranslateXRef.current = target;
+              onSwipeActiveChangeRef.current?.(false);
+            },
+          );
         },
         onPanResponderTerminate: () => {
           dragActiveRef.current = false;
@@ -436,7 +466,7 @@ export function SwipeableMineRoundRow({
           });
         },
       }),
-    [translateX],
+    [translateX, revealW, peek, openCommit, positionCommit, openGate],
   );
 
   if (variant === "none" || Platform.OS === "web" || !enabled) {
@@ -448,39 +478,54 @@ export function SwipeableMineRoundRow({
   const onRightPress = variant === "host" ? onHostDelete : onInviteDecline;
 
   const leftCircleColor = colors.fairway;
-  const leftIcon = variant === "host" ? "create-outline" : "checkmark-outline";
-  const leftLabel = variant === "host" ? "Edit" : "Claim";
+  const leftIcon =
+    variant === "host" ? (hostLeftIcon ?? "create-outline") : "checkmark-outline";
+  const leftLabel = variant === "host" ? (hostLeftLabel ?? "Edit") : "Claim";
 
   const rightCircleColor = variant === "host" ? colors.danger : "#ddd8cf";
   const rightIcon = variant === "host" ? "trash-outline" : "close-outline";
   const rightIconColor = variant === "host" ? "#fff" : colors.text;
   const rightLabel = variant === "host" ? "Delete" : "Decline";
 
+  const iconSize = compact ? 17 : 21;
+
   return (
-    <View style={styles.swipeOuter}>
-      <View style={styles.underlay} pointerEvents="box-none">
-        <View style={styles.leftRail}>
+    <View style={[styles.swipeOuter, compact && styles.swipeOuterCompact]}>
+      <View
+        style={[styles.underlay, compact && styles.underlayCompact]}
+        pointerEvents="box-none"
+      >
+        <View style={[styles.leftRail, { minWidth: circleSize + 4 }]}>
           <Animated.View style={{ opacity: leftOpacity }}>
             <MailCircleAction
               icon={leftIcon}
               label={leftLabel}
               circleColor={leftCircleColor}
               iconColor="#fff"
+              circleDiameter={circleSize}
+              iconSize={iconSize}
+              compactLabel={compact}
               onPress={() => invokeThenCloseRow(onLeftPress)}
               iconStyle={
-                variant === "host" ? styles.editPencilIconNudge : undefined
+                variant === "host" &&
+                (hostLeftIcon == null || hostLeftIcon === "create-outline")
+                  ? styles.editPencilIconNudge
+                  : undefined
               }
             />
           </Animated.View>
         </View>
         <View style={styles.underlaySpacer} />
-        <View style={styles.rightRail}>
+        <View style={[styles.rightRail, { minWidth: circleSize + 4 }]}>
           <Animated.View style={{ opacity: rightOpacity }}>
             <MailCircleAction
               icon={rightIcon}
               label={rightLabel}
               circleColor={rightCircleColor}
               iconColor={rightIconColor}
+              circleDiameter={circleSize}
+              iconSize={iconSize}
+              compactLabel={compact}
               onPress={() => invokeThenCloseRow(onRightPress)}
             />
           </Animated.View>
@@ -502,6 +547,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
+  swipeOuterCompact: {
+    borderRadius: 12,
+  },
   underlay: {
     ...StyleSheet.absoluteFillObject,
     flexDirection: "row",
@@ -510,16 +558,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     paddingHorizontal: 10,
   },
+  underlayCompact: {
+    paddingHorizontal: 6,
+  },
   underlaySpacer: {
     flex: 1,
   },
   leftRail: {
-    minWidth: CIRCLE + 4,
     alignItems: "flex-start",
     justifyContent: "center",
   },
   rightRail: {
-    minWidth: CIRCLE + 4,
     alignItems: "flex-end",
     justifyContent: "center",
   },
@@ -531,10 +580,11 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingVertical: 2,
   },
+  mailActionColCompact: {
+    gap: 2,
+    paddingVertical: 0,
+  },
   mailCircle: {
-    width: CIRCLE,
-    height: CIRCLE,
-    borderRadius: CIRCLE / 2,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -547,5 +597,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.muted,
     letterSpacing: -0.1,
+  },
+  mailActionLabelCompact: {
+    fontSize: 9,
+    letterSpacing: -0.15,
   },
 });

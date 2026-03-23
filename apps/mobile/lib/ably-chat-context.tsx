@@ -5,6 +5,7 @@ import * as Ably from "ably";
 import { AblyProvider } from "ably/react";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiBaseUrl } from "./api";
+import { notifyApiSessionInvalid } from "./api-session-invalid";
 
 const MountedContext = createContext(false);
 
@@ -51,8 +52,27 @@ export function AblyChatProviders({ children }: { children: ReactNode }) {
               },
             });
             if (!res.ok) {
+              if (res.status === 401) {
+                notifyApiSessionInvalid();
+              }
               const text = await res.text();
-              callback(text || `Ably token ${res.status}`, null);
+              let errMsg = text || `Ably token ${res.status}`;
+              try {
+                const j = JSON.parse(text) as { error?: string; details?: string };
+                if (typeof j.error === "string") {
+                  errMsg =
+                    typeof j.details === "string" ? `${j.error}\n${j.details}` : j.error;
+                  if (res.status === 500 && !j.details) {
+                    errMsg += "\n→ Vercel: Logs → filter “[POST /api/ably/token]” for the real error.";
+                  }
+                }
+              } catch {
+                // keep raw text
+              }
+              if (typeof __DEV__ !== "undefined" && __DEV__) {
+                console.warn("[Parfade] /api/ably/token failed:", res.status, errMsg);
+              }
+              callback(errMsg, null);
               return;
             }
             const tokenRequest = (await res.json()) as import("ably").TokenRequest;

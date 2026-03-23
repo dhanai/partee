@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -15,6 +15,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { DiscoverHouseAdRow } from "../../components/discover-house-ad-row";
+import { DiscoverNativeAdRow } from "../../components/discover-native-ad-row";
 import { RoundListCard } from "../../components/round-list-card";
 import { apiGet, apiPost } from "../../lib/api";
 import {
@@ -28,6 +30,8 @@ import {
   applyOptimisticToDiscoverRound,
   subscribeRoundListsRefresh,
 } from "../../lib/round-lists-refresh";
+import { buildDiscoverFeedRows } from "../../lib/discover-feed-ad-rows";
+import { shouldShowDiscoverHouseAd } from "../../lib/discover-house-ad";
 import { colors } from "../../lib/theme";
 import { DiscoverRound } from "../../types/round";
 
@@ -334,14 +338,6 @@ export default function DiscoverScreen() {
     };
   }, [locationQuery, locationLabel]);
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.fairway} />
-      </View>
-    );
-  }
-
   const filteredRounds = rounds.filter((round) => {
     const when = new Date(round.effectiveDate);
     if (startDate && when < startDate) return false;
@@ -352,6 +348,19 @@ export default function DiscoverScreen() {
     }
     return true;
   });
+
+  const discoverFeedRows = useMemo(
+    () => buildDiscoverFeedRows(filteredRounds),
+    [filteredRounds],
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.fairway} />
+      </View>
+    );
+  }
 
   function formatDateShort(date: Date | null) {
     return date ? date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Any";
@@ -482,8 +491,8 @@ export default function DiscoverScreen() {
       <FlatList
         style={styles.container}
         contentContainerStyle={styles.content}
-        data={filteredRounds}
-        keyExtractor={(item) => item.id}
+        data={discoverFeedRows}
+        keyExtractor={(item) => (item.type === "round" ? item.round.id : item.slotId)}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
           <View style={styles.emptyCard}>
@@ -531,7 +540,7 @@ export default function DiscoverScreen() {
         initialNumToRender={8}
         maxToRenderPerBatch={10}
         windowSize={7}
-        removeClippedSubviews
+        removeClippedSubviews={false}
         refreshing={refreshing}
         onRefresh={() => {
           setRefreshing(true);
@@ -544,50 +553,62 @@ export default function DiscoverScreen() {
           if (loading || refreshing || loadingMore || !hasMoreDiscover) return;
           void loadRounds({ reset: false });
         }}
-        renderItem={({ item: round }) => (
-          <RoundListCard
-            roundId={round.id}
-            mode={round.mode === "scheduled" ? "scheduled" : "planning"}
-            courseName={round.courseName}
-            imageUrl={round.imageUrl}
-            joinPolicy={round.joinPolicy}
-            totalSpots={round.totalSpots}
-            confirmedPlayers={round.confirmedPlayers}
-            onCardPressIn={() =>
-              prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getTokenRef.current())
-            }
-            onPress={() =>
-              router.push({
-                pathname: "/round/[token]",
-                params: {
-                  token: round.inviteToken,
-                  roundHint: buildRoundListHint(round),
-                },
-              })
-            }
-            primaryMeta={
-              round.mode === "scheduled"
-                ? formatScheduledCardMeta(round.effectiveDate, round.teeTime)
-                : formatPlanningWindow(round.preferredTimeWindow)
-            }
-            planningLocation={round.planningLocation}
-            planningHeaderDate={formatPlanningHeaderDate(round.effectiveDate)}
-            preferredTimeWindow={round.preferredTimeWindow}
-            onPlayerPress={(player) =>
-              router.push({
-                pathname: "/profile/[userId]",
-                params: {
-                  userId: player.id,
-                  userName: player.name,
-                  userAvatar: player.avatar ?? "",
-                },
-              })
-            }
-            onPlayerPressIn={(player) =>
-              prefetchPublicProfile(player.id, () => getTokenRef.current())
-            }
-          />
-        )}
+        renderItem={({ item }) =>
+          item.type === "ad" ? (
+            shouldShowDiscoverHouseAd(item.slotId) ? (
+              <DiscoverHouseAdRow />
+            ) : (
+              <DiscoverNativeAdRow />
+            )
+          ) : (
+            <RoundListCard
+              roundId={item.round.id}
+              mode={item.round.mode === "scheduled" ? "scheduled" : "planning"}
+              courseName={item.round.courseName}
+              imageUrl={item.round.imageUrl}
+              joinPolicy={item.round.joinPolicy}
+              totalSpots={item.round.totalSpots}
+              confirmedPlayers={item.round.confirmedPlayers}
+              onCardPressIn={() =>
+                prefetchRoundOpen(
+                  item.round.inviteToken,
+                  item.round.imageUrl,
+                  () => getTokenRef.current(),
+                )
+              }
+              onPress={() =>
+                router.push({
+                  pathname: "/round/[token]",
+                  params: {
+                    token: item.round.inviteToken,
+                    roundHint: buildRoundListHint(item.round),
+                  },
+                })
+              }
+              primaryMeta={
+                item.round.mode === "scheduled"
+                  ? formatScheduledCardMeta(item.round.effectiveDate, item.round.teeTime)
+                  : formatPlanningWindow(item.round.preferredTimeWindow)
+              }
+              planningLocation={item.round.planningLocation}
+              planningHeaderDate={formatPlanningHeaderDate(item.round.effectiveDate)}
+              preferredTimeWindow={item.round.preferredTimeWindow}
+              onPlayerPress={(player) =>
+                router.push({
+                  pathname: "/profile/[userId]",
+                  params: {
+                    userId: player.id,
+                    userName: player.name,
+                    userAvatar: player.avatar ?? "",
+                  },
+                })
+              }
+              onPlayerPressIn={(player) =>
+                prefetchPublicProfile(player.id, () => getTokenRef.current())
+              }
+            />
+          )
+        }
       />
 
       <Modal visible={rangeModalOpen} transparent animationType="fade">

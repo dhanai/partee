@@ -31,3 +31,7 @@ export function setCachedMeProfile(data: MeProfile) {
     updatedAt: Date.now(),
   };
 }
+
+export function clearCachedMeProfile() {
+  meCacheEntry = null;
+}

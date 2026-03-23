@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,14 +13,26 @@ import {
 import { useAuth } from "@clerk/clerk-expo";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
+import { deleteGameSession, listMyGameSessions, type GameSessionSummary } from "../../lib/games-api";
 import { GAME_DEFINITIONS, getGameDefinition } from "../../lib/games-registry";
-import { listMyGameSessions, type GameSessionSummary } from "../../lib/games-api";
 import { colors } from "../../lib/theme";
 
 function statusLabel(s: GameSessionSummary["status"]) {
   if (s === "active") return "Active";
   if (s === "completed") return "Done";
   return "Abandoned";
+}
+
+function formatSessionListDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const opts: Intl.DateTimeFormatOptions =
+    d.getFullYear() === now.getFullYear()
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", year: "numeric" };
+  return d.toLocaleDateString("en-US", opts);
 }
 
 export default function GamesScreen() {
@@ -29,6 +43,44 @@ export default function GamesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [listScrollLockedForRowSwipe, setListScrollLockedForRowSwipe] = useState(false);
+
+  const onGameRowSwipeActiveChange = useCallback((active: boolean) => {
+    setListScrollLockedForRowSwipe(active);
+  }, []);
+
+  const performDeleteSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        const token = await getToken();
+        await deleteGameSession(token, sessionId);
+        setSessions((prev) => prev.filter((x) => x.id !== sessionId));
+      } catch (e) {
+        Alert.alert("Could not delete", e instanceof Error ? e.message : "Could not delete");
+      }
+    },
+    [getToken],
+  );
+
+  const confirmDeleteSession = useCallback(
+    (s: GameSessionSummary) => {
+      Alert.alert(
+        "Delete game?",
+        "This removes the game and all recorded holes for everyone in the group.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => {
+              setTimeout(() => void performDeleteSession(s.id), 0);
+            },
+          },
+        ],
+      );
+    },
+    [performDeleteSession],
+  );
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +106,9 @@ export default function GamesScreen() {
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
+      scrollEnabled={!listScrollLockedForRowSwipe}
+      directionalLockEnabled={Platform.OS === "ios"}
+      nestedScrollEnabled
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -123,40 +178,62 @@ export default function GamesScreen() {
       ) : (
         sessions.map((s) => {
           const def = getGameDefinition(s.gameType);
-          return (
-            <Pressable
-              key={s.id}
-              style={({ pressed }) => [styles.sessionRow, pressed && styles.sessionRowPressed]}
-              onPress={() => {
-                if (s.status === "completed") {
-                  const invite = s.roundInviteToken?.trim();
-                  if (invite) {
-                    router.push({
-                      pathname: "/round/[token]/results",
-                      params: { token: invite },
-                    });
-                  } else {
-                    router.push({
-                      pathname: "/games/session/[sessionId]",
-                      params: { sessionId: s.id, recap: "1" },
-                    });
-                  }
-                  return;
-                }
+          const swipeEnabled = Platform.OS !== "web";
+          const openSession = () => {
+            if (s.status === "completed") {
+              const invite = s.roundInviteToken?.trim();
+              if (invite) {
+                router.push({
+                  pathname: "/round/[token]/results",
+                  params: { token: invite },
+                });
+              } else {
                 router.push({
                   pathname: "/games/session/[sessionId]",
+                  params: { sessionId: s.id, recap: "1" },
+                });
+              }
+              return;
+            }
+            router.push({
+              pathname: "/games/session/[sessionId]",
+              params: { sessionId: s.id },
+            });
+          };
+          return (
+            <View key={s.id} style={styles.sessionSwipeWrap}>
+            <SwipeableMineRoundRow
+              variant="host"
+              enabled={swipeEnabled}
+              compact
+              hostLeftLabel="Settings"
+              hostLeftIcon="options-outline"
+              onSwipeActiveChange={onGameRowSwipeActiveChange}
+              onHostEdit={() => {
+                router.push({
+                  pathname: "/games/session/[sessionId]/settings",
                   params: { sessionId: s.id },
                 });
               }}
+              onHostDelete={() => confirmDeleteSession(s)}
             >
-              <View style={styles.sessionTextCol}>
-                <Text style={styles.sessionTitle}>{def?.title ?? s.gameType}</Text>
-                <Text style={styles.sessionMeta}>
-                  {s.holesCount} holes · {statusLabel(s.status)}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-            </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.sessionRow, pressed && styles.sessionRowPressed]}
+                unstable_pressDelay={swipeEnabled ? 200 : undefined}
+                android_ripple={swipeEnabled ? null : undefined}
+                onPress={openSession}
+              >
+                <View style={styles.sessionTextCol}>
+                  <Text style={styles.sessionTitle}>{def?.title ?? s.gameType}</Text>
+                  <Text style={styles.sessionMeta}>
+                    {formatSessionListDate(s.startedAt || s.createdAt)} · {s.holesCount} holes ·{" "}
+                    {statusLabel(s.status)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+              </Pressable>
+            </SwipeableMineRoundRow>
+            </View>
           );
         })
       )}
@@ -205,6 +282,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   roundBannerText: { fontSize: 14, color: colors.text, lineHeight: 20 },
+  sessionSwipeWrap: {
+    marginBottom: 8,
+  },
   sessionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -214,7 +294,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    marginBottom: 8,
   },
   sessionRowPressed: { opacity: 0.9 },
   sessionTextCol: { flex: 1, gap: 2 },

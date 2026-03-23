@@ -30,6 +30,16 @@ const NotificationBadgeContext = createContext<NotificationBadgeContextValue | n
 /** Light polling while browsing; skipped in background. */
 const BADGE_POLL_INTERVAL_MS = 45_000;
 
+async function registerPushBestEffort(getToken: () => Promise<string | null>) {
+  try {
+    await registerExpoPushTokenWithBackend(getToken);
+  } catch (e) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.warn("[Parfade] Push token registration failed (invites may not push until this works):", e);
+    }
+  }
+}
+
 export function NotificationBadgeProvider({ children }: { children: ReactNode }) {
   const { isSignedIn, getToken } = useAuth();
   const [showBadge, setShowBadge] = useState(false);
@@ -58,7 +68,7 @@ export function NotificationBadgeProvider({ children }: { children: ReactNode })
         if (cancelled) return;
         const session = await getTokenRef.current();
         if (session) {
-          await registerExpoPushTokenWithBackend(() => getTokenRef.current());
+          await registerPushBestEffort(() => getTokenRef.current());
           return;
         }
         await new Promise((r) => setTimeout(r, 200 + i * 80));
@@ -114,7 +124,7 @@ export function NotificationBadgeProvider({ children }: { children: ReactNode })
       if (state === "active") {
         void refreshRef.current();
         if (isSignedInRef.current) {
-          void registerExpoPushTokenWithBackend(() => getTokenRef.current());
+          void registerPushBestEffort(() => getTokenRef.current());
         }
       }
     });

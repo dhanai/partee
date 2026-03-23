@@ -1,25 +1,31 @@
 {
   "expo": {
     "name": "Parfade",
-    "slug": "partee",
-    "scheme": "partee",
+    "slug": "parfade",
+    "scheme": [
+      "parfade",
+      "com.parfade.parfade-mobile"
+    ],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.partee-mobile",
+      "bundleIdentifier": "com.parfade.parfade-mobile",
       "infoPlist": {
+        "CFBundleName": "Parfade",
+        "CFBundleDisplayName": "Parfade",
         "ITSAppUsesNonExemptEncryption": false,
         "NSCalendarsUsageDescription": "Parfade can add rounds you host or join to your calendar when you tap Add to calendar.",
         "NSCalendarsFullAccessUsageDescription": "Parfade can add rounds you host or join to your calendar when you tap Add to calendar.",
         "NSRemindersUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar.",
         "NSRemindersFullAccessUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar."
       },
-      "buildNumber": "11"
+      "buildNumber": "18"
     },
     "android": {
+      "label": "Parfade",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#1a3c2a",
@@ -30,8 +36,13 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
-      ]
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
+      ],
+      "package": "com.parfade.parfademobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -63,12 +74,20 @@
           "locationWhenInUsePermission": "Parfade uses your location to show nearby rounds."
         }
       ],
-      "expo-image"
+      "expo-image",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ]
     ],
     "extra": {
       "eas": {
-        "projectId": "ca60538d-b37d-4cac-ac71-e387df5694d9"
-      }
+        "projectId": "0c6a06db-03f1-4c04-a226-7176089695d9"
+      },
+      "router": {}
     }
   }
 }

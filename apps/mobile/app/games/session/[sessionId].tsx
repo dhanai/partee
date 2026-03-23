@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  InteractionManager,
+  Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -42,6 +45,7 @@ import type { WolfTeeOff } from "../../../lib/wolf-rotation";
 import { computeSkinsTotals, type SkinsTieHandling } from "../../../lib/skins-scoring";
 import { computeWolfTotals, type WolfTieHandling } from "../../../lib/wolf-scoring";
 import { buildWolfSessionRecapHighlights } from "../../../lib/wolf-session-recap-copy";
+import { showGameFinishedInterstitialAd } from "../../../lib/parfade-admob";
 import { colors } from "../../../lib/theme";
 
 function parseWolfLetterOrder(settings: Record<string, unknown>): string[] {
@@ -87,11 +91,22 @@ export default function GameSessionScreen() {
   const [players, setPlayers] = useState<GamePlayerRow[]>([]);
   const [holes, setHoles] = useState<GameHoleRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editorHole, setEditorHole] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  /** True after interstitial closes until URL has `recap=1` (deep links / sync). */
+  const [pendingRecapAfterComplete, setPendingRecapAfterComplete] = useState(false);
+  /** Opaque layer during complete → ad so recap is not visible until the ad dismisses. */
+  const [adHandoffCover, setAdHandoffCover] = useState(false);
+  /**
+   * After delete starts, ignore GET errors: a slow fetch can finish after the row is gone and the
+   * API returns 403 Forbidden — that was the red banner flash above standings.
+   */
+  const suppressLoadErrorsRef = useRef(false);
 
   useEffect(() => {
     setSession(null);
@@ -99,10 +114,23 @@ export default function GameSessionScreen() {
     setHoles([]);
     setError(null);
     setLoading(true);
+    setRefreshing(false);
+    setPendingRecapAfterComplete(false);
+    setAdHandoffCover(false);
+    suppressLoadErrorsRef.current = false;
   }, [sessionId]);
 
+  useEffect(() => {
+    if (recapParam === "1") {
+      setPendingRecapAfterComplete(false);
+    }
+  }, [recapParam]);
+
   const load = useCallback(async () => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      setRefreshing(false);
+      return;
+    }
     try {
       const token = await getToken();
       const data = await getGameSession(token, sessionId);
@@ -111,9 +139,12 @@ export default function GameSessionScreen() {
       setHoles(data.holes);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load");
+      if (!suppressLoadErrorsRef.current) {
+        setError(e instanceof Error ? e.message : "Could not load");
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [getToken, sessionId]);
 
@@ -125,9 +156,9 @@ export default function GameSessionScreen() {
 
   const recapOnly =
     Boolean(sessionId) &&
-    recapParam === "1" &&
     session != null &&
-    session.status === "completed";
+    session.status === "completed" &&
+    (recapParam === "1" || pendingRecapAfterComplete);
 
   useLayoutEffect(() => {
     if (!sessionId || loading || !session) {
@@ -225,13 +256,38 @@ export default function GameSessionScreen() {
   }
 
   async function markComplete() {
-    if (!sessionId) return;
+    if (!sessionId || completing) return;
+    setCompleting(true);
+    setPendingRecapAfterComplete(false);
+    setAdHandoffCover(true);
     try {
       const token = await getToken();
-      await updateGameSessionStatus(token, sessionId, "completed");
-      exitSessionScreen();
+      const { session: nextSession } = await updateGameSessionStatus(
+        token,
+        sessionId,
+        "completed",
+      );
+      // Recap is painted under this full-screen Modal; when ad + Modal clear, recap is already there.
+      setSession(nextSession);
+      setPendingRecapAfterComplete(true);
+      router.setParams({ recap: "1" });
+      await showGameFinishedInterstitialAd();
+      let handoffCoverDropped = false;
+      const dropHandoffCover = () => {
+        if (handoffCoverDropped) return;
+        handoffCoverDropped = true;
+        setAdHandoffCover(false);
+      };
+      InteractionManager.runAfterInteractions(() => {
+        requestAnimationFrame(dropHandoffCover);
+      });
+      setTimeout(dropHandoffCover, 1000);
     } catch (e) {
+      setPendingRecapAfterComplete(false);
       setError(e instanceof Error ? e.message : "Could not update");
+      setAdHandoffCover(false);
+    } finally {
+      setCompleting(false);
     }
   }
 
@@ -239,17 +295,21 @@ export default function GameSessionScreen() {
     if (!sessionId || deleteBusy) return;
     setDeleteBusy(true);
     setError(null);
+    suppressLoadErrorsRef.current = true;
     try {
       const token = await getToken();
       if (!token) {
+        suppressLoadErrorsRef.current = false;
         const msg = "Sign in to delete this game.";
         setError(msg);
         Alert.alert("Could not delete", msg);
         return;
       }
       await deleteGameSession(token, sessionId);
+      setError(null);
       exitSessionScreen();
     } catch (e) {
+      suppressLoadErrorsRef.current = false;
       const msg = e instanceof Error ? e.message : "Could not delete";
       setError(msg);
       Alert.alert("Could not delete", msg);
@@ -316,6 +376,11 @@ export default function GameSessionScreen() {
 
   return (
     <>
+      <Modal visible={adHandoffCover} animationType="none" transparent={false}>
+        <View style={styles.adHandoffModal}>
+          <ActivityIndicator color={colors.fairway} size="large" />
+        </View>
+      </Modal>
       <View style={styles.screen}>
         <ScrollView
           style={styles.scrollRoot}
@@ -479,6 +544,7 @@ export default function GameSessionScreen() {
               style={styles.completeBtn}
               onPress={() => {
                 if (!sessionId) return;
+                setPendingRecapAfterComplete(false);
                 router.push({
                   pathname: "/games/session/[sessionId]",
                   params: { sessionId },
@@ -550,8 +616,16 @@ export default function GameSessionScreen() {
           ) : null}
 
           {session.status === "active" ? (
-            <Pressable style={styles.completeBtn} onPress={() => void markComplete()}>
-              <Text style={styles.completeBtnText}>Mark complete</Text>
+            <Pressable
+              style={[styles.completeBtn, completing && styles.completeBtnDisabled]}
+              onPress={() => void markComplete()}
+              disabled={completing}
+            >
+              {completing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.completeBtnText}>Mark complete</Text>
+              )}
             </Pressable>
           ) : null}
         </ScrollView>
@@ -623,11 +697,6 @@ export default function GameSessionScreen() {
               },
             },
             {
-              key: "refresh",
-              label: "Refresh",
-              onPress: () => void load(),
-            },
-            {
               key: "delete",
               label: "Delete game",
               destructive: true,
@@ -644,6 +713,13 @@ export default function GameSessionScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  /** Full-screen Modal above stack header during complete → interstitial. */
+  adHandoffModal: {
+    flex: 1,
+    backgroundColor: colors.background,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   scrollRoot: { flex: 1 },
   scrollContent: {
     paddingHorizontal: SCROLL_PAD,
@@ -819,6 +895,9 @@ const styles = StyleSheet.create({
   error: { color: colors.danger },
   muted: { fontSize: 14, color: colors.muted },
   recapBlurb: { marginBottom: 4 },
+  completeBtnDisabled: {
+    opacity: 0.75,
+  },
   completeBtn: {
     marginTop: 20,
     paddingVertical: 14,

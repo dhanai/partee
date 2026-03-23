@@ -7,6 +7,7 @@ import {
   useSignIn,
   useSignUp,
 } from "@clerk/clerk-expo";
+import Constants from "expo-constants";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { StatusBar } from "expo-status-bar";
@@ -30,6 +31,19 @@ import { BOTTOM_SHEET_EASING, bottomSheetOpenAnimation } from "../../lib/bottom-
 import { colors } from "../../lib/theme";
 
 WebBrowser.maybeCompleteAuthSession();
+
+/**
+ * Clerk production native SSO expects `{ios.bundleIdentifier}://callback` (see Clerk “Deploy an Expo app”).
+ * That must match an entry in Dashboard → Native applications → Allowlist for mobile SSO redirect.
+ * `parfade://…` from Linking alone won’t match if you only allowlisted the bundle id (or vice versa).
+ */
+function clerkNativeOAuthRedirectUrl(): string {
+  const bundleId = Constants.expoConfig?.ios?.bundleIdentifier?.trim();
+  if (Platform.OS === "ios" && bundleId) {
+    return `${bundleId}://callback`;
+  }
+  return Linking.createURL("/");
+}
 
 function formatClerkError(err: unknown): string {
   if (isClerkAPIResponseError(err)) {
@@ -343,7 +357,7 @@ function SignInFields({
     setGoogleSubmitting(true);
     setError(null);
     try {
-      const redirectUrl = Linking.createURL("/(tabs)");
+      const redirectUrl = clerkNativeOAuthRedirectUrl();
       const { createdSessionId, setActive: setActiveFromSSO } = await startSSOFlow({
         strategy: "oauth_google",
         redirectUrl,
@@ -561,7 +575,7 @@ function SignUpFields({
     setGoogleSubmitting(true);
     setError(null);
     try {
-      const redirectUrl = Linking.createURL("/(tabs)");
+      const redirectUrl = clerkNativeOAuthRedirectUrl();
       const { createdSessionId, setActive: setActiveFromSSO } = await startSSOFlow({
         strategy: "oauth_google",
         redirectUrl,

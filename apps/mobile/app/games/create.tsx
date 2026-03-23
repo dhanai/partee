@@ -174,6 +174,12 @@ export default function CreateGameScreen() {
           wolfTieHandling,
         };
       }
+      if (gameType === "skins") {
+        body.holesCount = skinsHolesCount;
+        body.settings = {
+          skinsTieHandling,
+        };
+      }
       if (roundInviteToken) {
         body.roundInviteToken = String(roundInviteToken);
       }

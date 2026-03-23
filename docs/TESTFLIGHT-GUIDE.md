@@ -81,9 +81,9 @@ Most often **`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` was not set for the EAS build**
 
 | Step | What to do |
 |------|------------|
-| 4.1 | In **`apps/mobile/app.json`**, set `expo.ios.bundleIdentifier` to your **final** ID (e.g. `com.yourcompany.partee`). It must match **App Store Connect** and **Clerk** (below). The repo may show a placeholder like `com.anonymous.partee-mobile` — change before public TestFlight. |
+| 4.1 | In **`apps/mobile/app.json`**, set `expo.ios.bundleIdentifier` to your **final** ID (e.g. `com.parfade.parfade-mobile`). It must match **App Store Connect** and **Clerk** (below). |
 | 4.2 | Bump **`expo.version`** (marketing version) and ensure **build number** increments each App Store upload (`expo.ios.buildNumber` or EAS `autoIncrement` — configure in `eas.json` if you want). |
-| 4.3 | **`scheme`**: `partee` — used for deep links; any Clerk redirect URLs must allow this scheme (unchanged from TestFlight even if the app display name is Parfade). |
+| 4.3 | **`scheme`**: **`parfade`** plus **`com.parfade.parfade-mobile`** — first is normal deep links; second is required so **`{bundleId}://callback`** OAuth returns match [Clerk’s native SSO allowlist](https://clerk.com/docs/deployments/deploy-expo). |
 | 4.4 | Any **new native module** (e.g. `expo-calendar`) requires a **new native build**, not only an OTA update. |
 
 ---
@@ -94,7 +94,7 @@ Most often **`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` was not set for the EAS build**
 |------|------------|
 | 5.1 | In Clerk **production** instance: enable the same auth methods you use in dev (email, Google, etc.). |
 | 5.2 | **Publishable key** in EAS: `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` = **live** `pk_live_...` (not `pk_test_...`). |
-| 5.3 | **Authorized redirect / native URLs** (Clerk dashboard): add your app’s **bundle ID** and **custom scheme** per [Clerk Expo docs](https://clerk.com/docs/quickstarts/expo). Typical entries include `partee://` OAuth callback paths Clerk expects for Expo. |
+| 5.3 | **Native applications → Allowlist for mobile SSO redirect** (production instance): add the **full** redirect URL Clerk uses for native OAuth, not the bare bundle id. With `oauth_google` + `useSSO`, the app sends **`com.parfade.parfade-mobile://callback`** on iOS (see [Deploy an Expo app](https://clerk.com/docs/deployments/deploy-expo)). Android fallbacks use **`parfade://…`** from `Linking.createURL("/")` — add those URLs to the allowlist if Google SSO fails on Android. The app registers both **`parfade`** and the bundle id as URL schemes. |
 | 5.4 | If you use **Google OAuth**, add the **iOS client ID** / URL schemes Google requires for the bundle ID you ship. |
 | 5.5 | After changing bundle ID or Clerk settings, do a **clean sign-up / sign-in** test on a release build. |
 

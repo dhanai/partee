@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { ParfadeProfileLiveRefresh } from "../../../components/parfade-profile-live-refresh";
+import { ProfileStatCategoryCards } from "../../../components/profile-stat-category-cards";
 import { claimRsvpButtonStyles as btn } from "../../../lib/claim-rsvp-button-styles";
 import { formatProfileNavTitle } from "../../../lib/format-profile-nav-title";
 import { useAblyChatMounted } from "../../../lib/ably-chat-context";
@@ -24,6 +25,11 @@ import {
   PublicProfile,
   setCachedPublicProfile,
 } from "../../../lib/public-profile-cache";
+import {
+  ensureSkinsFourthColumn,
+  fetchUserStats,
+  type ProfileStatsGrouped,
+} from "../../../lib/profile-stats-api";
 import { colors } from "../../../lib/theme";
 
 const AVATAR_RADIUS = 28;
@@ -91,8 +97,10 @@ export default function PublicProfileScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [groupedStats, setGroupedStats] = useState<ProfileStatsGrouped | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
-  const avatarSize = Math.min(windowWidth - 48, 340);
+  const avatarSize = Math.round(Math.min(windowWidth - 48, 340) * 0.75);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -101,16 +109,31 @@ export default function PublicProfileScreen() {
   const loadProfile = useCallback(async (options?: { silent?: boolean }) => {
     if (!userId) return;
     const silent = options?.silent ?? false;
-    if (!silent) setLoading(true);
+    if (!silent) {
+      setLoading(true);
+      setStatsLoading(true);
+    }
     setError(null);
     try {
       const token = await getTokenRef.current();
       const json = await fetchPublicProfileAndCache(userId, token);
       setProfile(json);
+      try {
+        const { grouped, stats } = await fetchUserStats(token, userId);
+        setGroupedStats(ensureSkinsFourthColumn(grouped, stats));
+      } catch {
+        setGroupedStats(null);
+      }
     } catch (profileError) {
       setError(profileError instanceof Error ? profileError.message : "Unable to load profile.");
+      setGroupedStats(null);
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent) {
+        setLoading(false);
+        setStatsLoading(false);
+      } else {
+        setStatsLoading(false);
+      }
     }
   }, [userId]);
 
@@ -320,6 +343,14 @@ export default function PublicProfileScreen() {
           <Text style={btn.secondaryText}>Share profile</Text>
         </Pressable>
       </View>
+
+      {userId ? (
+        <ProfileStatCategoryCards
+          userId={userId}
+          grouped={groupedStats}
+          loading={statsLoading}
+        />
+      ) : null}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </ScrollView>

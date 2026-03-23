@@ -75,5 +75,14 @@ export async function registerExpoPushTokenWithBackend(
     return;
   }
 
-  await apiPost("/api/users/me/push-token", { expoPushToken }, authToken);
+  try {
+    await apiPost("/api/users/me/push-token", { expoPushToken }, authToken);
+  } catch (e) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.warn(
+        "[Parfade] Push token registration failed (invites may not push until this works):",
+        e,
+      );
+    }
+  }
 }

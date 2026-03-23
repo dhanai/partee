@@ -14,9 +14,15 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { ProfileStatCategoryCards } from "../../components/profile-stat-category-cards";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
+import {
+  ensureSkinsFourthColumn,
+  fetchUserStats,
+  type ProfileStatsGrouped,
+} from "../../lib/profile-stats-api";
 import { colors } from "../../lib/theme";
 
 type MeResponse = {
@@ -50,8 +56,10 @@ export default function ProfileScreen() {
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [groupedStats, setGroupedStats] = useState<ProfileStatsGrouped | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
 
-  const avatarSize = Math.min(windowWidth - 48, 340);
+  const avatarSize = Math.round(Math.min(windowWidth - 48, 340) * 0.75);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -102,6 +110,20 @@ export default function ProfileScreen() {
     }
   }
 
+  async function loadGroupedStats(options?: { silent?: boolean }) {
+    const silent = Boolean(options?.silent);
+    if (!silent) setStatsLoading(true);
+    try {
+      const token = await getTokenRef.current();
+      const { grouped, stats } = await fetchUserStats(token, "me");
+      setGroupedStats(ensureSkinsFourthColumn(grouped, stats));
+    } catch {
+      setGroupedStats(null);
+    } finally {
+      setStatsLoading(false);
+    }
+  }
+
   useFocusEffect(
     useCallback(() => {
       const cached = getCachedMeProfile();
@@ -118,6 +140,7 @@ export default function ProfileScreen() {
         setLoading(true);
       }
       void loadProfile({ silent: Boolean(cached) });
+      void loadGroupedStats({ silent: Boolean(cached) });
     }, []),
   );
 
@@ -143,6 +166,7 @@ export default function ProfileScreen() {
   }
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {loading ? (
         <View style={styles.loadingRow}>
@@ -219,10 +243,19 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
+          {myUserId ? (
+            <ProfileStatCategoryCards
+              userId={myUserId}
+              grouped={groupedStats}
+              loading={statsLoading}
+            />
+          ) : null}
+
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
       )}
     </ScrollView>
+    </>
   );
 }
 
