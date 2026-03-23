@@ -106,12 +106,8 @@ export default function DiscoverPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tightest text-charcoal">
-          Discover
-        </h1>
-        <p className="mt-1 text-sm text-charcoal-400">
-          Open rounds looking for players.
-        </p>
+        <h1 className="parfade-page-title">Discover</h1>
+        <p className="parfade-page-sub">Open rounds looking for players.</p>
       </div>
 
       <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
@@ -146,7 +142,7 @@ export default function DiscoverPage() {
             className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
               radiusMiles === option.value
                 ? "bg-fairway text-white"
-                : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"
+                : "bg-[#edf4ef] text-[#6e6e6e] hover:bg-[#e2ebe4]"
             }`}
           >
             {option.label}

@@ -5,6 +5,8 @@ const isProtectedRoute = createRouteMatcher([
   "/dashboard(.*)",
   "/create(.*)",
   "/discover(.*)",
+  "/games(.*)",
+  "/profile(.*)",
 ]);
 
 function withCors(req: Request, res: NextResponse) {
@@ -35,6 +37,10 @@ function withCors(req: Request, res: NextResponse) {
 }
 
 export default clerkMiddleware((auth, req) => {
+  if (req.nextUrl.pathname.startsWith("/.well-known/")) {
+    return NextResponse.next();
+  }
+
   if (req.method === "OPTIONS") {
     return withCors(req, new NextResponse(null, { status: 204 }));
   }

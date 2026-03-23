@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
+import { OpenInParfadeAppBar } from "@/components/open-in-parfade-app";
 import { RoundChatPanel } from "./round-chat-panel";
 
 type RoundDetails = {
@@ -77,6 +78,11 @@ export default function RoundInvitePage({
   const [finalizing, setFinalizing] = useState(false);
   const finalizeDropdownRef = useRef<HTMLDivElement>(null);
   const debouncedFinalizeQuery = useDebounce(finalizeQuery, 300);
+  const [browserUrl, setBrowserUrl] = useState("");
+
+  useEffect(() => {
+    setBrowserUrl(typeof window !== "undefined" ? window.location.href : "");
+  }, []);
 
   const loadRound = useCallback(async () => {
     const response = await fetch(`/api/rounds/${params.token}`);
@@ -225,17 +231,19 @@ export default function RoundInvitePage({
   const spotsArray = Array.from({ length: round.totalSpots }, (_, i) => i < round.confirmedCount);
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
+      <OpenInParfadeAppBar inviteToken={params.token} browserUrl={browserUrl} />
+
       <div className="parfade-card">
         <Image
           src={round.imageUrl}
           alt={round.courseName ?? "Round image"}
           width={1200}
           height={700}
-          className="h-44 w-full rounded-2xl object-cover"
+          className="h-48 w-full rounded-2xl object-cover"
         />
-        <p className="parfade-label mt-4">Round invite</p>
-        <h1 className="text-2xl font-bold tracking-tightest text-charcoal">{round.courseName}</h1>
+        <p className="parfade-label mt-5">Round invite</p>
+        <h1 className="parfade-page-title">{round.courseName}</h1>
 
         <div className="mt-4 flex items-center gap-3">
           {round.hostAvatar && (
@@ -282,7 +290,7 @@ export default function RoundInvitePage({
               <div
                 key={i}
                 className={`h-10 flex-1 rounded-lg transition-colors ${
-                  filled ? "bg-fairway" : "bg-cream-200"
+                  filled ? "bg-fairway" : "bg-[#edf4ef]"
                 }`}
               />
             ))}
@@ -297,28 +305,28 @@ export default function RoundInvitePage({
         {round.isHost || round.currentUserSpotStatus === "confirmed" ? (
           <RoundChatPanel inviteToken={params.token} />
         ) : (
-          <div className="rounded-2xl border border-cream-200 bg-cream-50 px-4 py-3 text-sm text-charcoal-400">
+          <div className="rounded-2xl border border-[#ece8e1] bg-[#faf8f5] px-4 py-3 text-sm text-[#6e6e6e]">
             Group chat is for the host and players who have claimed a spot.
           </div>
         )}
       </SignedIn>
 
       {round.isHost && (
-        <div className="parfade-card border border-fairway-100 bg-fairway-50">
-          <p className="font-semibold text-fairway">You&apos;re hosting</p>
-          <p className="mt-1 text-sm text-charcoal-400">
+        <div className="parfade-card border-[#dce8df] bg-[#edf4ef]">
+          <p className="font-semibold text-[#1a3c2a]">You&apos;re hosting</p>
+          <p className="mt-1 text-sm text-[#6e6e6e]">
             {round.mode === "planning"
               ? "Share now, then finalize course and tee time once your group is in."
               : "Share the link to invite more players."}
           </p>
-          <div className="mt-3 rounded-xl bg-white px-4 py-2.5">
-            <p className="text-xs font-medium text-charcoal-300 select-all break-all">
+          <div className="mt-3 rounded-xl border border-[#ece8e1] bg-white px-4 py-2.5">
+            <p className="text-xs font-medium text-[#6e6e6e] select-all break-all">
               {typeof window !== "undefined" ? window.location.href : `/round/${round.inviteToken}`}
             </p>
           </div>
 
           {round.mode === "planning" && (
-            <div className="mt-4 space-y-3 rounded-xl border border-fairway-100 bg-white p-4">
+            <div className="mt-4 space-y-3 rounded-xl border border-[#ece8e1] bg-white p-4">
               <p className="text-sm font-semibold text-charcoal">Finalize details</p>
 
               <div ref={finalizeDropdownRef} className="relative">

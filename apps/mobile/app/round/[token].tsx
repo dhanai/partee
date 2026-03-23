@@ -451,11 +451,16 @@ export default function RoundDetailsScreen() {
   async function shareInviteLink() {
     if (!round) return;
     const inviteUrl = `${apiBaseUrl.replace(/\/$/, "")}/round/${round.inviteToken}`;
-    const roundLabel = round.mode === "planning" ? "planning round" : round.courseName;
+    const where =
+      round.mode === "planning"
+        ? (round.planningLocation?.trim() ||
+            round.courseName?.trim() ||
+            "a round I'm planning")
+        : (round.courseName?.trim() || "this round");
     try {
+      // Single URL in the message only — iOS duplicates the link when `url` is also set.
       await Share.share({
-        message: `Join my ${roundLabel} on Parfade: ${inviteUrl}`,
-        url: inviteUrl,
+        message: `Join my round at ${where} on Parfade: ${inviteUrl}`,
       });
     } catch {
       setError("Unable to open share sheet.");

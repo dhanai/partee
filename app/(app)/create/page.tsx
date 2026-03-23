@@ -253,8 +253,8 @@ export default function CreateRoundPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tightest text-charcoal">New round</h1>
-        <p className="mt-1 text-sm text-charcoal-400">Set it up. Blast invites. Tee off.</p>
+        <h1 className="parfade-page-title">New round</h1>
+        <p className="parfade-page-sub">Set it up. Blast invites. Tee off.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="parfade-card space-y-5">
@@ -267,10 +267,10 @@ export default function CreateRoundPage() {
               className={`rounded-xl py-2.5 text-sm font-semibold transition ${
                 planningMode
                   ? "bg-fairway text-white"
-                  : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"
+                  : "bg-[#edf4ef] text-[#6e6e6e] hover:bg-[#e2ebe4]"
               }`}
             >
-              Plan first
+              Planning round
             </button>
             <button
               type="button"
@@ -278,10 +278,10 @@ export default function CreateRoundPage() {
               className={`rounded-xl py-2.5 text-sm font-semibold transition ${
                 !planningMode
                   ? "bg-fairway text-white"
-                  : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"
+                  : "bg-[#edf4ef] text-[#6e6e6e] hover:bg-[#e2ebe4]"
               }`}
             >
-              Set details now
+              Scheduled tee time
             </button>
           </div>
         </div>
@@ -404,7 +404,7 @@ export default function CreateRoundPage() {
                   className={`rounded-xl py-2.5 text-sm font-semibold transition ${
                     preferredTimeWindow === slot.value
                       ? "bg-fairway text-white"
-                      : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"
+                      : "bg-[#edf4ef] text-[#6e6e6e] hover:bg-[#e2ebe4]"
                   }`}
                 >
                   {slot.label}
@@ -480,7 +480,7 @@ export default function CreateRoundPage() {
                 key={n}
                 type="button"
                 onClick={() => setTotalSpots(n + 1)}
-                className={`flex-1 rounded-xl py-3 text-sm font-semibold transition ${totalSpots === n + 1 ? "bg-fairway text-white" : "bg-cream-200 text-charcoal-400 hover:bg-cream-300"}`}
+                className={`flex-1 rounded-xl py-3 text-sm font-semibold transition ${totalSpots === n + 1 ? "bg-fairway text-white" : "bg-[#edf4ef] text-[#6e6e6e] hover:bg-[#e2ebe4]"}`}
               >
                 {n}
               </button>

@@ -40,8 +40,9 @@ const config: Config = {
           600: "#2c2c2e",
           700: "#1c1c1e",
         },
+        /** Matches mobile `colors.mustard` / wordmark gold. */
         gold: {
-          DEFAULT: "#c4a35a",
+          DEFAULT: "#c9a32d",
           light: "#dfc88a",
         },
       },

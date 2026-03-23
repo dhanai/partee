@@ -13,6 +13,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.parfade.parfade-mobile",
+      "associatedDomains": [
+        "applinks:parfade.com",
+        "applinks:www.parfade.com"
+      ],
       "infoPlist": {
         "CFBundleName": "Parfade",
         "CFBundleDisplayName": "Parfade",
@@ -22,7 +26,7 @@
         "NSRemindersUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar.",
         "NSRemindersFullAccessUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar."
       },
-      "buildNumber": "20"
+      "buildNumber": "21"
     },
     "android": {
       "label": "Parfade",

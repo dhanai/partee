@@ -20,7 +20,7 @@ The mobile app calls your Next.js API using **`EXPO_PUBLIC_API_BASE_URL`** (see 
 
 | Step | What to do |
 |------|------------|
-| 2.1 | Deploy the **Next.js app** (repo root) to production; note the **HTTPS** origin (your custom domain or e.g. `https://your-app.vercel.app`, no trailing slash). |
+| 2.1 | Deploy the **Next.js app** (repo root) to production; production origin is **`https://parfade.com`** (no trailing slash). Point DNS / Vercel so API + web share that host. |
 | 2.2 | In the host’s **environment variables**, set at least: |
 
 **Required for core app**
@@ -58,7 +58,7 @@ Values here are **baked into the JS bundle** at build time for `EXPO_PUBLIC_*`.
 
 ```bash
 cd apps/mobile
-npx eas-cli secret:create --scope project --name EXPO_PUBLIC_API_BASE_URL --value "https://your-production-domain.com" --type string
+npx eas-cli secret:create --scope project --name EXPO_PUBLIC_API_BASE_URL --value "https://parfade.com" --type string
 npx eas-cli secret:create --scope project --name EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY --value "pk_live_..." --type string
 ```
 
