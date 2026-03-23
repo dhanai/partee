@@ -1,9 +1,16 @@
 import Image from "next/image";
 import Link from "next/link";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { ParfadeWordmark } from "@/components/parfade-wordmark";
 import { authLandingGradientBackgroundImage } from "@/lib/auth-landing-gradient";
 
-export default function MarketingPage() {
+export default async function MarketingPage() {
+  const { userId } = auth();
+  if (userId) {
+    redirect("/discover");
+  }
+
   const overlay = authLandingGradientBackgroundImage();
 
   return (

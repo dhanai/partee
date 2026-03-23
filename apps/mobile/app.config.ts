@@ -25,10 +25,10 @@ function mergeAdMobAppIds(base: ExpoConfig): ExpoConfig {
             process.env.EXPO_PUBLIC_ADMOB_APP_ID_ANDROID?.trim() || prev.androidAppId,
           iosAppId: process.env.EXPO_PUBLIC_ADMOB_APP_ID_IOS?.trim() || prev.iosAppId,
         },
-      ];
+      ] as [string, { androidAppId?: string; iosAppId?: string }];
     }
     return entry;
-  });
+  }) as ExpoConfig["plugins"];
   return { ...base, plugins };
 }
 

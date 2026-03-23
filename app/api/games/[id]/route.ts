@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { eq, max } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { gameHoleEvents, gameSessions } from "@/db/schema";
+import { gameHoleEvents, gameSessions, rounds } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { serializeGameSessionForApi, toIso } from "@/lib/games/serialize";
 import { deleteGameSessionIfAllowed } from "@/lib/games/delete-session";
@@ -28,13 +28,22 @@ export async function GET(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    let roundInviteToken: string | null = null;
+    if (data.session.roundId) {
+      const [rr] = await db
+        .select({ inviteToken: rounds.inviteToken })
+        .from(rounds)
+        .where(eq(rounds.id, data.session.roundId));
+      roundInviteToken = rr?.inviteToken ?? null;
+    }
+
     const createdBy = data.session.createdBy;
     const viewerUserId = user.id;
     return NextResponse.json({
       viewerIsCreator: createdBy === viewerUserId,
       /** DB user id for the authenticated viewer (for client host checks without relying on /me cache). */
       viewerUserId,
-      session: serializeGameSessionForApi(data.session),
+      session: serializeGameSessionForApi(data.session, { roundInviteToken }),
       players: data.players.map((p) => ({
         userId: p.userId,
         sortOrder: p.sortOrder,

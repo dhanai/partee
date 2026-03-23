@@ -1,7 +1,18 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
+import { PlanningTimeWindowChipsWeb } from "@/components/planning-time-window-chips-web";
 
 type CourseResult = { id: string; name: string; address: string };
 type UserSearchResult = { id: string; name: string; email: string | null; avatar: string | null };
@@ -18,7 +29,24 @@ function useDebounce(value: string, delayMs: number): string {
   return debounced;
 }
 
-export default function CreateRoundPage() {
+function CreateRoundPageInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const modeParam = searchParams.get("mode");
+  const sessionFromUrl = searchParams.get("session") ?? "";
+  const isPlanningRound = modeParam === "planning";
+
+  const prevSessionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const validMode = modeParam === "planning" || modeParam === "scheduled";
+    const session = sessionFromUrl.trim();
+    if (!validMode || !session) {
+      const m = modeParam === "planning" ? "planning" : "scheduled";
+      router.replace(`/create?mode=${m}&session=${session || Date.now()}`);
+    }
+  }, [modeParam, sessionFromUrl, router]);
+
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CourseResult[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(false);
@@ -33,7 +61,8 @@ export default function CreateRoundPage() {
   const [showFriendResults, setShowFriendResults] = useState(false);
   const friendRef = useRef<HTMLDivElement>(null);
 
-  const [teeTime, setTeeTime] = useState("");
+  const [teeDate, setTeeDate] = useState("");
+  const [teeTimePart, setTeeTimePart] = useState("12:00");
   const [targetDate, setTargetDate] = useState("");
   const [planningLocation, setPlanningLocation] = useState("");
   const [planningLocationIsValidated, setPlanningLocationIsValidated] = useState(true);
@@ -41,7 +70,6 @@ export default function CreateRoundPage() {
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [showLocationResults, setShowLocationResults] = useState(false);
   const locationRef = useRef<HTMLDivElement>(null);
-  const [planningMode, setPlanningMode] = useState(false);
   const [preferredTimeWindow, setPreferredTimeWindow] = useState<
     "morning" | "afternoon" | "twilight"
   >("morning");
@@ -60,7 +88,7 @@ export default function CreateRoundPage() {
   const debouncedPlanningLocation = useDebounce(planningLocation, 300);
   const canSubmit = useMemo(
     () =>
-      planningMode
+      isPlanningRound
         ? Boolean(
             targetDate &&
               planningLocation.trim().length >= 2 &&
@@ -68,11 +96,18 @@ export default function CreateRoundPage() {
               !submitting &&
               !uploadingImage,
           )
-        : Boolean(selectedCourse && teeTime && !submitting && !uploadingImage),
+        : Boolean(
+            selectedCourse &&
+              teeDate &&
+              teeTimePart &&
+              !submitting &&
+              !uploadingImage,
+          ),
     [
-      planningMode,
+      isPlanningRound,
       selectedCourse,
-      teeTime,
+      teeDate,
+      teeTimePart,
       targetDate,
       planningLocation,
       planningLocationIsValidated,
@@ -112,7 +147,7 @@ export default function CreateRoundPage() {
   useEffect(() => { searchFriends(debouncedFriend); }, [debouncedFriend, searchFriends]);
 
   useEffect(() => {
-    if (!planningMode) return;
+    if (!isPlanningRound) return;
     let active = true;
     async function searchLocations(q: string) {
       if (planningLocationIsValidated) {
@@ -151,7 +186,7 @@ export default function CreateRoundPage() {
     return () => {
       active = false;
     };
-  }, [debouncedPlanningLocation, planningMode, planningLocationIsValidated]);
+  }, [debouncedPlanningLocation, isPlanningRound, planningLocationIsValidated]);
 
   useEffect(() => {
     let active = true;
@@ -174,6 +209,43 @@ export default function CreateRoundPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const s = sessionFromUrl.trim();
+    if (!s) return;
+    const prev = prevSessionRef.current;
+    if (prev === null) {
+      prevSessionRef.current = s;
+      return;
+    }
+    if (prev === s) return;
+    prevSessionRef.current = s;
+
+    setSelectedFriends([]);
+    setTargetDate("");
+    setPlanningLocation("");
+    setPlanningLocationIsValidated(true);
+    setLocationResults([]);
+    setShowLocationResults(false);
+    setPreferredTimeWindow("morning");
+    setTeeDate("");
+    setTeeTimePart("12:00");
+    setQuery("");
+    setResults([]);
+    setSelectedCourse(null);
+    setShowCourseResults(false);
+    setTotalSpots(4);
+    setVisibility("private");
+    setJoinPolicy("instant");
+    setSubmitting(false);
+    setError(null);
+    setCreatedInvitePath(null);
+    setCreatedInvitedCount(0);
+    setCustomImageUrl(null);
+    setFriendQuery("");
+    setFriendResults([]);
+    setShowFriendResults(false);
+  }, [sessionFromUrl]);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -219,20 +291,24 @@ export default function CreateRoundPage() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!planningMode && !selectedCourse) { setError("Select a course."); return; }
-    if (planningMode && !targetDate) { setError("Pick a target date."); return; }
+    if (!isPlanningRound && !selectedCourse) { setError("Select a course."); return; }
+    if (isPlanningRound && !targetDate) { setError("Pick a target date."); return; }
     setSubmitting(true); setError(null); setCreatedInvitePath(null); setCreatedInvitedCount(0);
     try {
+      const teeTimeIso =
+        !isPlanningRound && teeDate && teeTimePart
+          ? new Date(`${teeDate}T${teeTimePart}:00`).toISOString()
+          : undefined;
       const res = await fetch("/api/rounds", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          planningMode,
-          preferredTimeWindow: planningMode ? preferredTimeWindow : undefined,
-          planningLocation: planningMode ? planningLocation.trim() : undefined,
-          courseId: planningMode ? undefined : selectedCourse?.id,
-          teeTime: planningMode ? undefined : new Date(teeTime).toISOString(),
-          targetDate: planningMode
+          planningMode: isPlanningRound,
+          preferredTimeWindow: isPlanningRound ? preferredTimeWindow : undefined,
+          planningLocation: isPlanningRound ? planningLocation.trim() : undefined,
+          courseId: isPlanningRound ? undefined : selectedCourse?.id,
+          teeTime: isPlanningRound ? undefined : teeTimeIso,
+          targetDate: isPlanningRound
             ? new Date(`${targetDate}T12:00:00`).toISOString()
             : undefined,
           totalSpots,
@@ -253,44 +329,32 @@ export default function CreateRoundPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="parfade-page-title">New round</h1>
-        <p className="parfade-page-sub">Set it up. Blast invites. Tee off.</p>
+        <h1 className="text-[28px] font-bold leading-tight tracking-tight text-[#1c1c1e]">
+          {isPlanningRound ? "Planning Round" : "Scheduled Tee Time"}
+        </h1>
+        <p className="mt-1 text-sm leading-snug text-[#6e6e6e]">
+          {isPlanningRound
+            ? "Find players first. Lock details later."
+            : "Set it up. Blast invites. Tee off."}
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="parfade-card space-y-5">
-        <div>
-          <p className="parfade-label">Flow</p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setPlanningMode(true)}
-              className={`rounded-xl py-2.5 text-sm font-semibold transition ${
-                planningMode
-                  ? "bg-fairway text-white"
-                  : "bg-[#edf4ef] text-[#6e6e6e] hover:bg-[#e2ebe4]"
-              }`}
-            >
-              Planning round
-            </button>
-            <button
-              type="button"
-              onClick={() => setPlanningMode(false)}
-              className={`rounded-xl py-2.5 text-sm font-semibold transition ${
-                !planningMode
-                  ? "bg-fairway text-white"
-                  : "bg-[#edf4ef] text-[#6e6e6e] hover:bg-[#e2ebe4]"
-              }`}
-            >
-              Scheduled tee time
-            </button>
-          </div>
-        </div>
-
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-2.5 rounded-[18px] border border-[#ece8e1] bg-white p-3 shadow-sm sm:p-3.5"
+      >
         <div>
           <p className="parfade-label">Event image (optional)</p>
           <label className="parfade-input flex cursor-pointer items-center justify-between">
-            <span className="text-sm text-charcoal-400">
-              {uploadingImage ? "Uploading..." : "Upload custom cover image"}
+            <span className="inline-flex items-center gap-2 text-sm text-charcoal-400">
+              {uploadingImage ? (
+                <>
+                  <ParfadeSpinner size="xs" variant="muted" aria-label="Uploading" />
+                  Uploading…
+                </>
+              ) : (
+                "Upload custom cover image"
+              )}
             </span>
             <span className="text-xs font-semibold text-fairway">Choose file</span>
             <input
@@ -326,7 +390,7 @@ export default function CreateRoundPage() {
           )}
         </div>
 
-        {planningMode ? (
+        {isPlanningRound ? (
           <div>
             <p className="parfade-label">Target date</p>
             <input
@@ -353,11 +417,11 @@ export default function CreateRoundPage() {
                 placeholder="City, State"
                 required
               />
-              {loadingLocations && (
-                <span className="absolute right-4 top-10 text-xs text-charcoal-300">
-                  Searching...
+              {loadingLocations ? (
+                <span className="absolute right-3.5 top-10 flex items-center">
+                  <ParfadeSpinner size="xs" variant="muted" aria-label="Searching locations" />
                 </span>
-              )}
+              ) : null}
               {showLocationResults && locationResults.length > 0 && (
                 <ul className="absolute z-20 mt-2 max-h-44 w-full overflow-auto rounded-2xl bg-white shadow-lg">
                   {locationResults.map((loc) => (
@@ -387,30 +451,10 @@ export default function CreateRoundPage() {
               )}
             </div>
             <p className="parfade-label mt-3">Preferred time</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { value: "morning", label: "Morning" },
-                { value: "afternoon", label: "Afternoon" },
-                { value: "twilight", label: "Twilight" },
-              ].map((slot) => (
-                <button
-                  key={slot.value}
-                  type="button"
-                  onClick={() =>
-                    setPreferredTimeWindow(
-                      slot.value as "morning" | "afternoon" | "twilight",
-                    )
-                  }
-                  className={`rounded-xl py-2.5 text-sm font-semibold transition ${
-                    preferredTimeWindow === slot.value
-                      ? "bg-fairway text-white"
-                      : "bg-[#edf4ef] text-[#6e6e6e] hover:bg-[#e2ebe4]"
-                  }`}
-                >
-                  {slot.label}
-                </button>
-              ))}
-            </div>
+            <PlanningTimeWindowChipsWeb
+              value={preferredTimeWindow}
+              onChange={setPreferredTimeWindow}
+            />
           </div>
         ) : (
           <>
@@ -425,7 +469,11 @@ export default function CreateRoundPage() {
                   className="parfade-input"
                   placeholder="Search golf courses..."
                 />
-                {loadingCourses && <span className="absolute right-4 top-3.5 text-xs text-charcoal-300">Searching...</span>}
+                {loadingCourses ? (
+                  <span className="absolute right-3.5 top-3 flex items-center">
+                    <ParfadeSpinner size="xs" variant="muted" aria-label="Searching courses" />
+                  </span>
+                ) : null}
               </div>
 
               {showCourseResults && results.length > 0 && (
@@ -452,7 +500,22 @@ export default function CreateRoundPage() {
             {/* Tee time */}
             <div>
               <p className="parfade-label">Tee time</p>
-              <input type="datetime-local" value={teeTime} onChange={(e) => setTeeTime(e.target.value)} className="parfade-input" required />
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={teeDate}
+                  onChange={(e) => setTeeDate(e.target.value)}
+                  className="parfade-input min-w-0 flex-1"
+                  required
+                />
+                <input
+                  type="time"
+                  value={teeTimePart}
+                  onChange={(e) => setTeeTimePart(e.target.value)}
+                  className="parfade-input w-[140px] shrink-0"
+                  required
+                />
+              </div>
             </div>
           </>
         )}
@@ -510,7 +573,11 @@ export default function CreateRoundPage() {
             className="parfade-input"
             placeholder="Name or email..."
           />
-          {loadingFriends && <span className="absolute right-4 top-10 text-xs text-charcoal-300">Searching...</span>}
+          {loadingFriends ? (
+            <span className="absolute right-3.5 top-10 flex items-center">
+              <ParfadeSpinner size="xs" variant="muted" aria-label="Searching friends" />
+            </span>
+          ) : null}
 
           {showFriendResults && friendResults.length > 0 && (
             <ul className="absolute z-20 mt-2 max-h-44 w-full overflow-auto rounded-2xl bg-white shadow-lg">
@@ -543,8 +610,19 @@ export default function CreateRoundPage() {
 
         {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
 
-        <button type="submit" disabled={!canSubmit} className="parfade-btn-primary w-full disabled:opacity-40">
-          {submitting ? "Creating..." : "Create round"}
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className="parfade-btn-primary inline-flex w-full items-center justify-center gap-2 disabled:opacity-40"
+        >
+          {submitting ? (
+            <>
+              <ParfadeSpinner size="sm" variant="onPrimary" aria-label="Creating round" />
+              Creating…
+            </>
+          ) : (
+            "Create round"
+          )}
         </button>
       </form>
 
@@ -558,5 +636,13 @@ export default function CreateRoundPage() {
         </div>
       )}
     </section>
+  );
+}
+
+export default function CreateRoundPage() {
+  return (
+    <Suspense fallback={<ParfadeLoadingBlock className="py-10" size="sm" />}>
+      <CreateRoundPageInner />
+    </Suspense>
   );
 }

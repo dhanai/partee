@@ -86,7 +86,7 @@ export default function DiscoverScreen() {
   const roundsRef = useRef<DiscoverRound[]>([]);
   const hasManualLocationRef = useRef(false);
   const loadRoundsRef = useRef<
-    ((options?: { reset?: boolean }) => Promise<void>) | null
+    ((options?: { reset?: boolean; distanceMiles?: number }) => Promise<void>) | null
   >(null);
 
   useEffect(() => {
@@ -221,9 +221,10 @@ export default function DiscoverScreen() {
     });
   }, [navigation, locationLabel]);
 
-  const loadRounds = useCallback(async (options?: { reset?: boolean }) => {
+  const loadRounds = useCallback(async (options?: { reset?: boolean; distanceMiles?: number }) => {
     const reset = options?.reset ?? false;
     if (!reset && (!hasMoreDiscover || loadingMore)) return;
+    const effectiveRadius = options?.distanceMiles ?? radiusMiles;
     try {
       setError(null);
       if (reset) {
@@ -239,7 +240,7 @@ export default function DiscoverScreen() {
       if (coords) {
         params.set("lat", String(coords.lat));
         params.set("lng", String(coords.lng));
-        params.set("distanceMiles", String(radiusMiles));
+        params.set("distanceMiles", String(effectiveRadius));
       }
       params.set("limit", "20");
       if (!reset && discoverCursor) {
@@ -774,6 +775,7 @@ export default function DiscoverScreen() {
                   onPress={() => {
                     setRadiusMiles(miles);
                     setLocationModalOpen(false);
+                    void loadRoundsRef.current?.({ reset: true, distanceMiles: miles });
                   }}
                 >
                   <Text
@@ -791,6 +793,7 @@ export default function DiscoverScreen() {
                 onPress={() => {
                   setRadiusMiles(9999);
                   setLocationModalOpen(false);
+                  void loadRoundsRef.current?.({ reset: true, distanceMiles: 9999 });
                 }}
               >
                 <Text

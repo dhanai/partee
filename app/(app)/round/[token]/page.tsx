@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
+import { ConfirmedSpotsRowWeb } from "@/components/confirmed-spots-row-web";
 import { OpenInParfadeAppBar } from "@/components/open-in-parfade-app";
-import { RoundChatPanel } from "./round-chat-panel";
+import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
+import { PlanningRoundBadgeWeb } from "@/components/planning-round-badge-web";
+type RoundPlayer = { id: string; name: string; avatar: string | null };
 
 type RoundDetails = {
   id: string;
@@ -23,9 +27,12 @@ type RoundDetails = {
   hostAvatar: string | null;
   imageUrl: string;
   confirmedCount: number;
+  confirmedPlayers: RoundPlayer[];
+  declinedPlayers: RoundPlayer[];
   spotsRemaining: number;
   isHost: boolean;
   currentUserSpotStatus: string | null;
+  lastChatMessage?: { body: string; senderName: string; createdAt: string };
 };
 
 type CourseSearchResult = {
@@ -59,7 +66,7 @@ export default function RoundInvitePage({
   function formatPlanningWindow(
     value: "morning" | "afternoon" | "twilight" | null | undefined,
   ) {
-    if (!value) return "Time TBD";
+    if (!value) return "time TBD";
     return value.charAt(0).toUpperCase() + value.slice(1);
   }
 
@@ -152,34 +159,30 @@ export default function RoundInvitePage({
     setRsvpBusy(true);
     setMessage(null);
     setError(null);
-    const response = await fetch(`/api/rounds/${params.token}/join`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
-    const json = (await response.json()) as { ok?: boolean; status?: string; error?: string };
-    if (!response.ok) {
-      setError(json.error ?? "Unable to update RSVP.");
-    } else {
-      setMessage(
-        json.status === "confirmed"
-          ? "You're in! Spot confirmed."
-          : json.status === "declined"
-            ? "You've declined this round."
-            : json.status === "requested"
-              ? "Request sent — waiting for host approval."
-              : `RSVP saved as "${json.status}".`,
-      );
-      if (round) {
-        setRound({
-          ...round,
-          currentUserSpotStatus: json.status ?? null,
-          confirmedCount: json.status === "confirmed" ? round.confirmedCount + 1 : round.confirmedCount,
-          spotsRemaining: json.status === "confirmed" ? Math.max(0, round.spotsRemaining - 1) : round.spotsRemaining,
-        });
+    try {
+      const response = await fetch(`/api/rounds/${params.token}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const json = (await response.json()) as { ok?: boolean; status?: string; error?: string };
+      if (!response.ok) {
+        setError(json.error ?? "Unable to update RSVP.");
+      } else {
+        setMessage(
+          json.status === "confirmed"
+            ? "You're in! Spot confirmed."
+            : json.status === "declined"
+              ? "You've declined this round."
+              : json.status === "requested"
+                ? "Request sent — waiting for host approval."
+                : `RSVP saved as "${json.status}".`,
+        );
+        await loadRound();
       }
+    } finally {
+      setRsvpBusy(false);
     }
-    setRsvpBusy(false);
   }
 
   async function finalizeRound() {
@@ -223,87 +226,193 @@ export default function RoundInvitePage({
   }
 
   if (!round) {
-    return <p className="text-sm text-charcoal-300">Loading round...</p>;
+    return (
+      <ParfadeLoadingBlock className="py-12" message="Loading round…" size="md" />
+    );
   }
 
   const hasResponded = round.currentUserSpotStatus !== null;
   const isFull = round.spotsRemaining <= 0;
-  const spotsArray = Array.from({ length: round.totalSpots }, (_, i) => i < round.confirmedCount);
+  const confirmedPlayers = round.confirmedPlayers ?? [];
+  const declinedPlayers = round.declinedPlayers ?? [];
+  const canUseGroupChat = round.isHost || round.currentUserSpotStatus === "confirmed";
 
   return (
     <section className="space-y-5">
       <OpenInParfadeAppBar inviteToken={params.token} browserUrl={browserUrl} />
 
-      <div className="parfade-card">
-        <Image
-          src={round.imageUrl}
-          alt={round.courseName ?? "Round image"}
-          width={1200}
-          height={700}
-          className="h-48 w-full rounded-2xl object-cover"
-        />
-        <p className="parfade-label mt-5">Round invite</p>
-        <h1 className="parfade-page-title">{round.courseName}</h1>
-
-        <div className="mt-4 flex items-center gap-3">
-          {round.hostAvatar && (
-            <Image src={round.hostAvatar} alt={round.hostName} width={32} height={32} className="rounded-full" />
-          )}
-          <div>
-            <p className="text-sm font-semibold text-charcoal">{round.hostName}</p>
-            <p className="text-xs text-charcoal-300">Host</p>
+      <div className="space-y-2">
+        {round.mode === "scheduled" ? (
+          <div className="relative h-[180px] w-full overflow-hidden rounded-2xl bg-[#e9e5de]">
+            <Image
+              src={round.imageUrl}
+              alt={round.courseName ?? "Round image"}
+              fill
+              className="object-cover"
+              sizes="100vw"
+              priority
+            />
           </div>
-        </div>
+        ) : null}
 
-        <div className="mt-4 flex gap-6">
-          <div>
-            <p className="parfade-label">Date</p>
-            <p className="text-sm font-medium text-charcoal">
-              {new Date(round.teeTime ?? round.targetDate).toLocaleDateString("en-US", {
-                weekday: "short",
+        {round.mode === "planning" ? (
+          <PlanningRoundBadgeWeb preferredTimeWindow={round.preferredTimeWindow} compact />
+        ) : null}
+
+        {round.mode === "planning" ? (
+          <h1 className="mt-2 text-[28px] font-bold leading-tight text-[#1c1c1e]">
+            {new Date(round.targetDate).toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
+          </h1>
+        ) : (
+          <h1 className="mt-2 text-[28px] font-bold leading-tight text-[#1c1c1e]">
+            {round.courseName}
+          </h1>
+        )}
+
+        {round.mode === "planning" ? (
+          <div className="space-y-0.5">
+            <p className="text-lg font-bold text-[#1c1c1e]">
+              {formatPlanningWindow(round.preferredTimeWindow)}
+            </p>
+            {round.planningLocation?.trim() ? (
+              <p className="text-base font-semibold text-[#6e6e6e]">
+                {round.planningLocation.trim()}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {round.mode === "scheduled" ? (
+          <div className="space-y-0.5">
+            <p className="text-lg font-bold text-[#1c1c1e]">
+              {new Date(round.teeTime as string).toLocaleDateString("en-US", {
+                weekday: "long",
                 month: "short",
                 day: "numeric",
               })}
             </p>
-          </div>
-          <div>
-            <p className="parfade-label">{round.mode === "planning" ? "Status" : "Tee time"}</p>
-            <p className="text-sm font-medium text-charcoal">
-              {round.mode === "planning"
-                ? formatPlanningWindow(round.preferredTimeWindow)
-                : new Date(round.teeTime as string).toLocaleTimeString("en-US", {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
+            <p className="text-base font-semibold text-[#6e6e6e]">
+              {new Date(round.teeTime as string).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
             </p>
-            {round.mode === "planning" && round.planningLocation ? (
-              <p className="mt-1 text-xs text-charcoal-300">{round.planningLocation}</p>
-            ) : null}
           </div>
+        ) : null}
+
+        <div className="mt-3">
+          <p className="mb-1.5 text-xs font-bold uppercase tracking-[0.06em] text-[#6e6e6e]">
+            Claimed {confirmedPlayers.length}/{round.totalSpots}
+          </p>
+          <ConfirmedSpotsRowWeb
+            roundId={round.id}
+            totalSpots={round.totalSpots}
+            players={confirmedPlayers}
+            size="md"
+            initialTone="muted"
+          />
         </div>
 
-        {/* Spots visual */}
-        <div className="mt-5">
-          <p className="parfade-label">Spots</p>
-          <div className="flex gap-2">
-            {spotsArray.map((filled, i) => (
-              <div
-                key={i}
-                className={`h-10 flex-1 rounded-lg transition-colors ${
-                  filled ? "bg-fairway" : "bg-[#edf4ef]"
-                }`}
-              />
-            ))}
+        {declinedPlayers.length > 0 ? (
+          <div className="mt-2">
+            <p className="mb-1.5 text-xs font-bold uppercase tracking-[0.06em] text-[#6e6e6e]">
+              Declined
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {declinedPlayers.map((player) => (
+                <div
+                  key={player.id}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#ece8e1] bg-[#f5f3ef] px-2 py-1.5"
+                >
+                  {player.avatar ? (
+                    <Image
+                      src={player.avatar}
+                      alt=""
+                      width={22}
+                      height={22}
+                      className="rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-[22px] w-[22px] items-center justify-center rounded-full border border-[#ece8e1] bg-[#f1efea] text-[11px] font-bold text-[#6e6e6e]">
+                      {player.name.trim().charAt(0).toUpperCase() || "?"}
+                    </div>
+                  )}
+                  <span className="max-w-[140px] truncate text-xs font-semibold text-[#6e6e6e]">
+                    {player.name}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-          <p className="mt-1.5 text-xs text-charcoal-300">
-            {round.confirmedCount}/{round.totalSpots} confirmed &middot; {round.spotsRemaining} open
-          </p>
-        </div>
+        ) : null}
       </div>
 
       <SignedIn>
-        {round.isHost || round.currentUserSpotStatus === "confirmed" ? (
-          <RoundChatPanel inviteToken={params.token} />
+        {canUseGroupChat && confirmedPlayers.length >= 2 ? (
+          <Link
+            href={`/games?roundInviteToken=${encodeURIComponent(params.token)}`}
+            className="mb-2 flex items-center gap-3 rounded-xl border border-[#ece8e1] bg-white p-3 shadow-sm transition hover:bg-[#faf8f5] active:opacity-95"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4ef] text-[#1a3c2a]">
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M5 3v18M5 4h11l-2 3.5 2 3.5H5"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-bold text-[#1c1c1e]">Side games</p>
+              <p className="text-[13px] leading-snug text-[#6e6e6e]">
+                Skins, Wolf, and more with everyone in this round.
+              </p>
+            </div>
+            <span className="shrink-0 text-[#6e6e6e]" aria-hidden>
+              &rsaquo;
+            </span>
+          </Link>
+        ) : null}
+        {canUseGroupChat ? (
+          <Link
+            href={`/round/${params.token}/chat`}
+            className="mb-2 flex items-center gap-3 rounded-xl border border-[#ece8e1] bg-white p-3 shadow-sm transition hover:bg-[#faf8f5] active:opacity-95"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4ef] text-[#1a3c2a]">
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M8 10h8M8 14h5M6 4h12a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 3v-3H6a2 2 0 01-2-2V6a2 2 0 012-2z"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-bold text-[#1c1c1e]">Group chat</p>
+              {round.lastChatMessage ? (
+                <p className="truncate text-[13px] leading-snug text-[#6e6e6e]">
+                  <span className="font-semibold">{round.lastChatMessage.senderName}</span>
+                  {": "}
+                  {round.lastChatMessage.body}
+                </p>
+              ) : (
+                <p className="text-[13px] leading-snug text-[#6e6e6e]">
+                  Host and confirmed players only.
+                </p>
+              )}
+            </div>
+            <span className="shrink-0 text-[#6e6e6e]" aria-hidden>
+              &rsaquo;
+            </span>
+          </Link>
         ) : (
           <div className="rounded-2xl border border-[#ece8e1] bg-[#faf8f5] px-4 py-3 text-sm text-[#6e6e6e]">
             Group chat is for the host and players who have claimed a spot.
@@ -340,11 +449,11 @@ export default function RoundInvitePage({
                   className="parfade-input"
                   placeholder="Search golf course..."
                 />
-                {loadingFinalizeCourses && (
-                  <span className="absolute right-4 top-3.5 text-xs text-charcoal-300">
-                    Searching...
+                {loadingFinalizeCourses ? (
+                  <span className="absolute right-3.5 top-3 flex items-center">
+                    <ParfadeSpinner size="xs" variant="muted" aria-label="Searching courses" />
                   </span>
-                )}
+                ) : null}
 
                 {showFinalizeResults && finalizeResults.length > 0 && (
                   <ul className="absolute z-20 mt-2 max-h-52 w-full overflow-auto rounded-2xl bg-white shadow-lg">
@@ -385,9 +494,16 @@ export default function RoundInvitePage({
                 type="button"
                 onClick={() => void finalizeRound()}
                 disabled={finalizing}
-                className="parfade-btn-primary w-full disabled:opacity-40"
+                className="parfade-btn-primary inline-flex w-full items-center justify-center gap-2 disabled:opacity-40"
               >
-                {finalizing ? "Finalizing..." : "Finalize round"}
+                {finalizing ? (
+                  <>
+                    <ParfadeSpinner size="sm" variant="onPrimary" aria-label="Finalizing" />
+                    Finalizing…
+                  </>
+                ) : (
+                  "Finalize round"
+                )}
               </button>
             </div>
           )}
@@ -422,14 +538,23 @@ export default function RoundInvitePage({
               {(!hasResponded || round.currentUserSpotStatus === "invited" || round.currentUserSpotStatus === "declined") && (
                 <div className={`flex gap-3 ${message || error ? "mt-4" : ""}`}>
                   {!isFull && (
-                    <button onClick={() => rsvp("claim")} disabled={rsvpBusy} className="parfade-btn-primary flex-1 disabled:opacity-40">
-                      {rsvpBusy
-                        ? "Updating..."
-                        : round.mode === "planning"
-                          ? "I'm in"
-                          : round.joinPolicy === "approval"
-                            ? "Request to join"
-                            : "Claim spot"}
+                    <button
+                      onClick={() => rsvp("claim")}
+                      disabled={rsvpBusy}
+                      className="parfade-btn-primary inline-flex flex-1 items-center justify-center gap-2 disabled:opacity-40"
+                    >
+                      {rsvpBusy ? (
+                        <>
+                          <ParfadeSpinner size="sm" variant="onPrimary" aria-label="Updating" />
+                          Updating…
+                        </>
+                      ) : round.mode === "planning" ? (
+                        "I'm in"
+                      ) : round.joinPolicy === "approval" ? (
+                        "Request to join"
+                      ) : (
+                        "Claim spot"
+                      )}
                     </button>
                   )}
                   {isFull && !hasResponded && (

@@ -21,7 +21,7 @@ import {
 import { useAblyChatMounted } from "../../lib/ably-chat-context";
 import { ParfadeRoundDetailLiveRefresh } from "../../components/parfade-round-detail-live-refresh";
 import { RoundCoverImage } from "../../components/round-cover-image";
-import { apiBaseUrl, apiDelete, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { apiDelete, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../lib/api";
 import {
   getInviteSelection,
   InviteSelectionUser,
@@ -450,7 +450,7 @@ export default function RoundDetailsScreen() {
 
   async function shareInviteLink() {
     if (!round) return;
-    const inviteUrl = `${apiBaseUrl.replace(/\/$/, "")}/round/${round.inviteToken}`;
+    const inviteUrl = `${publicWebOrigin}/round/${round.inviteToken}`;
     const where =
       round.mode === "planning"
         ? (round.planningLocation?.trim() ||

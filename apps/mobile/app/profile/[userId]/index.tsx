@@ -18,7 +18,7 @@ import { ProfileStatCategoryCards } from "../../../components/profile-stat-categ
 import { claimRsvpButtonStyles as btn } from "../../../lib/claim-rsvp-button-styles";
 import { formatProfileNavTitle } from "../../../lib/format-profile-nav-title";
 import { useAblyChatMounted } from "../../../lib/ably-chat-context";
-import { apiDelete, apiPost, toAbsoluteUrl } from "../../../lib/api";
+import { apiDelete, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../../lib/api";
 import {
   fetchPublicProfileAndCache,
   getCachedPublicProfile,
@@ -234,9 +234,12 @@ export default function PublicProfileScreen() {
   }
 
   async function handleShareProfile() {
-    if (!profile) return;
+    if (!profile || !userId) return;
+    const uid = Array.isArray(userId) ? userId[0] : userId;
+    if (!uid) return;
+    const profileUrl = `${publicWebOrigin}/profile/${uid}`;
     await Share.share({
-      message: `Check out ${profile.user.name}'s profile on Parfade.`,
+      message: `Check out ${profile.user.name}'s profile on Parfade: ${profileUrl}`,
     });
   }
 

@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { ProfileStatCategoryCards } from "../../components/profile-stat-category-cards";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
-import { apiGet, toAbsoluteUrl } from "../../lib/api";
+import { apiGet, publicWebOrigin, toAbsoluteUrl } from "../../lib/api";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import {
   ensureSkinsFourthColumn,
@@ -160,8 +160,15 @@ export default function ProfileScreen() {
 
   async function handleShareProfile() {
     const profileLabel = name.trim() || "Parfade golfer";
+    if (!myUserId) {
+      await Share.share({
+        message: `Check out ${profileLabel} on Parfade.`,
+      });
+      return;
+    }
+    const profileUrl = `${publicWebOrigin}/profile/${myUserId}`;
     await Share.share({
-      message: `Check out ${profileLabel}'s profile on Parfade.`,
+      message: `Check out ${profileLabel}'s profile on Parfade: ${profileUrl}`,
     });
   }
 

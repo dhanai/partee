@@ -9,7 +9,11 @@ export default function SignUpPage() {
         <ParfadeWordmark tone="light" widthPx={140} className="mx-auto block" />
       </div>
       <div className="w-full max-w-sm">
-        <SignUp appearance={clerkParfadeAppearance} />
+        <SignUp
+          appearance={clerkParfadeAppearance}
+          fallbackRedirectUrl="/discover"
+          signInFallbackRedirectUrl="/discover"
+        />
       </div>
     </main>
   );

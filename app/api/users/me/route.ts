@@ -9,6 +9,7 @@ import { resolveValidatedUsLocationLabel } from "@/lib/places";
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
+  /** Ignored: email is managed by Clerk (UserProfile / webhooks), not this route. */
   email: z.string().trim().email().max(255).nullable().optional(),
   avatar: z
     .string()
@@ -88,7 +89,6 @@ export async function PATCH(req: Request) {
 
     const updates: Partial<{
       name: string;
-      email: string | null;
       avatar: string | null;
       handicap: string | null;
       homeCourse: string | null;
@@ -97,7 +97,6 @@ export async function PATCH(req: Request) {
     }> = {};
 
     if (parsed.name !== undefined) updates.name = parsed.name;
-    if (parsed.email !== undefined) updates.email = parsed.email;
     if (parsed.avatar !== undefined) updates.avatar = parsed.avatar?.trim() || null;
     if (parsed.handicap !== undefined) updates.handicap = parsed.handicap?.trim() || null;
     if (parsed.location !== undefined) {

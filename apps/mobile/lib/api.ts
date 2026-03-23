@@ -39,6 +39,21 @@ function normalizeApiBaseUrl(raw: string): string {
 
 export const apiBaseUrl = normalizeApiBaseUrl(baseUrlFromExpoConfig);
 
+/**
+ * Canonical site origin for user-facing links (share sheet, etc.).
+ * API calls use {@link apiBaseUrl} (often a preview host); shared URLs should stay on the custom domain.
+ */
+function normalizeWebOrigin(raw: string): string {
+  return String(raw).trim().replace(/\/+$/, "");
+}
+
+const webBaseFromConfig =
+  process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim() ||
+  (Constants.expoConfig?.extra?.webBaseUrl as string | undefined) ||
+  "https://parfade.com";
+
+export const publicWebOrigin = normalizeWebOrigin(webBaseFromConfig);
+
 function responseLooksLikeHtmlPage(raw: string): boolean {
   const s = raw.trimStart().toLowerCase();
   return s.startsWith("<!doctype") || s.startsWith("<html");

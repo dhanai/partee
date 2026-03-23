@@ -6,7 +6,9 @@ const isProtectedRoute = createRouteMatcher([
   "/create(.*)",
   "/discover(.*)",
   "/games(.*)",
+  "/notifications(.*)",
   "/profile(.*)",
+  "/settings(.*)",
 ]);
 
 function withCors(req: Request, res: NextResponse) {
