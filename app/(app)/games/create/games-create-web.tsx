@@ -21,7 +21,6 @@ export function GamesCreateWeb() {
   const roundInviteToken = searchParams.get("roundInviteToken")?.trim() ?? "";
 
   const { getToken, isLoaded } = useAuth();
-  const [browserUrl, setBrowserUrl] = useState("");
 
   const def = gameTypeRaw ? getGameDefinition(gameTypeRaw) : undefined;
   const [round, setRound] = useState<RoundForGame | null>(null);
