@@ -11,8 +11,18 @@ const nullableUrl = z
 
 const mediaKindZ = z.enum(["image", "video"]).nullable().optional();
 
+const adPatchZ = z.object({
+  targetUrl: z.union([z.string().url(), z.literal(""), z.null()]).optional(),
+  mediaUrl: z.union([z.string().url(), z.literal(""), z.null()]).optional(),
+  mediaKind: mediaKindZ,
+  title: z.string().max(200).optional(),
+  subtitle: z.string().max(500).optional(),
+  ctaLabel: z.string().max(80).optional(),
+});
+
 const slotPatchZ = z.object({
   enabled: z.boolean().optional(),
+  ads: z.array(adPatchZ).max(20).optional(),
   targetUrl: nullableUrl,
   mediaUrl: z.union([z.string().url(), z.literal(""), z.null()]).optional(),
   mediaKind: mediaKindZ,
@@ -51,6 +61,16 @@ export async function GET(req: Request) {
 function applySlotPatch(base: HousePromoSlotDto, patch: z.infer<typeof slotPatchZ>): HousePromoSlotDto {
   const next = { ...base };
   if (patch.enabled !== undefined) next.enabled = patch.enabled;
+  if (patch.ads !== undefined) {
+    next.ads = patch.ads.map((ad) => ({
+      targetUrl: ad.targetUrl === "" ? null : (ad.targetUrl ?? null),
+      mediaUrl: ad.mediaUrl === "" ? null : (ad.mediaUrl ?? null),
+      mediaKind: ad.mediaKind ?? null,
+      title: ad.title?.trim() ?? "",
+      subtitle: ad.subtitle?.trim() ?? "",
+      ctaLabel: ad.ctaLabel?.trim() ?? "",
+    }));
+  }
   if (patch.targetUrl !== undefined) next.targetUrl = patch.targetUrl ?? null;
   if (patch.mediaUrl !== undefined) next.mediaUrl = patch.mediaUrl === "" ? null : patch.mediaUrl;
   if (patch.mediaKind !== undefined) next.mediaKind = patch.mediaKind ?? null;
@@ -58,6 +78,35 @@ function applySlotPatch(base: HousePromoSlotDto, patch: z.infer<typeof slotPatch
   if (patch.subtitle !== undefined) next.subtitle = patch.subtitle;
   if (patch.ctaLabel !== undefined) next.ctaLabel = patch.ctaLabel;
   if (patch.discoverMixPercent !== undefined) next.discoverMixPercent = patch.discoverMixPercent;
+  if (
+    patch.ads === undefined &&
+    (patch.targetUrl !== undefined ||
+      patch.mediaUrl !== undefined ||
+      patch.mediaKind !== undefined ||
+      patch.title !== undefined ||
+      patch.subtitle !== undefined ||
+      patch.ctaLabel !== undefined)
+  ) {
+    const first = next.ads[0] ?? {
+      targetUrl: null,
+      mediaUrl: null,
+      mediaKind: null,
+      title: "",
+      subtitle: "",
+      ctaLabel: "",
+    };
+    next.ads = [
+      {
+        targetUrl: next.targetUrl ?? first.targetUrl,
+        mediaUrl: next.mediaUrl ?? first.mediaUrl,
+        mediaKind: next.mediaKind ?? first.mediaKind,
+        title: next.title || first.title,
+        subtitle: next.subtitle || first.subtitle,
+        ctaLabel: next.ctaLabel || first.ctaLabel,
+      },
+      ...next.ads.slice(1),
+    ];
+  }
   return next;
 }
 

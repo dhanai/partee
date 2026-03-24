@@ -2,6 +2,14 @@ import { apiGet } from "./api";
 
 export type HousePromoSlotClient = {
   enabled: boolean;
+  ads?: Array<{
+    targetUrl: string | null;
+    mediaUrl: string | null;
+    mediaKind: "image" | "video" | null;
+    title: string;
+    subtitle: string;
+    ctaLabel: string;
+  }>;
   targetUrl: string | null;
   mediaUrl: string | null;
   mediaKind: "image" | "video" | null;

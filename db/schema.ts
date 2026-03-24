@@ -505,6 +505,7 @@ export const userFollows = pgTable(
 export const housePromoConfig = pgTable("house_promo_config", {
   slot: text("slot").primaryKey().notNull(),
   enabled: boolean("enabled").notNull().default(false),
+  ads: jsonb("ads").$type<Record<string, unknown>[]>().notNull().default(sql`'[]'::jsonb`),
   targetUrl: text("target_url"),
   mediaUrl: text("media_url"),
   mediaKind: text("media_kind"),
