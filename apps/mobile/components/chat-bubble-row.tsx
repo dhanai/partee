@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import {
   Image,
   Modal,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type LayoutRectangle,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -59,6 +60,13 @@ function emojiDisplay(key: string): string {
 }
 
 const SWIPE_THRESHOLD = 50;
+const PICKER_ITEM_SIZE = 44;
+const PICKER_PADDING = 8;
+const PICKER_GAP = 4;
+const PICKER_WIDTH =
+  REACTION_EMOJIS.length * PICKER_ITEM_SIZE +
+  (REACTION_EMOJIS.length - 1) * PICKER_GAP +
+  PICKER_PADDING * 2;
 
 export const ChatBubbleRow = memo(function ChatBubbleRow({
   message: m,
@@ -69,6 +77,8 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onReply,
 }: Props) {
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [bubbleLayout, setBubbleLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const bubbleRef = useRef<View>(null);
   const translateX = useSharedValue(0);
 
   const toggleHeart = useCallback(() => {
@@ -78,7 +88,10 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   }, [m.id, m.reactions, viewerId, onReaction]);
 
   const showPicker = useCallback(() => {
-    setPickerVisible(true);
+    bubbleRef.current?.measureInWindow((x, y, width, height) => {
+      setBubbleLayout({ x, y, width, height });
+      setPickerVisible(true);
+    });
   }, []);
 
   const triggerReply = useCallback(() => {
@@ -195,7 +208,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const bubbleContent = isMine ? (
     <>
       <View style={legacyStyles.bubbleRowFlex} />
-      <View style={styles.bubbleCol}>
+      <View ref={bubbleRef} style={styles.bubbleCol}>
         {replyPreview}
         <View style={[legacyStyles.bubble, legacyStyles.bubbleMine]}>
           <Text style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}>
@@ -212,7 +225,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   ) : (
     <>
       {avatarEl}
-      <View style={styles.bubbleCol}>
+      <View ref={bubbleRef} style={styles.bubbleCol}>
         {replyPreview}
         <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs]}>
           <Text style={legacyStyles.bubbleName}>{m.user.name}</Text>
@@ -245,17 +258,30 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
           style={styles.pickerOverlay}
           onPress={() => setPickerVisible(false)}
         >
-          <View style={styles.pickerPill}>
-            {REACTION_EMOJIS.map((e) => (
-              <Pressable
-                key={e.key}
-                style={styles.pickerItem}
-                onPress={() => handlePickReaction(e.key)}
-              >
-                <Text style={styles.pickerEmoji}>{e.display}</Text>
-              </Pressable>
-            ))}
-          </View>
+          {bubbleLayout ? (
+            <View
+              style={[
+                styles.pickerPill,
+                {
+                  position: "absolute",
+                  top: bubbleLayout.y - 52,
+                  left: isMine
+                    ? bubbleLayout.x + bubbleLayout.width - PICKER_WIDTH
+                    : bubbleLayout.x,
+                },
+              ]}
+            >
+              {REACTION_EMOJIS.map((e) => (
+                <Pressable
+                  key={e.key}
+                  style={styles.pickerItem}
+                  onPress={() => handlePickReaction(e.key)}
+                >
+                  <Text style={styles.pickerEmoji}>{e.display}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </Pressable>
       </Modal>
     </View>
