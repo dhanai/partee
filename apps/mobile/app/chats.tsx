@@ -247,9 +247,9 @@ export default function ChatsScreen() {
             <Pressable
               onPress={() => router.push("/new-chat")}
               hitSlop={8}
-              style={{ marginRight: 4 }}
+              style={{ marginRight: 2 }}
             >
-              <Ionicons name="create-outline" size={24} color={colors.text} />
+              <Ionicons name="create-outline" size={22} color={colors.text} style={{ marginTop: -2, marginRight: -5 }} />
             </Pressable>
           ),
         }}
