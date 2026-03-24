@@ -381,8 +381,6 @@ const styles = StyleSheet.create({
   },
   avatarInitial: { fontSize: 11, fontWeight: "700", color: colors.fairway },
   bubble: {
-    flexShrink: 1,
-    maxWidth: "78%",
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 8,

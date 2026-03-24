@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import {
   Image,
   Modal,
@@ -69,12 +69,38 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onReply,
 }: Props) {
   const [pickerVisible, setPickerVisible] = useState(false);
-  const lastTapRef = useRef(0);
   const translateX = useSharedValue(0);
+
+  const toggleHeart = useCallback(() => {
+    if (!onReaction) return;
+    const hasMyHeart = m.reactions?.heart?.userIds?.includes(viewerId ?? "");
+    onReaction(m.id, "heart", hasMyHeart ? "remove" : "add");
+  }, [m.id, m.reactions, viewerId, onReaction]);
+
+  const showPicker = useCallback(() => {
+    setPickerVisible(true);
+  }, []);
 
   const triggerReply = useCallback(() => {
     onReply?.(m);
   }, [m, onReply]);
+
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .maxDuration(300)
+    .onEnd(() => {
+      if (onReaction) {
+        runOnJS(toggleHeart)();
+      }
+    });
+
+  const longPress = Gesture.LongPress()
+    .minDuration(400)
+    .onEnd((_e, success) => {
+      if (success) {
+        runOnJS(showPicker)();
+      }
+    });
 
   const panGesture = Gesture.Pan()
     .activeOffsetX(20)
@@ -91,6 +117,8 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
     });
 
+  const composed = Gesture.Race(panGesture, Gesture.Exclusive(doubleTap, longPress));
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
   }));
@@ -99,25 +127,6 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     opacity: Math.min(translateX.value / SWIPE_THRESHOLD, 1),
     transform: [{ scale: Math.min(translateX.value / SWIPE_THRESHOLD, 1) }],
   }));
-
-  const handlePress = useCallback(() => {
-    const now = Date.now();
-    if (now - lastTapRef.current < 300) {
-      if (conversationId && onReaction) {
-        const hasMyHeart = m.reactions?.heart?.userIds?.includes(viewerId ?? "");
-        onReaction(m.id, "heart", hasMyHeart ? "remove" : "add");
-      }
-      lastTapRef.current = 0;
-    } else {
-      lastTapRef.current = now;
-    }
-  }, [m.id, m.reactions, conversationId, viewerId, onReaction]);
-
-  const handleLongPress = useCallback(() => {
-    if (conversationId) {
-      setPickerVisible(true);
-    }
-  }, [conversationId]);
 
   const handlePickReaction = useCallback(
     (emoji: string) => {
@@ -183,22 +192,16 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const bubbleContent = isMine ? (
     <>
       <View style={legacyStyles.bubbleRowFlex} />
-      <View>
-        <Pressable
-          onPress={handlePress}
-          onLongPress={handleLongPress}
-          delayLongPress={400}
-        >
-          {replyPreview}
-          <View style={[legacyStyles.bubble, legacyStyles.bubbleMine]}>
-            <Text style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}>
-              {m.body}
-            </Text>
-            <Text style={[legacyStyles.bubbleTime, legacyStyles.bubbleTimeMine]}>
-              {formatTime(m.createdAt)}
-            </Text>
-          </View>
-        </Pressable>
+      <View style={styles.bubbleCol}>
+        {replyPreview}
+        <View style={[legacyStyles.bubble, legacyStyles.bubbleMine]}>
+          <Text style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}>
+            {m.body}
+          </Text>
+          <Text style={[legacyStyles.bubbleTime, legacyStyles.bubbleTimeMine]}>
+            {formatTime(m.createdAt)}
+          </Text>
+        </View>
         {reactionChips}
       </View>
       {avatarEl}
@@ -206,19 +209,13 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   ) : (
     <>
       {avatarEl}
-      <View>
-        <Pressable
-          onPress={handlePress}
-          onLongPress={handleLongPress}
-          delayLongPress={400}
-        >
-          {replyPreview}
-          <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs]}>
-            <Text style={legacyStyles.bubbleName}>{m.user.name}</Text>
-            <Text style={legacyStyles.bubbleBody}>{m.body}</Text>
-            <Text style={legacyStyles.bubbleTime}>{formatTime(m.createdAt)}</Text>
-          </View>
-        </Pressable>
+      <View style={styles.bubbleCol}>
+        {replyPreview}
+        <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs]}>
+          <Text style={legacyStyles.bubbleName}>{m.user.name}</Text>
+          <Text style={legacyStyles.bubbleBody}>{m.body}</Text>
+          <Text style={legacyStyles.bubbleTime}>{formatTime(m.createdAt)}</Text>
+        </View>
         {reactionChips}
       </View>
     </>
@@ -229,7 +226,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       <Animated.View style={[styles.replyIconWrap, replyIconStyle]}>
         <Ionicons name="arrow-undo" size={18} color={colors.muted} />
       </Animated.View>
-      <GestureDetector gesture={panGesture}>
+      <GestureDetector gesture={composed}>
         <Animated.View style={[legacyStyles.bubbleRow, animatedStyle]}>
           {bubbleContent}
         </Animated.View>
@@ -264,8 +261,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
 const styles = StyleSheet.create({
   swipeContainer: {
-    position: "relative",
-    overflow: "hidden",
+    width: "100%",
   },
   replyIconWrap: {
     position: "absolute",
@@ -275,6 +271,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     width: 32,
+  },
+  bubbleCol: {
+    flexShrink: 1,
+    maxWidth: "78%",
   },
   reactionRow: {
     flexDirection: "row",
