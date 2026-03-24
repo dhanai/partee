@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ParfadeWordmark } from "@/components/parfade-wordmark";
+import { PublicSiteFooter } from "@/components/public-site-footer";
 
 const gallery = [
   {
@@ -177,20 +178,7 @@ export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null 
         </section>
       </main>
 
-      <footer className="border-t border-[#ece8e1] px-5 py-8 sm:px-8 lg:px-10 xl:px-12">
-        <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 text-center text-[13px] text-charcoal-400 sm:flex-row sm:text-left">
-          <ParfadeWordmark widthPx={100} className="opacity-90" />
-          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:justify-end">
-            <Link href="/support" className="font-semibold text-charcoal-500 transition hover:text-fairway">
-              Support
-            </Link>
-            <span className="text-charcoal-200" aria-hidden>
-              ·
-            </span>
-            <p>© {new Date().getFullYear()} Parfade</p>
-          </div>
-        </div>
-      </footer>
+      <PublicSiteFooter />
     </div>
   );
 }

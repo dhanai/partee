@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ParfadeWordmark } from "@/components/parfade-wordmark";
+import { PublicSiteFooter } from "@/components/public-site-footer";
 
 export const metadata: Metadata = {
   title: "Support — Parfade",
@@ -94,14 +95,7 @@ export default function SupportPage() {
         </div>
       </main>
 
-      <footer className="border-t border-[#ece8e1] px-5 py-8 sm:px-8">
-        <div className="mx-auto flex max-w-2xl flex-col gap-2 text-center text-[13px] text-charcoal-400 sm:text-left lg:max-w-3xl xl:max-w-4xl">
-          <Link href="/" className="inline-flex justify-center sm:justify-start">
-            <ParfadeWordmark widthPx={96} className="opacity-90" />
-          </Link>
-          <p>© {new Date().getFullYear()} Parfade</p>
-        </div>
-      </footer>
+      <PublicSiteFooter />
     </div>
   );
 }
