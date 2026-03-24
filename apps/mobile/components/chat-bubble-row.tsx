@@ -87,19 +87,22 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
-    .maxDuration(300)
     .onEnd(() => {
       if (onReaction) {
         runOnJS(toggleHeart)();
       }
     });
 
+  const singleTap = Gesture.Tap()
+    .numberOfTaps(1)
+    .maxDuration(250);
+
+  const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
+
   const longPress = Gesture.LongPress()
-    .minDuration(400)
-    .onEnd((_e, success) => {
-      if (success) {
-        runOnJS(showPicker)();
-      }
+    .minDuration(350)
+    .onStart(() => {
+      runOnJS(showPicker)();
     });
 
   const panGesture = Gesture.Pan()
@@ -117,7 +120,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
     });
 
-  const composed = Gesture.Race(panGesture, Gesture.Exclusive(doubleTap, longPress));
+  const composed = Gesture.Race(panGesture, Gesture.Simultaneous(longPress, tapGestures));
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
