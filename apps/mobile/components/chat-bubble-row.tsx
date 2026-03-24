@@ -20,10 +20,10 @@ import { colors } from "../lib/theme";
 import { type ChatMessage, roundGroupChatStyles as legacyStyles } from "./round-group-chat-poll";
 
 const REACTION_EMOJIS = [
-  { key: "heart", display: "❤️" },
-  { key: "laugh", display: "😂" },
-  { key: "thumbs_up", display: "👍" },
-  { key: "thumbs_down", display: "👎" },
+  { key: "heart", display: String.fromCodePoint(0x2764, 0xFE0F) },
+  { key: "laugh", display: String.fromCodePoint(0x1F602) },
+  { key: "thumbs_up", display: String.fromCodePoint(0x1F44D) },
+  { key: "thumbs_down", display: String.fromCodePoint(0x1F44E) },
 ] as const;
 
 type ReactionMap = Record<string, { count: number; userIds: string[] }>;

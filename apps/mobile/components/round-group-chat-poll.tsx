@@ -263,20 +263,46 @@ export function RoundGroupChatPoll({
     />
   );
 
+  const handleReaction = useCallback(
+    (messageId: string, emoji: string, action: "add" | "remove") => {
+      const vid = viewerId ?? "";
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId) return m;
+          const reactions = { ...(m as any).reactions } as Record<string, { count: number; userIds: string[] }>;
+          const existing = reactions[emoji] ?? { count: 0, userIds: [] };
+          if (action === "add") {
+            if (!existing.userIds.includes(vid)) {
+              reactions[emoji] = { count: existing.count + 1, userIds: [...existing.userIds, vid] };
+            }
+          } else {
+            reactions[emoji] = {
+              count: Math.max(0, existing.count - 1),
+              userIds: existing.userIds.filter((id) => id !== vid),
+            };
+            if (reactions[emoji].count === 0) delete reactions[emoji];
+          }
+          return { ...m, reactions } as ChatMessage;
+        }),
+      );
+    },
+    [viewerId],
+  );
+
   const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const renderItem = useCallback(
     ({ item }: { item: ChatMessage }) => (
-      <ChatBubbleRow message={item} isMine={resolveMine(item)} />
+      <ChatBubbleRow message={item} isMine={resolveMine(item)} viewerId={viewerId} onReaction={handleReaction} />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewerId],
+    [viewerId, handleReaction],
   );
   const renderBubbleInline = useCallback(
     (m: ChatMessage) => (
-      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} />
+      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} viewerId={viewerId} onReaction={handleReaction} />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewerId],
+    [viewerId, handleReaction],
   );
   const keyExtractor = useCallback((m: ChatMessage) => m.id, []);
 
