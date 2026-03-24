@@ -32,6 +32,9 @@ export default function RoundChatPage({ params }: { params: { token: string } })
     void load();
   }, [load]);
 
+  const canUse =
+    round != null && (round.isHost || round.currentUserSpotStatus === "confirmed");
+
   useEffect(() => {
     if (!canUse) return;
     const markRead = () =>
@@ -43,9 +46,6 @@ export default function RoundChatPage({ params }: { params: { token: string } })
     void markRead();
     return () => void markRead();
   }, [canUse, params.token]);
-
-  const canUse =
-    round != null && (round.isHost || round.currentUserSpotStatus === "confirmed");
 
   useEffect(() => {
     if (!canUse || !round) {
