@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { roundMessages, rounds, users } from "@/db/schema";
+import { roundMessages, roundMessageReactions, rounds, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyRoundChatMessagePushes } from "@/lib/notify-user";
 import {
@@ -26,6 +26,15 @@ const postSchema = z.object({
     .max(MAX_BODY, `Message must be ${MAX_BODY} characters or fewer.`),
 });
 
+type MappedMessage = {
+  id: string;
+  body: string;
+  createdAt: string;
+  isMine: boolean;
+  user: { id: string; name: string; avatar: string | null };
+  reactions?: Record<string, { count: number; userIds: string[] }>;
+};
+
 function mapMessageRow(
   r: {
     id: string;
@@ -36,7 +45,7 @@ function mapMessageRow(
     userAvatar: string | null;
   },
   viewerId: string,
-) {
+): MappedMessage {
   return {
     id: r.id,
     body: r.body,
@@ -48,6 +57,39 @@ function mapMessageRow(
       avatar: r.userAvatar,
     },
   };
+}
+
+async function attachReactions(msgs: MappedMessage[]): Promise<MappedMessage[]> {
+  if (msgs.length === 0) return msgs;
+  const ids = msgs.map((m) => m.id);
+  const rows = await db
+    .select({
+      messageId: roundMessageReactions.messageId,
+      emoji: roundMessageReactions.emoji,
+      userId: roundMessageReactions.userId,
+    })
+    .from(roundMessageReactions)
+    .where(inArray(roundMessageReactions.messageId, ids));
+
+  if (rows.length === 0) return msgs;
+
+  const map = new Map<string, Record<string, { count: number; userIds: string[] }>>();
+  for (const r of rows) {
+    let byMsg = map.get(r.messageId);
+    if (!byMsg) {
+      byMsg = {};
+      map.set(r.messageId, byMsg);
+    }
+    const entry = byMsg[r.emoji] ?? { count: 0, userIds: [] };
+    entry.count += 1;
+    entry.userIds.push(r.userId);
+    byMsg[r.emoji] = entry;
+  }
+
+  return msgs.map((m) => {
+    const reactions = map.get(m.id);
+    return reactions ? { ...m, reactions } : m;
+  });
 }
 
 export async function GET(req: Request, { params }: RouteContext) {
@@ -119,8 +161,9 @@ export async function GET(req: Request, { params }: RouteContext) {
         .orderBy(asc(roundMessages.createdAt))
         .limit(limit);
 
+      const mapped = rows.map((row) => mapMessageRow(row, viewer.id));
       return NextResponse.json({
-        messages: rows.map((row) => mapMessageRow(row, viewer.id)),
+        messages: await attachReactions(mapped),
         viewerId: viewer.id,
       });
     }
@@ -141,8 +184,9 @@ export async function GET(req: Request, { params }: RouteContext) {
       .limit(limit);
 
     const chronological = [...rowsDesc].reverse();
+    const mapped = chronological.map((row) => mapMessageRow(row, viewer.id));
     return NextResponse.json({
-      messages: chronological.map((row) => mapMessageRow(row, viewer.id)),
+      messages: await attachReactions(mapped),
       viewerId: viewer.id,
     });
   } catch (error) {

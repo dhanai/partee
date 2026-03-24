@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { apiGet, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiPost } from "../lib/api";
 import { parfadeRoundDetailChannel } from "../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../lib/parfade-ably-messages";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
@@ -367,7 +367,7 @@ export function RoundGroupChatConnected({
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== messageId) return m;
-          const reactions = { ...(m as any).reactions } as Record<string, { count: number; userIds: string[] }>;
+          const reactions = { ...(m.reactions ?? {}) };
           const existing = reactions[emoji] ?? { count: 0, userIds: [] };
           if (action === "add") {
             if (!existing.userIds.includes(vid)) {
@@ -380,9 +380,30 @@ export function RoundGroupChatConnected({
             };
             if (reactions[emoji].count === 0) delete reactions[emoji];
           }
-          return { ...m, reactions } as ChatMessage;
+          return { ...m, reactions };
         }),
       );
+
+      void (async () => {
+        try {
+          const authToken = await getTokenRef.current();
+          if (!authToken) return;
+          if (action === "add") {
+            await apiPost(
+              `/api/rounds/${inviteTokenRef.current}/messages/${messageId}/reactions`,
+              { emoji },
+              authToken,
+            );
+          } else {
+            await apiDelete(
+              `/api/rounds/${inviteTokenRef.current}/messages/${messageId}/reactions?emoji=${emoji}`,
+              authToken,
+            );
+          }
+        } catch {
+          /* best-effort; optimistic UI already applied */
+        }
+      })();
     },
     [viewerId],
   );

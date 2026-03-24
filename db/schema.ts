@@ -320,6 +320,29 @@ export const roundMessages = pgTable(
   }),
 );
 
+export const roundMessageReactions = pgTable(
+  "round_message_reactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => roundMessages.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    emoji: reactionEmojiEnum("emoji").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    msgUserEmojiUnique: uniqueIndex("round_msg_reactions_msg_user_emoji_unique").on(
+      table.messageId,
+      table.userId,
+      table.emoji,
+    ),
+    messageIdx: index("round_msg_reactions_message_idx").on(table.messageId),
+  }),
+);
+
 export const conversations = pgTable(
   "conversations",
   {
@@ -497,6 +520,7 @@ export type Course = typeof courses.$inferSelect;
 export type UserFollow = typeof userFollows.$inferSelect;
 export type InAppNotification = typeof inAppNotifications.$inferSelect;
 export type RoundMessage = typeof roundMessages.$inferSelect;
+export type RoundMessageReaction = typeof roundMessageReactions.$inferSelect;
 export type ChatReadReceipt = typeof chatReadReceipts.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
 export type GameSessionPlayer = typeof gameSessionPlayers.$inferSelect;
