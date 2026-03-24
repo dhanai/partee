@@ -1,16 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ParfadeSpinner } from "@/components/parfade-spinner";
 
 type Slot = {
   enabled: boolean;
-  targetUrl: string | null;
-  mediaUrl: string | null;
-  mediaKind: "image" | "video" | null;
-  title: string;
-  subtitle: string;
-  ctaLabel: string;
+  ads: Array<{
+    targetUrl: string | null;
+    mediaUrl: string | null;
+    mediaKind: "image" | "video" | null;
+    title: string;
+    subtitle: string;
+    ctaLabel: string;
+  }>;
   discoverMixPercent: number;
 };
 
@@ -18,12 +20,16 @@ type Payload = { discover: Slot; gameEnd: Slot };
 
 const emptySlot = (): Slot => ({
   enabled: false,
-  targetUrl: "",
-  mediaUrl: null,
-  mediaKind: null,
-  title: "",
-  subtitle: "",
-  ctaLabel: "",
+  ads: [
+    {
+      targetUrl: "",
+      mediaUrl: null,
+      mediaKind: null,
+      title: "",
+      subtitle: "",
+      ctaLabel: "",
+    },
+  ],
   discoverMixPercent: 0,
 });
 
@@ -32,16 +38,61 @@ function SlotFields({
   slot,
   onChange,
   showMix,
-  uploadBusy,
+  uploadBusyAt,
   onPickFile,
 }: {
   label: string;
   slot: Slot;
   onChange: (next: Slot) => void;
   showMix: boolean;
-  uploadBusy: boolean;
-  onPickFile: (file: File) => void;
+  uploadBusyAt: number | null;
+  onPickFile: (adIndex: number, file: File) => void;
 }) {
+  const adRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const [pendingScrollIndex, setPendingScrollIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (pendingScrollIndex == null) return;
+    const el = adRefs.current[pendingScrollIndex];
+    if (!el) return;
+    const raf = window.requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      setPendingScrollIndex(null);
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [pendingScrollIndex, slot.ads.length]);
+
+  function updateAd(index: number, patch: Partial<Slot["ads"][number]>) {
+    onChange({
+      ...slot,
+      ads: slot.ads.map((ad, i) => (i === index ? { ...ad, ...patch } : ad)),
+    });
+  }
+
+  function removeAd(index: number) {
+    if (slot.ads.length <= 1) return;
+    onChange({ ...slot, ads: slot.ads.filter((_, i) => i !== index) });
+  }
+
+  function addAd() {
+    const nextIndex = slot.ads.length;
+    setPendingScrollIndex(nextIndex);
+    onChange({
+      ...slot,
+      ads: [
+        ...slot.ads,
+        {
+          targetUrl: "",
+          mediaUrl: null,
+          mediaKind: null,
+          title: "",
+          subtitle: "",
+          ctaLabel: "",
+        },
+      ],
+    });
+  }
+
   return (
     <div className="space-y-4 rounded-xl border border-[#ece8e1] bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
@@ -75,82 +126,110 @@ function SlotFields({
         </label>
       ) : null}
 
-      <label className="block space-y-1">
-        <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Tap / swipe-up URL</span>
-        <input
-          type="url"
-          value={slot.targetUrl ?? ""}
-          onChange={(e) => onChange({ ...slot, targetUrl: e.target.value })}
-          placeholder="https://…"
-          className="w-full rounded-lg border border-[#ece8e1] bg-[#faf8f5] px-3 py-2 text-sm"
-        />
-      </label>
-
-      <div className="space-y-2">
-        <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Media (photo or video)</span>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="cursor-pointer rounded-lg border border-[#1a3c2a] bg-[#edf4ef] px-3 py-2 text-sm font-bold text-[#1a3c2a]">
-            {uploadBusy ? "Uploading…" : "Upload file"}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,.mp4,.mov"
-              className="hidden"
-              disabled={uploadBusy}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (f) onPickFile(f);
-              }}
-            />
-          </label>
-          {slot.mediaUrl ? (
-            <button
-              type="button"
-              className="text-sm font-semibold text-red-700 underline"
-              onClick={() => onChange({ ...slot, mediaUrl: null, mediaKind: null })}
-            >
-              Clear media
-            </button>
-          ) : null}
-        </div>
-        {slot.mediaUrl ? (
-          <p className="break-all text-xs text-[#6e6e6e]">{slot.mediaUrl}</p>
-        ) : null}
-        {slot.mediaKind === "video" && slot.mediaUrl ? (
-          <video src={slot.mediaUrl} controls className="mt-2 h-auto w-full rounded-lg bg-black" />
-        ) : null}
-        {slot.mediaKind === "image" && slot.mediaUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={slot.mediaUrl} alt="" className="mt-2 h-auto w-full rounded-lg" />
-        ) : null}
+      <div className="space-y-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Ads in this placement</p>
+        {slot.ads.map((ad, adIndex) => (
+          <div
+            key={`${label}-ad-${adIndex}`}
+            ref={(el) => {
+              adRefs.current[adIndex] = el;
+            }}
+            className="space-y-3 rounded-lg border border-[#ece8e1] bg-[#faf8f5] p-3"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-[#1c1c1e]">Ad {adIndex + 1}</p>
+              {slot.ads.length > 1 ? (
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-red-700 underline"
+                  onClick={() => removeAd(adIndex)}
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+            <label className="block space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Tap / swipe-up URL</span>
+              <input
+                type="url"
+                value={ad.targetUrl ?? ""}
+                onChange={(e) => updateAd(adIndex, { targetUrl: e.target.value })}
+                placeholder="https://…"
+                className="w-full rounded-lg border border-[#ece8e1] bg-white px-3 py-2 text-sm"
+              />
+            </label>
+            <div className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Media (photo or video)</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="cursor-pointer rounded-lg border border-[#1a3c2a] bg-[#edf4ef] px-3 py-2 text-sm font-bold text-[#1a3c2a]">
+                  {uploadBusyAt === adIndex ? "Uploading…" : "Upload file"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,.mp4,.mov"
+                    className="hidden"
+                    disabled={uploadBusyAt !== null}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) onPickFile(adIndex, f);
+                    }}
+                  />
+                </label>
+                {ad.mediaUrl ? (
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-red-700 underline"
+                    onClick={() => updateAd(adIndex, { mediaUrl: null, mediaKind: null })}
+                  >
+                    Clear media
+                  </button>
+                ) : null}
+              </div>
+              {ad.mediaUrl ? <p className="break-all text-xs text-[#6e6e6e]">{ad.mediaUrl}</p> : null}
+              {ad.mediaKind === "video" && ad.mediaUrl ? (
+                <video src={ad.mediaUrl} controls className="mt-2 h-auto w-full rounded-lg bg-black" />
+              ) : null}
+              {ad.mediaKind === "image" && ad.mediaUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={ad.mediaUrl} alt="" className="mt-2 h-auto w-full rounded-lg" />
+              ) : null}
+            </div>
+            <label className="block space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Title</span>
+              <input
+                value={ad.title}
+                onChange={(e) => updateAd(adIndex, { title: e.target.value })}
+                className="w-full rounded-lg border border-[#ece8e1] bg-white px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Subtitle</span>
+              <textarea
+                value={ad.subtitle}
+                onChange={(e) => updateAd(adIndex, { subtitle: e.target.value })}
+                rows={2}
+                className="w-full rounded-lg border border-[#ece8e1] bg-white px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Button / CTA label</span>
+              <input
+                value={ad.ctaLabel}
+                onChange={(e) => updateAd(adIndex, { ctaLabel: e.target.value })}
+                placeholder="Shop now · Swipe up"
+                className="w-full rounded-lg border border-[#ece8e1] bg-white px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={addAd}
+          className="rounded-lg border border-[#1a3c2a] bg-[#edf4ef] px-2.5 py-1 text-xs font-bold text-[#1a3c2a]"
+        >
+          + Add ad
+        </button>
       </div>
-
-      <label className="block space-y-1">
-        <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Title</span>
-        <input
-          value={slot.title}
-          onChange={(e) => onChange({ ...slot, title: e.target.value })}
-          className="w-full rounded-lg border border-[#ece8e1] bg-[#faf8f5] px-3 py-2 text-sm"
-        />
-      </label>
-      <label className="block space-y-1">
-        <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Subtitle</span>
-        <textarea
-          value={slot.subtitle}
-          onChange={(e) => onChange({ ...slot, subtitle: e.target.value })}
-          rows={2}
-          className="w-full rounded-lg border border-[#ece8e1] bg-[#faf8f5] px-3 py-2 text-sm"
-        />
-      </label>
-      <label className="block space-y-1">
-        <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Button / CTA label</span>
-        <input
-          value={slot.ctaLabel}
-          onChange={(e) => onChange({ ...slot, ctaLabel: e.target.value })}
-          placeholder="Shop now · Swipe up"
-          className="w-full rounded-lg border border-[#ece8e1] bg-[#faf8f5] px-3 py-2 text-sm"
-        />
-      </label>
     </div>
   );
 }
@@ -158,7 +237,7 @@ function SlotFields({
 export default function AdminPromosPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadTarget, setUploadTarget] = useState<"discover" | "gameEnd" | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<{ slot: "discover" | "gameEnd"; adIndex: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [discover, setDiscover] = useState<Slot>(() => emptySlot());
@@ -171,14 +250,8 @@ export default function AdminPromosPage() {
       const res = await fetch("/api/admin/house-ads");
       const json = (await res.json()) as Payload & { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Could not load");
-      setDiscover({
-        ...json.discover,
-        targetUrl: json.discover.targetUrl ?? "",
-      });
-      setGameEnd({
-        ...json.gameEnd,
-        targetUrl: json.gameEnd.targetUrl ?? "",
-      });
+      setDiscover({ ...json.discover, ads: json.discover.ads?.length ? json.discover.ads : emptySlot().ads });
+      setGameEnd({ ...json.gameEnd, ads: json.gameEnd.ads?.length ? json.gameEnd.ads : emptySlot().ads });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load");
     } finally {
@@ -190,8 +263,8 @@ export default function AdminPromosPage() {
     void load();
   }, [load]);
 
-  async function uploadFor(target: "discover" | "gameEnd", file: File) {
-    setUploadTarget(target);
+  async function uploadFor(target: "discover" | "gameEnd", adIndex: number, file: File) {
+    setUploadTarget({ slot: target, adIndex });
     setError(null);
     try {
       const fd = new FormData();
@@ -200,11 +273,12 @@ export default function AdminPromosPage() {
       const json = (await res.json()) as { url?: string; mediaKind?: "image" | "video"; error?: string };
       if (!res.ok) throw new Error(json.error ?? "Upload failed");
       if (!json.url || !json.mediaKind) throw new Error("Bad upload response");
-      if (target === "discover") {
-        setDiscover((s) => ({ ...s, mediaUrl: json.url!, mediaKind: json.mediaKind! }));
-      } else {
-        setGameEnd((s) => ({ ...s, mediaUrl: json.url!, mediaKind: json.mediaKind! }));
-      }
+      const apply = (s: Slot) => ({
+        ...s,
+        ads: s.ads.map((ad, i) => (i === adIndex ? { ...ad, mediaUrl: json.url!, mediaKind: json.mediaKind! } : ad)),
+      });
+      if (target === "discover") setDiscover((s) => apply(s));
+      else setGameEnd((s) => apply(s));
       setNote("Media uploaded — save to publish.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -214,15 +288,16 @@ export default function AdminPromosPage() {
   }
 
   function normalizeSlot(s: Slot): Record<string, unknown> {
-    const targetUrl = (s.targetUrl ?? "").trim();
     return {
       enabled: s.enabled,
-      targetUrl: targetUrl.length > 0 ? targetUrl : null,
-      mediaUrl: s.mediaUrl?.trim() || null,
-      mediaKind: s.mediaKind,
-      title: s.title.trim(),
-      subtitle: s.subtitle.trim(),
-      ctaLabel: s.ctaLabel.trim(),
+      ads: s.ads.map((ad) => ({
+        targetUrl: ad.targetUrl?.trim() || null,
+        mediaUrl: ad.mediaUrl?.trim() || null,
+        mediaKind: ad.mediaKind,
+        title: ad.title.trim(),
+        subtitle: ad.subtitle.trim(),
+        ctaLabel: ad.ctaLabel.trim(),
+      })),
       discoverMixPercent: s.discoverMixPercent,
     };
   }
@@ -242,14 +317,8 @@ export default function AdminPromosPage() {
       });
       const json = (await res.json()) as Payload & { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Save failed");
-      setDiscover({
-        ...json.discover,
-        targetUrl: json.discover.targetUrl ?? "",
-      });
-      setGameEnd({
-        ...json.gameEnd,
-        targetUrl: json.gameEnd.targetUrl ?? "",
-      });
+      setDiscover({ ...json.discover, ads: json.discover.ads?.length ? json.discover.ads : emptySlot().ads });
+      setGameEnd({ ...json.gameEnd, ads: json.gameEnd.ads?.length ? json.gameEnd.ads : emptySlot().ads });
       setNote("Saved.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -282,22 +351,22 @@ export default function AdminPromosPage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid items-start gap-4 xl:grid-cols-2">
             <SlotFields
               label="Discover (inline feed)"
               slot={discover}
               onChange={setDiscover}
               showMix
-              uploadBusy={uploadTarget === "discover"}
-              onPickFile={(f) => void uploadFor("discover", f)}
+              uploadBusyAt={uploadTarget?.slot === "discover" ? uploadTarget.adIndex : null}
+              onPickFile={(adIndex, f) => void uploadFor("discover", adIndex, f)}
             />
             <SlotFields
               label="After game (full screen)"
               slot={gameEnd}
               onChange={setGameEnd}
               showMix={false}
-              uploadBusy={uploadTarget === "gameEnd"}
-              onPickFile={(f) => void uploadFor("gameEnd", f)}
+              uploadBusyAt={uploadTarget?.slot === "gameEnd" ? uploadTarget.adIndex : null}
+              onPickFile={(adIndex, f) => void uploadFor("gameEnd", adIndex, f)}
             />
           </div>
           <button
