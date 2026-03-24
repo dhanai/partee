@@ -1,17 +1,23 @@
-import { ChatMessageEventType } from "@ably/chat";
+import { ChatMessageEventType, ConnectionStatus } from "@ably/chat";
 import { useChatConnection, useMessages } from "@ably/chat/react";
 import type { Message } from "ably";
 import { useAbly } from "ably/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Image, ScrollView, Text, View } from "react-native";
-import { KeyboardStickyView } from "react-native-keyboard-controller";
+import {
+  ActivityIndicator,
+  FlatList,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
+import { apiGet, apiPost } from "../lib/api";
 import { parfadeRoundDetailChannel } from "../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../lib/parfade-ably-messages";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
-import { useGroupChatLayout } from "../lib/use-group-chat-layout";
+import { useFullscreenChatKeyboard } from "../lib/use-group-chat-layout";
 import { colors } from "../lib/theme";
+import { ChatBubbleRow } from "./chat-bubble-row";
 import { RoundGroupChatComposer } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
 import {
@@ -23,6 +29,8 @@ import {
 type MessagesResponse = { messages: ChatMessage[]; viewerId?: string };
 
 const POLL_MS = 4200;
+const POLL_BACKUP_WHEN_ABLY_MS = 5000;
+const REALTIME_PULL_DEBOUNCE_MS = 450;
 const MAX_LIST_HEIGHT = 240;
 const PARFADE_EVENT = "parfade";
 
@@ -41,11 +49,14 @@ function headerStr(
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
-/**
- * Ably Chat carries mobile→mobile fan-out; web chat only POSTs to the API (no Ably Chat publish).
- * Server emits `round-detail-updated` / `chat-message` on `parfade:v1:round-detail:{token}` — subscribe
- * so laptop/web sends appear here while Ably Chat is connected (HTTP poll is disabled in that case).
- */
+function formatTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
 export function RoundGroupChatConnected({
   inviteToken,
   getToken,
@@ -71,18 +82,13 @@ export function RoundGroupChatConnected({
   viewerIdRef.current = viewerId;
   const loadGenRef = useRef(0);
   const prevMessageCountRef = useRef(0);
+  const realtimePullDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ably = useAbly();
 
-  const {
-    messageListPaddingBottom,
-    onComposerLayout,
-    onComposerFocus: onComposerFocusChat,
-    stickyKeyboardOffset,
-    stickyWrapStyle,
-  } = useGroupChatLayout(isFullscreen, scrollRef, insets.bottom, onComposerFocus);
+  const { keyboardPadding, composerBottomPadding } = useFullscreenChatKeyboard(insets.bottom);
 
   const { currentStatus } = useChatConnection();
-  const ablyConnected = currentStatus === "connected";
+  const ablyConnected = currentStatus === ConnectionStatus.Connected;
 
   const { sendMessage } = useMessages({
     listener: (event) => {
@@ -146,7 +152,6 @@ export function RoundGroupChatConnected({
     }
   }, [inviteToken]);
 
-  /** Merge messages written via web/API (and any missed Chat events) using the same cursor as polling. */
   const pullNewMessagesFromApi = useCallback(async () => {
     const pollToken = inviteTokenRef.current;
     try {
@@ -202,25 +207,38 @@ export function RoundGroupChatConnected({
     }
   }, []);
 
+  const schedulePullFromRoundDetailFanout = useCallback(() => {
+    if (realtimePullDebounceRef.current != null) {
+      clearTimeout(realtimePullDebounceRef.current);
+    }
+    realtimePullDebounceRef.current = setTimeout(() => {
+      realtimePullDebounceRef.current = null;
+      void pullNewMessagesFromApi();
+    }, REALTIME_PULL_DEBOUNCE_MS);
+  }, [pullNewMessagesFromApi]);
+
   useEffect(() => {
     const t = inviteToken.trim();
     if (!t) return;
     const channel = ably.channels.get(parfadeRoundDetailChannel(t));
     const handler = (message: Message) => {
       const parsed = parseParfadeRealtimeMessage(message.data);
-      if (
-        parsed?.type === "round-detail-updated" &&
-        parsed.inviteToken === t &&
-        parsed.reason === "chat-message"
-      ) {
+      if (parsed?.type !== "round-detail-updated" || parsed.inviteToken !== t) return;
+      if (parsed.reason === "chat-message") {
         void pullNewMessagesFromApi();
+        return;
       }
+      schedulePullFromRoundDetailFanout();
     };
     void channel.subscribe(PARFADE_EVENT, handler);
     return () => {
+      if (realtimePullDebounceRef.current != null) {
+        clearTimeout(realtimePullDebounceRef.current);
+        realtimePullDebounceRef.current = null;
+      }
       void channel.unsubscribe(PARFADE_EVENT, handler);
     };
-  }, [ably, inviteToken, pullNewMessagesFromApi]);
+  }, [ably, inviteToken, pullNewMessagesFromApi, schedulePullFromRoundDetailFanout]);
 
   useEffect(() => {
     setMessages([]);
@@ -232,15 +250,17 @@ export function RoundGroupChatConnected({
   const pollActive = isFullscreen || expanded;
 
   useEffect(() => {
-    if (!pollActive || ablyConnected) return;
+    if (!pollActive) return;
+    const ms = ablyConnected ? POLL_BACKUP_WHEN_ABLY_MS : POLL_MS;
     const id = setInterval(() => {
       void pullNewMessagesFromApi();
-    }, POLL_MS);
+    }, ms);
     return () => clearInterval(id);
   }, [pollActive, ablyConnected, pullNewMessagesFromApi]);
 
+  // Inline variant only: scroll to end when new messages arrive
   useEffect(() => {
-    if (!pollActive) return;
+    if (isFullscreen || !pollActive) return;
     if (messages.length === 0) {
       prevMessageCountRef.current = 0;
       return;
@@ -255,17 +275,33 @@ export function RoundGroupChatConnected({
     });
     prevMessageCountRef.current = next;
     return () => cancelAnimationFrame(t);
-  }, [messages.length, pollActive]);
+  }, [messages.length, pollActive, isFullscreen]);
 
   const handleSend = useCallback(
     async (text: string): Promise<boolean> => {
       const trimmed = text.trim();
       if (!trimmed) return false;
-      setSendBusy(true);
       setLoadError(null);
+
+      const me = getCachedMeProfile();
+      const tempId = `optimistic-${Date.now()}`;
+      const optimistic: ChatMessage = {
+        id: tempId,
+        body: trimmed,
+        createdAt: new Date().toISOString(),
+        isMine: true,
+        user: {
+          id: me?.id ?? "",
+          name: me?.name ?? "You",
+          avatar: me?.avatar ?? null,
+        },
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
       try {
         const authToken = await getTokenRef.current();
         if (!authToken) {
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
           setLoadError("Sign in to send a message.");
           return false;
         }
@@ -277,8 +313,9 @@ export function RoundGroupChatConnected({
         const vidSend = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
         if (vidSend) setViewerId(vidSend);
         setMessages((prev) => {
-          if (prev.some((m) => m.id === data.message.id)) return prev;
-          return sortMessagesByTime([...prev, data.message]);
+          const without = prev.filter((m) => m.id !== tempId);
+          if (without.some((m) => m.id === data.message.id)) return without;
+          return sortMessagesByTime([...without, data.message]);
         });
 
         if (ablyConnected) {
@@ -292,27 +329,18 @@ export function RoundGroupChatConnected({
               },
             });
           } catch {
-            /* Realtime fan-out is best-effort; polling still works */
+            /* best-effort */
           }
         }
         return true;
       } catch (e) {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
         setLoadError(e instanceof Error ? e.message : "Could not send.");
         return false;
-      } finally {
-        setSendBusy(false);
       }
     },
     [ablyConnected, inviteToken, sendMessage],
   );
-
-  function formatTime(iso: string) {
-    try {
-      return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    } catch {
-      return "";
-    }
-  }
 
   const composerStyles = useMemo(
     () => ({
@@ -329,10 +357,63 @@ export function RoundGroupChatConnected({
       styles={composerStyles}
       sendBusy={sendBusy}
       onSend={handleSend}
-      onComposerFocus={onComposerFocusChat}
+      onComposerFocus={onComposerFocus}
     />
   );
 
+  const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const renderItem = useCallback(
+    ({ item }: { item: ChatMessage }) => (
+      <ChatBubbleRow message={item} isMine={resolveMine(item)} />
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewerId],
+  );
+  const renderBubbleInline = useCallback(
+    (m: ChatMessage) => (
+      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} />
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewerId],
+  );
+  const keyExtractor = useCallback((m: ChatMessage) => m.id, []);
+
+  // ─── Fullscreen: inverted FlatList, manual keyboard padding ───
+  if (isFullscreen) {
+    return (
+      <View style={[styles.fullscreenRoot, { paddingBottom: keyboardPadding }]}>
+        {loading && messages.length === 0 ? (
+          <View style={styles.loaderWrap}>
+            <ActivityIndicator color={colors.fairway} size="small" />
+          </View>
+        ) : loadError && messages.length === 0 ? (
+          <Text style={styles.errorInline}>{loadError}</Text>
+        ) : messages.length === 0 ? (
+          <View style={styles.emptyFlex}>
+            <Text style={styles.empty}>No messages yet. Say hi!</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={invertedMessages}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            inverted
+            contentContainerStyle={styles.invertedListContent}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="none"
+          />
+        )}
+
+        {loadError && messages.length > 0 ? (
+          <Text style={styles.errorInline}>{loadError}</Text>
+        ) : null}
+
+        <View style={{ paddingBottom: composerBottomPadding }}>{composerRow}</View>
+      </View>
+    );
+  }
+
+  // ─── Inline ───
   const messagesColumn = (
     <>
       {loading && messages.length === 0 ? (
@@ -344,88 +425,21 @@ export function RoundGroupChatConnected({
       ) : (
         <ScrollView
           ref={scrollRef}
-          style={[
-            styles.messageList,
-            isFullscreen ? styles.messageListFlex : { maxHeight: MAX_LIST_HEIGHT },
-          ]}
-          contentContainerStyle={[
-            styles.messageListContent,
-            { paddingBottom: messageListPaddingBottom },
-          ]}
+          style={[styles.messageList, { maxHeight: MAX_LIST_HEIGHT }]}
+          contentContainerStyle={[styles.messageListContent, { paddingBottom: 12 }]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
           {messages.length === 0 ? (
             <Text style={styles.empty}>No messages yet. Say hi!</Text>
           ) : (
-            messages.map((m) => {
-              const mine = resolveMine(m);
-              const avatarEl = m.user.avatar ? (
-                <Image
-                  source={{ uri: toAbsoluteUrl(m.user.avatar) }}
-                  style={styles.avatar}
-                />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text style={styles.avatarInitial}>
-                    {m.user.name.trim().charAt(0).toUpperCase() || "?"}
-                  </Text>
-                </View>
-              );
-              return (
-                <View key={m.id} style={styles.bubbleRow}>
-                  {mine ? (
-                    <>
-                      <View style={styles.bubbleRowFlex} />
-                      <View style={[styles.bubble, styles.bubbleMine]}>
-                        <Text style={[styles.bubbleBody, styles.bubbleBodyMine]}>{m.body}</Text>
-                        <Text style={[styles.bubbleTime, styles.bubbleTimeMine]}>
-                          {formatTime(m.createdAt)}
-                        </Text>
-                      </View>
-                      {avatarEl}
-                    </>
-                  ) : (
-                    <>
-                      {avatarEl}
-                      <View style={[styles.bubble, styles.bubbleTheirs]}>
-                        <Text style={styles.bubbleName}>{m.user.name}</Text>
-                        <Text style={styles.bubbleBody}>{m.body}</Text>
-                        <Text style={styles.bubbleTime}>{formatTime(m.createdAt)}</Text>
-                      </View>
-                    </>
-                  )}
-                </View>
-              );
-            })
+            messages.map(renderBubbleInline)
           )}
         </ScrollView>
       )}
-
       {loadError && messages.length > 0 ? (
         <Text style={styles.errorInline}>{loadError}</Text>
       ) : null}
-    </>
-  );
-
-  if (isFullscreen) {
-    return (
-      <View style={styles.fullscreenRoot}>
-        {messagesColumn}
-        <KeyboardStickyView
-          offset={stickyKeyboardOffset}
-          style={[styles.stickyComposerWrap, stickyWrapStyle]}
-        >
-          <View onLayout={onComposerLayout}>{composerRow}</View>
-        </KeyboardStickyView>
-      </View>
-    );
-  }
-
-  const chatBody = (
-    <>
-      {messagesColumn}
-      {composerRow}
     </>
   );
 
@@ -437,7 +451,8 @@ export function RoundGroupChatConnected({
       expanded={expanded}
       onToggle={() => setExpanded((e) => !e)}
     >
-      {chatBody}
+      {messagesColumn}
+      {composerRow}
     </RoundDetailSection>
   );
 }

@@ -1,7 +1,6 @@
 import * as Linking from "expo-linking";
-import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
-import { useEffect, useRef } from "react";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { DiscoverAdDisplay } from "../lib/discover-house-ad";
 import { colors } from "../lib/theme";
@@ -10,18 +9,21 @@ type Props = {
   display: DiscoverAdDisplay;
 };
 
+function InlinePromoVideo({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+  return (
+    <VideoView player={player} style={styles.media} contentFit="cover" nativeControls={false} />
+  );
+}
+
 /**
  * In-feed promo card (not AdMob). Same visual weight as native ad rows.
  */
 export function DiscoverHouseAdRow({ display }: Props) {
-  const videoRef = useRef<Video | null>(null);
-
-  useEffect(() => {
-    return () => {
-      void videoRef.current?.unloadAsync();
-    };
-  }, []);
-
   const { targetUrl, title, subtitle, cta, mediaUrl, mediaKind } = display;
 
   return (
@@ -34,17 +36,7 @@ export function DiscoverHouseAdRow({ display }: Props) {
         accessibilityLabel={`${title}. ${subtitle}`}
       >
         {mediaKind === "video" && mediaUrl ? (
-          <Video
-            ref={(r) => {
-              videoRef.current = r;
-            }}
-            source={{ uri: mediaUrl }}
-            style={styles.media}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay
-            isLooping
-            isMuted
-          />
+          <InlinePromoVideo uri={mediaUrl} />
         ) : mediaUrl ? (
           <Image source={{ uri: mediaUrl }} style={styles.media} contentFit="cover" />
         ) : null}

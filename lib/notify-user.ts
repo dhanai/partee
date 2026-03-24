@@ -183,7 +183,15 @@ export async function notifyRoundChatMessagePushes(input: {
     input.roundId,
     input.senderUserId,
   );
-  if (recipientIds.length === 0) return;
+  if (recipientIds.length === 0) {
+    if (process.env.EXPO_DEBUG_PUSH === "1") {
+      console.warn("[notifyRoundChatMessagePushes] No eligible recipients.", {
+        roundId: input.roundId,
+        senderUserId: input.senderUserId,
+      });
+    }
+    return;
+  }
 
   const rows = await db
     .select({ token: users.expoPushToken })
@@ -194,7 +202,15 @@ export async function notifyRoundChatMessagePushes(input: {
     .map((r) => r.token?.trim())
     .filter((t): t is string => Boolean(t));
 
-  if (tokens.length === 0) return;
+  if (tokens.length === 0) {
+    if (process.env.EXPO_DEBUG_PUSH === "1") {
+      console.warn("[notifyRoundChatMessagePushes] Recipients have no expo push tokens.", {
+        roundId: input.roundId,
+        recipientCount: recipientIds.length,
+      });
+    }
+    return;
+  }
 
   const title = formatChatPushTitleLine({
     courseName: input.courseName,

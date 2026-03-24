@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -20,14 +20,10 @@ export type GroupChatComposerStyles = {
 type Props = {
   styles: GroupChatComposerStyles;
   sendBusy: boolean;
-  /** Return true if the message was sent and the composer should clear. */
   onSend: (text: string) => Promise<boolean>;
   onComposerFocus?: () => void;
 };
 
-/**
- * Local draft state so each keystroke does not re-render the message list (parent).
- */
 export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
   styles: s,
   sendBusy,
@@ -35,17 +31,20 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
   onComposerFocus,
 }: Props) {
   const [draft, setDraft] = useState("");
+  const inputRef = useRef<TextInput>(null);
 
   const submit = useCallback(async () => {
     const text = draft.trim();
     if (!text || sendBusy) return;
+    setDraft("");
     const ok = await onSend(text);
-    if (ok) setDraft("");
+    if (!ok) setDraft(text);
   }, [draft, sendBusy, onSend]);
 
   return (
     <View style={s.composerRow}>
       <TextInput
+        ref={inputRef}
         value={draft}
         onChangeText={setDraft}
         onFocus={() => onComposerFocus?.()}
@@ -53,8 +52,8 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
         placeholderTextColor={colors.muted}
         style={s.input}
         multiline
+        blurOnSubmit={false}
         maxLength={2000}
-        editable={!sendBusy}
       />
       <Pressable
         style={[s.sendBtn, sendBusy && s.sendBtnDisabled]}

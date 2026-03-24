@@ -3,6 +3,7 @@
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useAppHeaderActions } from "@/components/app-header-actions-context";
 import { ParfadeLoadingBlock } from "@/components/parfade-spinner";
 import { RoundChatPanel } from "../round-chat-panel";
 
@@ -13,6 +14,7 @@ type ChatRoundMeta = {
 };
 
 export default function RoundChatPage({ params }: { params: { token: string } }) {
+  const { setHeaderActions } = useAppHeaderActions();
   const [round, setRound] = useState<ChatRoundMeta | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -33,6 +35,41 @@ export default function RoundChatPage({ params }: { params: { token: string } })
   const canUse =
     round != null && (round.isHost || round.currentUserSpotStatus === "confirmed");
 
+  useEffect(() => {
+    if (!canUse || !round) {
+      setHeaderActions(
+        <Link
+          href={`/round/${params.token}`}
+          className="inline-flex items-center gap-1 text-sm font-semibold text-[#1a3c2a]"
+          aria-label="Back to round"
+        >
+          <span aria-hidden>&larr;</span> Round
+        </Link>,
+      );
+      return () => setHeaderActions(null);
+    }
+
+    setHeaderActions(
+      <div className="flex min-w-0 items-center gap-2">
+        <Link
+          href={`/round/${params.token}`}
+          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-[#ece8e1] bg-white text-[#1a3c2a] shadow-sm transition hover:bg-[#faf8f5] active:opacity-90"
+          aria-label="Back to round"
+        >
+          <span aria-hidden>&larr;</span>
+        </Link>
+        <div className="min-w-0 text-right leading-tight">
+          <p className="truncate text-xs font-bold text-[#1c1c1e]">Group chat</p>
+          <p className="truncate text-[11px] text-[#6e6e6e]">
+            {round.courseName ? `${round.courseName} · ` : ""}
+            Host + confirmed
+          </p>
+        </div>
+      </div>,
+    );
+    return () => setHeaderActions(null);
+  }, [canUse, params.token, round, setHeaderActions]);
+
   /** Tab bar is hidden on this route; reserve header + main top padding + home indicator only. */
   const chatShellMinHeight =
     "calc(100dvh - 52px - 1rem - env(safe-area-inset-bottom, 0px))";
@@ -41,51 +78,25 @@ export default function RoundChatPage({ params }: { params: { token: string } })
     <section
       className={
         canUse && round
-          ? "flex min-h-0 flex-col gap-0"
+          ? "flex min-h-0 flex-col gap-0 overflow-hidden"
           : "space-y-5 pb-[max(1rem,env(safe-area-inset-bottom,0px))]"
       }
       style={
         canUse && round
-          ? { minHeight: chatShellMinHeight }
+          ? { height: chatShellMinHeight }
           : undefined
       }
     >
       {loadError ? (
         <>
-          <Link
-            href={`/round/${params.token}`}
-            className="inline-flex items-center gap-1 text-sm font-semibold text-[#1a3c2a]"
-          >
-            <span aria-hidden>&larr;</span> Back to round
-          </Link>
           <p className="parfade-card text-sm text-red-600">{loadError}</p>
         </>
       ) : !round ? (
         <>
-          <Link
-            href={`/round/${params.token}`}
-            className="inline-flex items-center gap-1 text-sm font-semibold text-[#1a3c2a]"
-          >
-            <span aria-hidden>&larr;</span> Back to round
-          </Link>
           <ParfadeLoadingBlock className="py-12" message="Loading…" size="md" />
         </>
       ) : canUse ? (
         <>
-          <header className="mb-2 shrink-0 border-b border-[#ece8e1] pb-3">
-            <Link
-              href={`/round/${params.token}`}
-              className="mb-2 inline-flex items-center gap-1 text-sm font-semibold text-[#1a3c2a]"
-            >
-              <span aria-hidden>&larr;</span> Round
-            </Link>
-            <h1 className="text-lg font-bold leading-tight text-[#1c1c1e]">Group chat</h1>
-            <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-[#6e6e6e]">
-              {round.courseName ? `${round.courseName} · ` : null}
-              Host and confirmed players only.
-            </p>
-          </header>
-
           <SignedOut>
             <div className="parfade-card mt-2 text-center">
               <p className="text-sm text-charcoal-400">Sign in to open group chat.</p>

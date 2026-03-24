@@ -11,6 +11,9 @@ export default function SignInPage() {
       <div className="w-full max-w-sm">
         <SignIn
           appearance={clerkParfadeAppearance}
+          routing="path"
+          path="/sign-in"
+          signUpUrl="/sign-up"
           fallbackRedirectUrl="/discover"
           signUpFallbackRedirectUrl="/discover"
         />

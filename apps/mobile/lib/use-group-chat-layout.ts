@@ -1,79 +1,58 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Keyboard, LayoutChangeEvent, Platform, type ScrollView } from "react-native";
+import { useEffect, useState } from "react";
+import { Keyboard, LayoutAnimation, Platform, UIManager } from "react-native";
+import { GROUP_CHAT_COMPOSER_GAP } from "./group-chat-layout-constants";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 /**
- * Fullscreen group chat: KeyboardStickyView uses translateY (no layout shrink), so the message
- * list needs bottom padding that matches the composer + safe area. Also scroll to end when the
- * keyboard opens or the composer is focused so the latest bubble stays visible.
+ * Tracks keyboard height for fullscreen chat. Uses `LayoutAnimation` with the native keyboard
+ * curve so padding changes animate in lock-step with the keyboard — no spring overshoot.
+ *
+ * Returns `keyboardPadding` — apply as `paddingBottom` on the outermost container (replaces KAV).
+ * Returns `composerBottomPadding` — safe-area when closed, small gap when keyboard is open.
  */
-export function useGroupChatLayout(
-  isFullscreen: boolean,
-  scrollRef: RefObject<ScrollView | null>,
-  insetsBottom: number,
-  onComposerFocusProp?: () => void,
-) {
-  const [composerHeight, setComposerHeight] = useState(56);
-  const prevComposerHeightRef = useRef(56);
-
-  const onComposerLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      const h = e.nativeEvent.layout.height;
-      if (h <= 0) return;
-      if (isFullscreen && h > prevComposerHeightRef.current) {
-        prevComposerHeightRef.current = h;
-        requestAnimationFrame(() => {
-          scrollRef.current?.scrollToEnd({ animated: true });
-        });
-      } else {
-        prevComposerHeightRef.current = h;
-      }
-      setComposerHeight(h);
-    },
-    [isFullscreen, scrollRef],
-  );
-
-  const scrollToEndAnimated = useCallback(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    });
-  }, [scrollRef]);
-
-  const onComposerFocus = useCallback(() => {
-    scrollToEndAnimated();
-    onComposerFocusProp?.();
-  }, [onComposerFocusProp, scrollToEndAnimated]);
+export function useFullscreenChatKeyboard(insetsBottom: number) {
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
-    if (!isFullscreen) return;
-    const event = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const sub = Keyboard.addListener(event, scrollToEndAnimated);
-    return () => sub.remove();
-  }, [isFullscreen, scrollToEndAnimated]);
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 
-  const safeBottom = Math.max(12, insetsBottom);
+    const onShow = (e: { endCoordinates: { height: number }; duration: number }) => {
+      if (Platform.OS === "ios") {
+        LayoutAnimation.configureNext({
+          duration: e.duration > 0 ? e.duration : 250,
+          update: { type: LayoutAnimation.Types.keyboard },
+        });
+      }
+      setKeyboardHeight(e.endCoordinates.height);
+    };
 
-  const messageListPaddingBottom = useMemo(() => {
-    if (isFullscreen) {
-      return composerHeight + safeBottom + 12;
-    }
-    return 12;
-  }, [composerHeight, isFullscreen, safeBottom]);
+    const onHide = (e: { duration: number }) => {
+      if (Platform.OS === "ios") {
+        LayoutAnimation.configureNext({
+          duration: (e as any).duration > 0 ? (e as any).duration : 250,
+          update: { type: LayoutAnimation.Types.keyboard },
+        });
+      }
+      setKeyboardHeight(0);
+    };
 
-  const stickyKeyboardOffset = useMemo(
-    () => ({ closed: 0 as const, opened: 8 as const }),
-    [],
-  );
+    const subShow = Keyboard.addListener(showEvent, onShow as any);
+    const subHide = Keyboard.addListener(hideEvent, onHide as any);
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, []);
 
-  const stickyWrapStyle = useMemo(
-    () => ({ paddingBottom: isFullscreen ? safeBottom : 0 }),
-    [isFullscreen, safeBottom],
-  );
+  const keyboardOpen = keyboardHeight > 0;
+  const safeBottom = Math.max(GROUP_CHAT_COMPOSER_GAP, insetsBottom);
 
   return {
-    messageListPaddingBottom,
-    onComposerLayout,
-    onComposerFocus,
-    stickyKeyboardOffset,
-    stickyWrapStyle,
+    keyboardPadding: keyboardOpen ? keyboardHeight : 0,
+    composerBottomPadding: keyboardOpen ? GROUP_CHAT_COMPOSER_GAP : safeBottom,
   };
 }

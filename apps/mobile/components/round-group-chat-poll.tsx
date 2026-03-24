@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
-import { KeyboardStickyView } from "react-native-keyboard-controller";
+import {
+  ActivityIndicator,
+  FlatList,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
+import { apiGet, apiPost } from "../lib/api";
+import { GROUP_CHAT_COMPOSER_GAP } from "../lib/group-chat-layout-constants";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
-import { useGroupChatLayout } from "../lib/use-group-chat-layout";
+import { useFullscreenChatKeyboard } from "../lib/use-group-chat-layout";
 import { colors } from "../lib/theme";
+import { ChatBubbleRow } from "./chat-bubble-row";
 import { RoundGroupChatComposer } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
 
@@ -13,25 +21,29 @@ export type ChatMessage = {
   id: string;
   body: string;
   createdAt: string;
-  /** Set by API so layout never depends on a separate viewerId update (avoids left/right race). */
   isMine?: boolean;
   user: { id: string; name: string; avatar: string | null };
 };
 
 type MessagesResponse = { messages: ChatMessage[]; viewerId?: string };
 
-/** Slightly relaxed to reduce background churn; chat still feels live. */
 const POLL_MS = 4200;
 const MAX_LIST_HEIGHT = 240;
 
 export type RoundGroupChatProps = {
   inviteToken: string;
   getToken: () => Promise<string | null>;
-  /** Parent scrolls so the composer stays above the keyboard (round detail screen). */
   onComposerFocus?: () => void;
-  /** `fullscreen` = dedicated chat screen (flex layout, no collapsible section). */
   variant?: "inline" | "fullscreen";
 };
+
+function formatTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
 
 /** Polling-only chat (no Ably Chat client). */
 export function RoundGroupChatPoll({
@@ -58,13 +70,7 @@ export function RoundGroupChatPoll({
   const loadGenRef = useRef(0);
   const prevMessageCountRef = useRef(0);
 
-  const {
-    messageListPaddingBottom,
-    onComposerLayout,
-    onComposerFocus: onComposerFocusChat,
-    stickyKeyboardOffset,
-    stickyWrapStyle,
-  } = useGroupChatLayout(isFullscreen, scrollRef, insets.bottom, onComposerFocus);
+  const { keyboardPadding, composerBottomPadding } = useFullscreenChatKeyboard(insets.bottom);
 
   function resolveMine(m: ChatMessage): boolean {
     if (typeof m.isMine === "boolean") return m.isMine;
@@ -169,8 +175,9 @@ export function RoundGroupChatPoll({
     return () => clearInterval(id);
   }, [pollActive, inviteToken]);
 
+  // Inline variant: scroll to end when new messages arrive
   useEffect(() => {
-    if (!pollActive) return;
+    if (isFullscreen || !pollActive) return;
     if (messages.length === 0) {
       prevMessageCountRef.current = 0;
       return;
@@ -185,17 +192,33 @@ export function RoundGroupChatPoll({
     });
     prevMessageCountRef.current = next;
     return () => cancelAnimationFrame(t);
-  }, [messages.length, pollActive]);
+  }, [messages.length, pollActive, isFullscreen]);
 
   const handleSend = useCallback(
     async (text: string): Promise<boolean> => {
       const trimmed = text.trim();
       if (!trimmed) return false;
-      setSendBusy(true);
       setLoadError(null);
+
+      const me = getCachedMeProfile();
+      const tempId = `optimistic-${Date.now()}`;
+      const optimistic: ChatMessage = {
+        id: tempId,
+        body: trimmed,
+        createdAt: new Date().toISOString(),
+        isMine: true,
+        user: {
+          id: me?.id ?? "",
+          name: me?.name ?? "You",
+          avatar: me?.avatar ?? null,
+        },
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
       try {
         const authToken = await getTokenRef.current();
         if (!authToken) {
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
           setLoadError("Sign in to send a message.");
           return false;
         }
@@ -207,27 +230,19 @@ export function RoundGroupChatPoll({
         const vidSend = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
         if (vidSend) setViewerId(vidSend);
         setMessages((prev) => {
-          if (prev.some((m) => m.id === data.message.id)) return prev;
-          return [...prev, data.message];
+          const without = prev.filter((m) => m.id !== tempId);
+          if (without.some((m) => m.id === data.message.id)) return without;
+          return [...without, data.message];
         });
         return true;
       } catch (e) {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
         setLoadError(e instanceof Error ? e.message : "Could not send.");
         return false;
-      } finally {
-        setSendBusy(false);
       }
     },
     [inviteToken],
   );
-
-  function formatTime(iso: string) {
-    try {
-      return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    } catch {
-      return "";
-    }
-  }
 
   const composerStyles = useMemo(
     () => ({
@@ -244,10 +259,63 @@ export function RoundGroupChatPoll({
       styles={composerStyles}
       sendBusy={sendBusy}
       onSend={handleSend}
-      onComposerFocus={onComposerFocusChat}
+      onComposerFocus={onComposerFocus}
     />
   );
 
+  const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const renderItem = useCallback(
+    ({ item }: { item: ChatMessage }) => (
+      <ChatBubbleRow message={item} isMine={resolveMine(item)} />
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewerId],
+  );
+  const renderBubbleInline = useCallback(
+    (m: ChatMessage) => (
+      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} />
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewerId],
+  );
+  const keyExtractor = useCallback((m: ChatMessage) => m.id, []);
+
+  // ─── Fullscreen: inverted FlatList, manual keyboard padding ───
+  if (isFullscreen) {
+    return (
+      <View style={[styles.fullscreenRoot, { paddingBottom: keyboardPadding }]}>
+        {loading && messages.length === 0 ? (
+          <View style={styles.loaderWrap}>
+            <ActivityIndicator color={colors.fairway} size="small" />
+          </View>
+        ) : loadError && messages.length === 0 ? (
+          <Text style={styles.errorInline}>{loadError}</Text>
+        ) : messages.length === 0 ? (
+          <View style={styles.emptyFlex}>
+            <Text style={styles.empty}>No messages yet. Say hi!</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={invertedMessages}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            inverted
+            contentContainerStyle={styles.invertedListContent}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="none"
+          />
+        )}
+
+        {loadError && messages.length > 0 ? (
+          <Text style={styles.errorInline}>{loadError}</Text>
+        ) : null}
+
+        <View style={{ paddingBottom: composerBottomPadding }}>{composerRow}</View>
+      </View>
+    );
+  }
+
+  // ─── Inline (collapsible section on round detail) ───
   const messagesColumn = (
     <>
       {loading && messages.length === 0 ? (
@@ -259,88 +327,21 @@ export function RoundGroupChatPoll({
       ) : (
         <ScrollView
           ref={scrollRef}
-          style={[
-            styles.messageList,
-            isFullscreen ? styles.messageListFlex : { maxHeight: MAX_LIST_HEIGHT },
-          ]}
-          contentContainerStyle={[
-            styles.messageListContent,
-            { paddingBottom: messageListPaddingBottom },
-          ]}
+          style={[styles.messageList, { maxHeight: MAX_LIST_HEIGHT }]}
+          contentContainerStyle={[styles.messageListContent, { paddingBottom: 12 }]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
           {messages.length === 0 ? (
             <Text style={styles.empty}>No messages yet. Say hi!</Text>
           ) : (
-            messages.map((m) => {
-              const mine = resolveMine(m);
-              const avatarEl = m.user.avatar ? (
-                <Image
-                  source={{ uri: toAbsoluteUrl(m.user.avatar) }}
-                  style={styles.avatar}
-                />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text style={styles.avatarInitial}>
-                    {m.user.name.trim().charAt(0).toUpperCase() || "?"}
-                  </Text>
-                </View>
-              );
-              return (
-                <View key={m.id} style={styles.bubbleRow}>
-                  {mine ? (
-                    <>
-                      <View style={styles.bubbleRowFlex} />
-                      <View style={[styles.bubble, styles.bubbleMine]}>
-                        <Text style={[styles.bubbleBody, styles.bubbleBodyMine]}>{m.body}</Text>
-                        <Text style={[styles.bubbleTime, styles.bubbleTimeMine]}>
-                          {formatTime(m.createdAt)}
-                        </Text>
-                      </View>
-                      {avatarEl}
-                    </>
-                  ) : (
-                    <>
-                      {avatarEl}
-                      <View style={[styles.bubble, styles.bubbleTheirs]}>
-                        <Text style={styles.bubbleName}>{m.user.name}</Text>
-                        <Text style={styles.bubbleBody}>{m.body}</Text>
-                        <Text style={styles.bubbleTime}>{formatTime(m.createdAt)}</Text>
-                      </View>
-                    </>
-                  )}
-                </View>
-              );
-            })
+            messages.map(renderBubbleInline)
           )}
         </ScrollView>
       )}
-
       {loadError && messages.length > 0 ? (
         <Text style={styles.errorInline}>{loadError}</Text>
       ) : null}
-    </>
-  );
-
-  if (isFullscreen) {
-    return (
-      <View style={styles.fullscreenRoot}>
-        {messagesColumn}
-        <KeyboardStickyView
-          offset={stickyKeyboardOffset}
-          style={[styles.stickyComposerWrap, stickyWrapStyle]}
-        >
-          <View onLayout={onComposerLayout}>{composerRow}</View>
-        </KeyboardStickyView>
-      </View>
-    );
-  }
-
-  const chatBody = (
-    <>
-      {messagesColumn}
-      {composerRow}
     </>
   );
 
@@ -352,7 +353,8 @@ export function RoundGroupChatPoll({
       expanded={expanded}
       onToggle={() => setExpanded((e) => !e)}
     >
-      {chatBody}
+      {messagesColumn}
+      {composerRow}
     </RoundDetailSection>
   );
 }
@@ -364,9 +366,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   loaderWrap: { paddingVertical: 16, alignItems: "center" },
+  emptyFlex: { flex: 1, justifyContent: "center" },
   messageList: { marginTop: 4 },
-  messageListFlex: { flex: 1 },
   messageListContent: { gap: 10, paddingBottom: 4 },
+  invertedListContent: { gap: 10, paddingTop: GROUP_CHAT_COMPOSER_GAP },
   empty: { color: colors.muted, fontSize: 13, paddingVertical: 8, textAlign: "center" },
   bubbleRow: {
     width: "100%",
@@ -401,9 +404,12 @@ const styles = StyleSheet.create({
   bubbleBodyMine: { color: "#fff" },
   bubbleTime: { fontSize: 10, color: colors.muted, marginTop: 4, alignSelf: "flex-end" },
   bubbleTimeMine: { color: "rgba(255,255,255,0.85)" },
-  /** Fullscreen: safe-area bottom padding merged in JS; keyboard uses `opened` offset only (no negative translate). */
-  stickyComposerWrap: {},
-  composerRow: { flexDirection: "row", gap: 8, alignItems: "flex-end", marginTop: 4 },
+  composerRow: {
+    flexDirection: "row",
+    gap: GROUP_CHAT_COMPOSER_GAP,
+    alignItems: "flex-end",
+    marginTop: GROUP_CHAT_COMPOSER_GAP,
+  },
   input: {
     flex: 1,
     minHeight: 40,

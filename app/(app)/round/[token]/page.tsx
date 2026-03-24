@@ -354,33 +354,6 @@ export default function RoundInvitePage({
       </div>
 
       <SignedIn>
-        {canUseGroupChat && confirmedPlayers.length >= 2 ? (
-          <Link
-            href={`/games?roundInviteToken=${encodeURIComponent(params.token)}`}
-            className="mb-2 flex items-center gap-3 rounded-xl border border-[#ece8e1] bg-white p-3 shadow-sm transition hover:bg-[#faf8f5] active:opacity-95"
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4ef] text-[#1a3c2a]">
-              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M5 3v18M5 4h11l-2 3.5 2 3.5H5"
-                  stroke="currentColor"
-                  strokeWidth="1.75"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-base font-bold text-[#1c1c1e]">Side games</p>
-              <p className="text-[13px] leading-snug text-[#6e6e6e]">
-                Skins, Wolf, and more with everyone in this round.
-              </p>
-            </div>
-            <span className="shrink-0 text-[#6e6e6e]" aria-hidden>
-              &rsaquo;
-            </span>
-          </Link>
-        ) : null}
         {canUseGroupChat ? (
           <Link
             href={`/round/${params.token}/chat`}

@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
-import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
-import { useCallback, useRef } from "react";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { useCallback, useEffect, useRef } from "react";
 import {
   Modal,
   PanResponder,
@@ -21,6 +21,24 @@ type Props = {
   slot: HousePromoSlotClient;
   onDismiss: () => void;
 };
+
+function FullscreenPromoVideo({ uri, active }: { uri: string; active: boolean }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = true;
+    p.muted = false;
+    p.volume = 1;
+  });
+  useEffect(() => {
+    if (active) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  }, [active, player]);
+  return (
+    <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />
+  );
+}
 
 export function GameEndHousePromoModal({ visible, slot, onDismiss }: Props) {
   const { width, height } = useWindowDimensions();
@@ -55,15 +73,7 @@ export function GameEndHousePromoModal({ visible, slot, onDismiss }: Props) {
             accessibilityLabel={`Open sponsor link: ${title}`}
           >
             {slot.mediaKind === "video" && mediaUri ? (
-              <Video
-                source={{ uri: mediaUri }}
-                style={StyleSheet.absoluteFill}
-                resizeMode={ResizeMode.COVER}
-                shouldPlay={visible}
-                isLooping
-                isMuted={false}
-                volume={1}
-              />
+              <FullscreenPromoVideo uri={mediaUri} active={visible} />
             ) : mediaUri ? (
               <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} contentFit="cover" />
             ) : (

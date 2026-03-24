@@ -40,8 +40,10 @@ export function RoundChatPanel({
   const [sendBusy, setSendBusy] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const pollActive = variant === "page" || expanded;
+  const initialPageAutoScrollPendingRef = useRef(true);
   const messagesRef = useRef<ChatMessage[]>([]);
   messagesRef.current = messages;
+  const scrollMessagesToBottomRef = useRef<() => void>(() => {});
 
   const authHeaders = useCallback(async () => {
     const t = await getToken();
@@ -92,7 +94,15 @@ export function RoundChatPanel({
             const json = (await res.json()) as { messages?: ChatMessage[]; viewerId?: string };
             if (res.ok) {
               if (json.viewerId) setViewerId(json.viewerId);
-              if ((json.messages?.length ?? 0) > 0) setMessages(json.messages ?? []);
+              if ((json.messages?.length ?? 0) > 0) {
+                setMessages(json.messages ?? []);
+                queueMicrotask(() => {
+                  requestAnimationFrame(() => {
+                    scrollMessagesToBottomRef.current();
+                    requestAnimationFrame(() => scrollMessagesToBottomRef.current());
+                  });
+                });
+              }
             }
             return;
           }
@@ -106,6 +116,7 @@ export function RoundChatPanel({
           if (json.viewerId) setViewerId(json.viewerId);
           const incoming = json.messages ?? [];
           if (incoming.length === 0) return;
+          let scrollAfterPoll = false;
           setMessages((prev) => {
             const seen = new Set(prev.map((m) => m.id));
             const merged = [...prev];
@@ -115,8 +126,18 @@ export function RoundChatPanel({
                 merged.push(m);
               }
             }
+            scrollAfterPoll =
+              merged.length > prev.length || merged.at(-1)?.id !== prev.at(-1)?.id;
             return merged;
           });
+          if (scrollAfterPoll) {
+            queueMicrotask(() => {
+              requestAnimationFrame(() => {
+                scrollMessagesToBottomRef.current();
+                requestAnimationFrame(() => scrollMessagesToBottomRef.current());
+              });
+            });
+          }
         } catch {
           /* ignore */
         }
@@ -153,6 +174,10 @@ export function RoundChatPanel({
         setMessages((prev) =>
           prev.some((m) => m.id === json.message!.id) ? prev : [...prev, json.message!],
         );
+        requestAnimationFrame(() => {
+          scrollMessagesToBottomRef.current();
+          requestAnimationFrame(() => scrollMessagesToBottomRef.current());
+        });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Send failed.");
@@ -170,28 +195,138 @@ export function RoundChatPanel({
   }
 
   const pageScrollRef = useRef<HTMLDivElement>(null);
+  const pageComposerBarRef = useRef<HTMLDivElement>(null);
   const inlineListRef = useRef<HTMLUListElement>(null);
+  const pageBottomSentinelRef = useRef<HTMLLIElement>(null);
+  const inlineBottomSentinelRef = useRef<HTMLLIElement>(null);
+  /** Measured fixed composer (incl. error strip); drives scroll area bottom padding. */
+  const [pageComposerBarHeight, setPageComposerBarHeight] = useState(104);
 
-  const lastMessageKey = messages.length ? messages[messages.length - 1]!.id : "";
+  /** Changes when the message list tail changes (new message, replace, or length change). */
+  const messagesStreamKey = `${messages.length}\u0000${messages.at(-1)?.id ?? ""}`;
+
+  const scrollMessagesToBottom = useCallback(() => {
+    if (variant === "page") {
+      const el = pageScrollRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
+      return;
+    }
+    const el = inlineListRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+    inlineBottomSentinelRef.current?.scrollIntoView({ block: "end" });
+  }, [variant]);
+
+  scrollMessagesToBottomRef.current = scrollMessagesToBottom;
+
+  useLayoutEffect(() => {
+    if (variant !== "page" || !pollActive) return;
+    const el = pageComposerBarRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = el.getBoundingClientRect().height;
+      if (h > 0) setPageComposerBarHeight(Math.round(h));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [variant, pollActive, pageChatImmersive]);
+
+  const pageScrollBottomPad = pageComposerBarHeight + 10;
+
+  useEffect(() => {
+    if (variant !== "page") return;
+    // New page open or token change: re-arm one-time initial auto-scroll.
+    initialPageAutoScrollPendingRef.current = true;
+  }, [variant, inviteToken]);
 
   useLayoutEffect(() => {
     if (!pollActive) return;
     if (variant === "page") {
       if (loading && messages.length === 0) return;
-      const el = pageScrollRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
+      scrollMessagesToBottom();
       return;
     }
-    if (variant === "inline" && messages.length > 0) {
-      const el = inlineListRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
-    }
-  }, [variant, pollActive, loading, messages.length, lastMessageKey]);
+    if (messages.length === 0) return;
+    scrollMessagesToBottom();
+  }, [
+    variant,
+    pollActive,
+    expanded,
+    loading,
+    messagesStreamKey,
+    pageScrollBottomPad,
+    scrollMessagesToBottom,
+  ]);
+
+  useEffect(() => {
+    if (!pollActive) return;
+    if (variant === "page" && loading && messages.length === 0) return;
+    if (variant === "inline" && messages.length === 0) return;
+
+    let alive = true;
+    const run = () => {
+      if (alive) scrollMessagesToBottom();
+    };
+    run();
+    const timeouts = [
+      window.setTimeout(run, 0),
+      window.setTimeout(run, 80),
+      window.setTimeout(run, 250),
+    ];
+    const rafOuter = requestAnimationFrame(() => {
+      run();
+      requestAnimationFrame(() => {
+        if (alive) run();
+      });
+    });
+    return () => {
+      alive = false;
+      for (const t of timeouts) window.clearTimeout(t);
+      cancelAnimationFrame(rafOuter);
+    };
+  }, [
+    variant,
+    pollActive,
+    expanded,
+    loading,
+    messagesStreamKey,
+    pageScrollBottomPad,
+    scrollMessagesToBottom,
+  ]);
+
+  useEffect(() => {
+    if (variant !== "page") return;
+    if (!pollActive || loading || messages.length === 0) return;
+    if (!initialPageAutoScrollPendingRef.current) return;
+
+    let alive = true;
+    const run = () => {
+      if (alive) scrollMessagesToBottom();
+    };
+    run();
+    const timeouts = [0, 140, 320, 680, 1200].map((ms) =>
+      window.setTimeout(run, ms),
+    );
+    const release = window.setTimeout(() => {
+      initialPageAutoScrollPendingRef.current = false;
+    }, 1300);
+
+    return () => {
+      alive = false;
+      for (const t of timeouts) window.clearTimeout(t);
+      window.clearTimeout(release);
+    };
+  }, [variant, pollActive, loading, messages.length, pageScrollBottomPad, scrollMessagesToBottom]);
 
   const listClassInline =
     "mt-3 max-h-60 space-y-2 overflow-y-auto rounded-xl border border-cream-200 bg-cream-50 p-3";
 
-  function avatarFor(m: ChatMessage) {
+  function avatarFor(m: ChatMessage, onAvatarLoaded?: () => void) {
     const initial = m.user.name.trim().charAt(0).toUpperCase() || "?";
     if (m.user.avatar) {
       return (
@@ -201,6 +336,7 @@ export function RoundChatPanel({
           width={28}
           height={28}
           className="h-7 w-7 shrink-0 rounded-full object-cover"
+          onLoadingComplete={onAvatarLoaded}
         />
       );
     }
@@ -270,11 +406,8 @@ export function RoundChatPanel({
           <>
             <div
               ref={pageScrollRef}
-              className={
-                pageChatImmersive
-                  ? "min-h-0 flex-1 overflow-y-auto px-0.5 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] pt-1"
-                  : "min-h-0 flex-1 overflow-y-auto px-0.5 pb-[calc(7rem+max(0.75rem,env(safe-area-inset-bottom,0px)))] pt-1"
-              }
+              className="min-h-0 min-w-0 flex-1 overflow-y-auto px-0.5 pt-1"
+              style={{ paddingBottom: pageScrollBottomPad }}
             >
               {loading && messages.length === 0 ? (
                 <div className="flex items-center justify-center gap-2 py-10 text-sm text-[#6e6e6e]">
@@ -293,7 +426,7 @@ export function RoundChatPanel({
                       <li key={m.id} className="flex w-full items-end gap-2">
                         {!mine ? (
                           <>
-                            {avatarFor(m)}
+                            {avatarFor(m, scrollMessagesToBottom)}
                             <div className="max-w-[78%] shrink rounded-[14px] border border-[#ece8e1] bg-[#f1efea] px-2.5 py-2">
                               <p className="text-[11px] font-bold text-[#6e6e6e]">{m.user.name}</p>
                               <p className="whitespace-pre-wrap text-[15px] text-[#1c1c1e]">{m.body}</p>
@@ -312,26 +445,24 @@ export function RoundChatPanel({
                                 {formatTime(m.createdAt)}
                               </p>
                             </div>
-                            {avatarFor(m)}
+                            {avatarFor(m, scrollMessagesToBottom)}
                           </>
                         )}
                       </li>
                     );
                   })}
+                  <li
+                    ref={pageBottomSentinelRef}
+                    className="h-0 w-full shrink-0 list-none p-0"
+                    aria-hidden
+                  />
                 </ul>
               )}
             </div>
 
-            {error && messages.length > 0 ? (
-              <p className="px-1 pb-1 text-center text-xs text-red-600">{error}</p>
-            ) : null}
-
             <div
-              className={
-                pageChatImmersive
-                  ? "fixed left-0 right-0 z-[35] border-t border-[#ece8e1] bg-[#faf8f5]/95 px-5 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-3 shadow-[0_-8px_32px_-8px_rgba(0,0,0,0.1)] backdrop-blur-md supports-[backdrop-filter]:bg-[#faf8f5]/85 sm:px-6"
-                  : "fixed left-0 right-0 z-[35] border-t border-[#ece8e1] bg-[#faf8f5]/95 px-5 pb-3 pt-3 shadow-[0_-8px_32px_-8px_rgba(0,0,0,0.1)] backdrop-blur-md supports-[backdrop-filter]:bg-[#faf8f5]/85 sm:px-6"
-              }
+              ref={pageComposerBarRef}
+              className="fixed left-0 right-0 z-[35] bg-[#faf8f5]/95 shadow-[0_-8px_32px_-8px_rgba(0,0,0,0.1)] backdrop-blur-md supports-[backdrop-filter]:bg-[#faf8f5]/85"
               style={
                 pageChatImmersive
                   ? { bottom: 0 }
@@ -341,8 +472,15 @@ export function RoundChatPanel({
                     }
               }
             >
-              <div className="mx-auto w-full max-w-lg sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl">
-                {composer}
+              {error && messages.length > 0 ? (
+                <p className="px-5 pb-2 pt-2 text-center text-xs text-red-600 sm:px-6">
+                  {error}
+                </p>
+              ) : null}
+              <div className="border-t border-[#ece8e1] px-5 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-3 sm:px-6">
+                <div className="mx-auto w-full max-w-lg sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl">
+                  {composer}
+                </div>
               </div>
             </div>
           </>
@@ -412,6 +550,11 @@ export function RoundChatPanel({
                   );
                 })
               )}
+              <li
+                ref={inlineBottomSentinelRef}
+                className="h-px w-full shrink-0 list-none overflow-hidden p-0"
+                aria-hidden
+              />
             </ul>
           )}
 

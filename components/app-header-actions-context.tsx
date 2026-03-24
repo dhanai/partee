@@ -8,7 +8,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import { AppHeaderNotificationBell } from "@/components/app-header-notification-bell";
+import { isRoundChatPath } from "@/lib/is-round-chat-path";
 
 type Value = {
   node: ReactNode | null;
@@ -43,10 +45,12 @@ export function useAppHeaderActions() {
 
 export function AppHeaderActionsSlot() {
   const ctx = useContext(AppHeaderActionsContext);
+  const pathname = usePathname();
+  const hideBell = isRoundChatPath(pathname);
   return (
     <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
       <div className="flex min-w-0 items-center justify-end gap-1">{ctx?.node ?? null}</div>
-      <AppHeaderNotificationBell />
+      {hideBell ? null : <AppHeaderNotificationBell />}
     </div>
   );
 }

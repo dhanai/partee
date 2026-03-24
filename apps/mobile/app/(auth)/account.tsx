@@ -248,10 +248,18 @@ function SignInFields({
     setSubmitting(true);
     setError(null);
     try {
-      const result = await signIn.create({
+      let result = await signIn.create({
         identifier: identifier.trim(),
         password,
       });
+
+      if (result.status === "needs_first_factor") {
+        result = await signIn.attemptFirstFactor({
+          strategy: "password",
+          password,
+        });
+      }
+
       if (result.status === "complete" && result.createdSessionId) {
         await setActive({ session: result.createdSessionId });
         router.replace("/(tabs)");
@@ -264,7 +272,7 @@ function SignInFields({
         return;
       }
       if (result.status === "needs_first_factor") {
-        setError("This account needs an extra sign-in step. Try Google or sign in on the web.");
+        setError("Password sign-in failed. Try again or use Google.");
         return;
       }
       if (result.status === "needs_second_factor") {
@@ -740,8 +748,8 @@ export default function AuthAccountScreen() {
             authFormStyles.logoHeader,
             {
               paddingTop: insets.top + 4 + AUTH_LOGO_EXTRA_TOP,
-              zIndex: 20,
-              elevation: 20,
+              zIndex: 1,
+              elevation: 1,
             },
           ]}
         >
