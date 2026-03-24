@@ -4,6 +4,7 @@ import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
+import { useGroupChatLayout } from "../lib/use-group-chat-layout";
 import { colors } from "../lib/theme";
 import { RoundGroupChatComposer } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
@@ -56,6 +57,14 @@ export function RoundGroupChatPoll({
   const [viewerId, setViewerId] = useState<string | null>(() => getCachedMeProfile()?.id ?? null);
   const loadGenRef = useRef(0);
   const prevMessageCountRef = useRef(0);
+
+  const {
+    messageListPaddingBottom,
+    onComposerLayout,
+    onComposerFocus: onComposerFocusChat,
+    stickyKeyboardOffset,
+    stickyWrapStyle,
+  } = useGroupChatLayout(isFullscreen, scrollRef, insets.bottom, onComposerFocus);
 
   function resolveMine(m: ChatMessage): boolean {
     if (typeof m.isMine === "boolean") return m.isMine;
@@ -235,7 +244,7 @@ export function RoundGroupChatPoll({
       styles={composerStyles}
       sendBusy={sendBusy}
       onSend={handleSend}
-      onComposerFocus={onComposerFocus}
+      onComposerFocus={onComposerFocusChat}
     />
   );
 
@@ -254,8 +263,12 @@ export function RoundGroupChatPoll({
             styles.messageList,
             isFullscreen ? styles.messageListFlex : { maxHeight: MAX_LIST_HEIGHT },
           ]}
-          contentContainerStyle={styles.messageListContent}
+          contentContainerStyle={[
+            styles.messageListContent,
+            { paddingBottom: messageListPaddingBottom },
+          ]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         >
           {messages.length === 0 ? (
             <Text style={styles.empty}>No messages yet. Say hi!</Text>
@@ -311,15 +324,14 @@ export function RoundGroupChatPoll({
   );
 
   if (isFullscreen) {
-    const stickyClosedOffset = -(insets.bottom + 16);
     return (
       <View style={styles.fullscreenRoot}>
         {messagesColumn}
         <KeyboardStickyView
-          offset={{ closed: stickyClosedOffset, opened: 8 }}
-          style={styles.stickyComposerWrap}
+          offset={stickyKeyboardOffset}
+          style={[styles.stickyComposerWrap, stickyWrapStyle]}
         >
-          {composerRow}
+          <View onLayout={onComposerLayout}>{composerRow}</View>
         </KeyboardStickyView>
       </View>
     );
@@ -389,9 +401,8 @@ const styles = StyleSheet.create({
   bubbleBodyMine: { color: "#fff" },
   bubbleTime: { fontSize: 10, color: colors.muted, marginTop: 4, alignSelf: "flex-end" },
   bubbleTimeMine: { color: "rgba(255,255,255,0.85)" },
-  /** Fullscreen: inset below input row + slight gap when keyboard is open. */
-  /** Extra space below the row; keyboard gap uses opened: 8 to match composerRow gap. */
-  stickyComposerWrap: { paddingBottom: 12 },
+  /** Fullscreen: safe-area bottom padding merged in JS; keyboard uses `opened` offset only (no negative translate). */
+  stickyComposerWrap: {},
   composerRow: { flexDirection: "row", gap: 8, alignItems: "flex-end", marginTop: 4 },
   input: {
     flex: 1,

@@ -33,15 +33,16 @@ export default function RoundChatPage({ params }: { params: { token: string } })
   const canUse =
     round != null && (round.isHost || round.currentUserSpotStatus === "confirmed");
 
+  /** Tab bar is hidden on this route; reserve header + main top padding + home indicator only. */
   const chatShellMinHeight =
-    "calc(100dvh - 52px - 1rem - var(--app-tab-bar-stack, calc(4.125rem + max(0.75rem, env(safe-area-inset-bottom, 0px)))))";
+    "calc(100dvh - 52px - 1rem - env(safe-area-inset-bottom, 0px))";
 
   return (
     <section
       className={
         canUse && round
           ? "flex min-h-0 flex-col gap-0"
-          : "space-y-5 pb-[var(--app-tab-bar-stack,calc(4.125rem+max(0.75rem,env(safe-area-inset-bottom,0px))))]"
+          : "space-y-5 pb-[max(1rem,env(safe-area-inset-bottom,0px))]"
       }
       style={
         canUse && round

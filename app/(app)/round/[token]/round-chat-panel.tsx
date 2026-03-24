@@ -3,7 +3,9 @@
 import { useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { ParfadeSpinner } from "@/components/parfade-spinner";
+import { isRoundChatPath } from "@/lib/is-round-chat-path";
 
 type ChatMessage = {
   id: string;
@@ -27,6 +29,8 @@ export function RoundChatPanel({
   inviteToken: string;
   variant?: "inline" | "page";
 }) {
+  const pathname = usePathname();
+  const pageChatImmersive = variant === "page" && isRoundChatPath(pathname);
   const { getToken, isLoaded } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [viewerId, setViewerId] = useState<string | null>(null);
@@ -266,7 +270,11 @@ export function RoundChatPanel({
           <>
             <div
               ref={pageScrollRef}
-              className="min-h-0 flex-1 overflow-y-auto px-0.5 pb-[calc(7rem+max(0.75rem,env(safe-area-inset-bottom,0px)))] pt-1"
+              className={
+                pageChatImmersive
+                  ? "min-h-0 flex-1 overflow-y-auto px-0.5 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] pt-1"
+                  : "min-h-0 flex-1 overflow-y-auto px-0.5 pb-[calc(7rem+max(0.75rem,env(safe-area-inset-bottom,0px)))] pt-1"
+              }
             >
               {loading && messages.length === 0 ? (
                 <div className="flex items-center justify-center gap-2 py-10 text-sm text-[#6e6e6e]">
@@ -319,11 +327,19 @@ export function RoundChatPanel({
             ) : null}
 
             <div
-              className="fixed left-0 right-0 z-[35] border-t border-[#ece8e1] bg-[#faf8f5]/95 px-5 pb-3 pt-3 shadow-[0_-8px_32px_-8px_rgba(0,0,0,0.1)] backdrop-blur-md supports-[backdrop-filter]:bg-[#faf8f5]/85 sm:px-6"
-              style={{
-                bottom:
-                  "var(--app-tab-bar-stack, calc(4.125rem + max(0.75rem, env(safe-area-inset-bottom, 0px))))",
-              }}
+              className={
+                pageChatImmersive
+                  ? "fixed left-0 right-0 z-[35] border-t border-[#ece8e1] bg-[#faf8f5]/95 px-5 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-3 shadow-[0_-8px_32px_-8px_rgba(0,0,0,0.1)] backdrop-blur-md supports-[backdrop-filter]:bg-[#faf8f5]/85 sm:px-6"
+                  : "fixed left-0 right-0 z-[35] border-t border-[#ece8e1] bg-[#faf8f5]/95 px-5 pb-3 pt-3 shadow-[0_-8px_32px_-8px_rgba(0,0,0,0.1)] backdrop-blur-md supports-[backdrop-filter]:bg-[#faf8f5]/85 sm:px-6"
+              }
+              style={
+                pageChatImmersive
+                  ? { bottom: 0 }
+                  : {
+                      bottom:
+                        "var(--app-tab-bar-stack, calc(4.125rem + max(0.75rem, env(safe-area-inset-bottom, 0px))))",
+                    }
+              }
             >
               <div className="mx-auto w-full max-w-lg sm:max-w-2xl">{composer}</div>
             </div>

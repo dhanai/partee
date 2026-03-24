@@ -10,6 +10,7 @@ import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { parfadeRoundDetailChannel } from "../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../lib/parfade-ably-messages";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
+import { useGroupChatLayout } from "../lib/use-group-chat-layout";
 import { colors } from "../lib/theme";
 import { RoundGroupChatComposer } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
@@ -71,6 +72,14 @@ export function RoundGroupChatConnected({
   const loadGenRef = useRef(0);
   const prevMessageCountRef = useRef(0);
   const ably = useAbly();
+
+  const {
+    messageListPaddingBottom,
+    onComposerLayout,
+    onComposerFocus: onComposerFocusChat,
+    stickyKeyboardOffset,
+    stickyWrapStyle,
+  } = useGroupChatLayout(isFullscreen, scrollRef, insets.bottom, onComposerFocus);
 
   const { currentStatus } = useChatConnection();
   const ablyConnected = currentStatus === "connected";
@@ -320,7 +329,7 @@ export function RoundGroupChatConnected({
       styles={composerStyles}
       sendBusy={sendBusy}
       onSend={handleSend}
-      onComposerFocus={onComposerFocus}
+      onComposerFocus={onComposerFocusChat}
     />
   );
 
@@ -339,8 +348,12 @@ export function RoundGroupChatConnected({
             styles.messageList,
             isFullscreen ? styles.messageListFlex : { maxHeight: MAX_LIST_HEIGHT },
           ]}
-          contentContainerStyle={styles.messageListContent}
+          contentContainerStyle={[
+            styles.messageListContent,
+            { paddingBottom: messageListPaddingBottom },
+          ]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         >
           {messages.length === 0 ? (
             <Text style={styles.empty}>No messages yet. Say hi!</Text>
@@ -396,15 +409,14 @@ export function RoundGroupChatConnected({
   );
 
   if (isFullscreen) {
-    const stickyClosedOffset = -(insets.bottom + 16);
     return (
       <View style={styles.fullscreenRoot}>
         {messagesColumn}
         <KeyboardStickyView
-          offset={{ closed: stickyClosedOffset, opened: 8 }}
-          style={styles.stickyComposerWrap}
+          offset={stickyKeyboardOffset}
+          style={[styles.stickyComposerWrap, stickyWrapStyle]}
         >
-          {composerRow}
+          <View onLayout={onComposerLayout}>{composerRow}</View>
         </KeyboardStickyView>
       </View>
     );

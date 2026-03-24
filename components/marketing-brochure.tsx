@@ -106,15 +106,6 @@ export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null 
                   {appStoreUrl ? "Use the web app" : "Get started"}
                 </Link>
               </div>
-              {!appStoreUrl && process.env.NODE_ENV === "development" ? (
-                <p className="mt-3 text-[13px] text-charcoal-300">
-                  Set{" "}
-                  <code className="rounded bg-cream-200 px-1.5 py-0.5 text-[12px] text-charcoal-500">
-                    NEXT_PUBLIC_IOS_APP_STORE_URL
-                  </code>{" "}
-                  to show the App Store button.
-                </p>
-              ) : null}
             </div>
 
             <div className="mx-auto w-full max-w-[280px] lg:mx-0 lg:max-w-none lg:justify-self-end">

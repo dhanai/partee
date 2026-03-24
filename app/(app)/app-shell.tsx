@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { AppCreateProvider } from "@/components/app-create-provider";
 import {
   AppHeaderActionsProvider,
@@ -10,6 +11,7 @@ import {
 import { AppTabBar } from "@/components/app-tab-bar";
 import { NotificationBadgeWebProvider } from "@/components/notification-badge-web-context";
 import { ParfadeWordmark } from "@/components/parfade-wordmark";
+import { isRoundChatPath } from "@/lib/is-round-chat-path";
 
 const tabBarStackVar = {
   ["--app-tab-bar-stack" as string]:
@@ -17,6 +19,9 @@ const tabBarStackVar = {
 } as CSSProperties;
 
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
+  const pathname = usePathname();
+  const chatImmersive = isRoundChatPath(pathname);
+
   return (
     <AppCreateProvider>
       <AppHeaderActionsProvider>
@@ -35,10 +40,16 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
               </Link>
               <AppHeaderActionsSlot />
             </header>
-            <main className="mx-auto w-full max-w-lg flex-1 px-5 pb-[var(--app-tab-bar-stack)] pt-4 sm:max-w-2xl sm:px-6">
+            <main
+              className={
+                chatImmersive
+                  ? "mx-auto w-full max-w-lg flex-1 px-5 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-4 sm:max-w-2xl sm:px-6"
+                  : "mx-auto w-full max-w-lg flex-1 px-5 pb-[var(--app-tab-bar-stack)] pt-4 sm:max-w-2xl sm:px-6"
+              }
+            >
               {children}
             </main>
-            <AppTabBar />
+            {chatImmersive ? null : <AppTabBar />}
           </div>
         </NotificationBadgeWebProvider>
       </AppHeaderActionsProvider>
