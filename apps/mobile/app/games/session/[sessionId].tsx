@@ -21,6 +21,7 @@ import {
   useRouter,
 } from "expo-router";
 import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
+import { GameEndHousePromoModal } from "../../../components/game-end-house-promo-modal";
 import {
   HoleCompletionAvatars,
   StandingAvatar,
@@ -45,6 +46,7 @@ import type { WolfTeeOff } from "../../../lib/wolf-rotation";
 import { computeSkinsTotals, type SkinsTieHandling } from "../../../lib/skins-scoring";
 import { computeWolfTotals, type WolfTieHandling } from "../../../lib/wolf-scoring";
 import { buildWolfSessionRecapHighlights } from "../../../lib/wolf-session-recap-copy";
+import { getHousePromosCached, isGameEndHousePromoReady, type HousePromoSlotClient } from "../../../lib/house-promo-api";
 import { showGameFinishedInterstitialAd } from "../../../lib/parfade-admob";
 import { colors } from "../../../lib/theme";
 
@@ -102,6 +104,8 @@ export default function GameSessionScreen() {
   const [pendingRecapAfterComplete, setPendingRecapAfterComplete] = useState(false);
   /** Opaque layer during complete → ad so recap is not visible until the ad dismisses. */
   const [adHandoffCover, setAdHandoffCover] = useState(false);
+  const [houseGameEndPromo, setHouseGameEndPromo] = useState<HousePromoSlotClient | null>(null);
+  const housePromoResolveRef = useRef<(() => void) | null>(null);
   /**
    * After delete starts, ignore GET errors: a slow fetch can finish after the row is gone and the
    * API returns 403 Forbidden — that was the red banner flash above standings.
@@ -117,6 +121,8 @@ export default function GameSessionScreen() {
     setRefreshing(false);
     setPendingRecapAfterComplete(false);
     setAdHandoffCover(false);
+    setHouseGameEndPromo(null);
+    housePromoResolveRef.current = null;
     suppressLoadErrorsRef.current = false;
   }, [sessionId]);
 
@@ -245,6 +251,13 @@ export default function GameSessionScreen() {
     }
   }
 
+  const dismissHouseGameEndPromo = useCallback(() => {
+    setHouseGameEndPromo(null);
+    const r = housePromoResolveRef.current;
+    housePromoResolveRef.current = null;
+    r?.();
+  }, []);
+
   function exitSessionScreen() {
     setTimeout(() => {
       if (router.canGoBack()) {
@@ -271,7 +284,22 @@ export default function GameSessionScreen() {
       setSession(nextSession);
       setPendingRecapAfterComplete(true);
       router.setParams({ recap: "1" });
-      await showGameFinishedInterstitialAd();
+      let promos: Awaited<ReturnType<typeof getHousePromosCached>> | null = null;
+      try {
+        promos = await getHousePromosCached(true);
+      } catch {
+        promos = null;
+      }
+      const ge = promos?.gameEnd;
+      if (ge && isGameEndHousePromoReady(ge)) {
+        setAdHandoffCover(false);
+        await new Promise<void>((resolve) => {
+          housePromoResolveRef.current = resolve;
+          setHouseGameEndPromo(ge);
+        });
+      } else {
+        await showGameFinishedInterstitialAd();
+      }
       let handoffCoverDropped = false;
       const dropHandoffCover = () => {
         if (handoffCoverDropped) return;
@@ -376,6 +404,13 @@ export default function GameSessionScreen() {
 
   return (
     <>
+      {houseGameEndPromo ? (
+        <GameEndHousePromoModal
+          visible
+          slot={houseGameEndPromo}
+          onDismiss={dismissHouseGameEndPromo}
+        />
+      ) : null}
       <Modal visible={adHandoffCover} animationType="none" transparent={false}>
         <View style={styles.adHandoffModal}>
           <ActivityIndicator color={colors.fairway} size="large" />

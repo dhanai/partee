@@ -16,11 +16,11 @@
 
 @layer components {
   .parfade-shell {
-    @apply mx-auto w-full max-w-lg px-5 py-6 sm:max-w-2xl;
+    @apply mx-auto w-full max-w-lg px-5 py-6 sm:max-w-2xl lg:max-w-3xl lg:px-8 xl:max-w-4xl;
   }
 
   .parfade-card {
-    @apply rounded-2xl border border-[#ece8e1] bg-white p-5 shadow-sm;
+    @apply rounded-2xl border border-[#ece8e1] bg-white p-5 shadow-sm lg:p-6;
   }
 
   .parfade-input {
@@ -48,10 +48,10 @@
   }
 
   .parfade-page-title {
-    @apply text-[28px] font-bold leading-tight tracking-tight text-charcoal;
+    @apply text-[28px] font-bold leading-tight tracking-tight text-charcoal lg:text-[32px];
   }
 
   .parfade-page-sub {
-    @apply mt-1 text-sm leading-snug text-charcoal-400;
+    @apply mt-1 text-sm leading-snug text-charcoal-400 lg:text-[15px] lg:leading-relaxed;
   }
 }

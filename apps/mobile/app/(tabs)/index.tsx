@@ -31,7 +31,8 @@ import {
   subscribeRoundListsRefresh,
 } from "../../lib/round-lists-refresh";
 import { buildDiscoverFeedRows } from "../../lib/discover-feed-ad-rows";
-import { shouldShowDiscoverHouseAd } from "../../lib/discover-house-ad";
+import { resolveDiscoverAdDisplay, shouldShowDiscoverHouseAd } from "../../lib/discover-house-ad";
+import { getHousePromosCached, type HousePromoSlotClient } from "../../lib/house-promo-api";
 import { colors } from "../../lib/theme";
 import { DiscoverRound } from "../../types/round";
 
@@ -83,6 +84,7 @@ export default function DiscoverScreen() {
   const [hasMoreDiscover, setHasMoreDiscover] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [houseDiscoverFromApi, setHouseDiscoverFromApi] = useState<HousePromoSlotClient | null>(null);
   const roundsRef = useRef<DiscoverRound[]>([]);
   const hasManualLocationRef = useRef(false);
   const loadRoundsRef = useRef<
@@ -284,6 +286,14 @@ export default function DiscoverScreen() {
     }, [locationHydrated]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      void getHousePromosCached()
+        .then((p) => setHouseDiscoverFromApi(p.discover))
+        .catch(() => setHouseDiscoverFromApi(null));
+    }, []),
+  );
+
   useEffect(() => {
     if (!locationHydrated) return;
     if (!hasManualLocationRef.current || !coords) return;
@@ -353,6 +363,11 @@ export default function DiscoverScreen() {
   const discoverFeedRows = useMemo(
     () => buildDiscoverFeedRows(filteredRounds),
     [filteredRounds],
+  );
+
+  const discoverHouseDisplay = useMemo(
+    () => resolveDiscoverAdDisplay(houseDiscoverFromApi),
+    [houseDiscoverFromApi],
   );
 
   if (loading) {
@@ -547,6 +562,9 @@ export default function DiscoverScreen() {
           setRefreshing(true);
           setDiscoverCursor(null);
           setHasMoreDiscover(true);
+          void getHousePromosCached(true)
+            .then((p) => setHouseDiscoverFromApi(p.discover))
+            .catch(() => {});
           void loadRounds({ reset: true });
         }}
         onEndReachedThreshold={0.35}
@@ -556,8 +574,8 @@ export default function DiscoverScreen() {
         }}
         renderItem={({ item }) =>
           item.type === "ad" ? (
-            shouldShowDiscoverHouseAd(item.slotId) ? (
-              <DiscoverHouseAdRow />
+            discoverHouseDisplay && shouldShowDiscoverHouseAd(item.slotId, discoverHouseDisplay) ? (
+              <DiscoverHouseAdRow display={discoverHouseDisplay} />
             ) : (
               <DiscoverNativeAdRow />
             )

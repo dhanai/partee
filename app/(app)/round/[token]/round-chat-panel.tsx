@@ -341,7 +341,9 @@ export function RoundChatPanel({
                     }
               }
             >
-              <div className="mx-auto w-full max-w-lg sm:max-w-2xl">{composer}</div>
+              <div className="mx-auto w-full max-w-lg sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl">
+                {composer}
+              </div>
             </div>
           </>
         ) : null}

@@ -21,7 +21,7 @@ export default function SupportPage() {
   return (
     <div className="min-h-dvh bg-cream-100 text-charcoal antialiased">
       <header className="border-b border-[#ece8e1] bg-cream-100/90 px-5 py-4 backdrop-blur-md sm:px-8">
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 lg:max-w-3xl xl:max-w-4xl">
           <Link
             href="/"
             className="shrink-0 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-fairway/30"
@@ -38,7 +38,7 @@ export default function SupportPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-2xl px-5 py-10 sm:px-8 sm:py-14">
+      <main className="mx-auto max-w-2xl px-5 py-10 sm:px-8 sm:py-14 lg:max-w-3xl lg:px-10 xl:max-w-4xl">
         <h1 className="text-[28px] font-bold leading-tight tracking-tight text-charcoal">
           Support
         </h1>
@@ -95,7 +95,7 @@ export default function SupportPage() {
       </main>
 
       <footer className="border-t border-[#ece8e1] px-5 py-8 sm:px-8">
-        <div className="mx-auto flex max-w-2xl flex-col gap-2 text-center text-[13px] text-charcoal-400 sm:text-left">
+        <div className="mx-auto flex max-w-2xl flex-col gap-2 text-center text-[13px] text-charcoal-400 sm:text-left lg:max-w-3xl xl:max-w-4xl">
           <Link href="/" className="inline-flex justify-center sm:justify-start">
             <ParfadeWordmark widthPx={96} className="opacity-90" />
           </Link>

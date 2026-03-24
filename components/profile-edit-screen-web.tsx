@@ -3,14 +3,7 @@
 import Image from "next/image";
 import type { Route } from "next";
 import Link from "next/link";
-import {
-  FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
 
 type MeUser = {
@@ -25,6 +18,20 @@ type MeUser = {
 
 type LocationResult = { label: string; city: string; state: string };
 
+function snapshotFromFields(args: {
+  name: string;
+  handicap: string;
+  location: string;
+  avatar: string | null;
+}) {
+  return JSON.stringify({
+    name: args.name.trim(),
+    handicap: args.handicap.trim(),
+    location: args.location.trim(),
+    avatar: args.avatar ?? null,
+  });
+}
+
 function useDebounce(value: string, delayMs: number): string {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -38,10 +45,10 @@ const HCP_RE = /^\d{1,2}(\.\d{1,2})?$/;
 
 export function ProfileEditScreenWeb() {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [emailDisplay, setEmailDisplay] = useState("");
@@ -57,6 +64,8 @@ export function ProfileEditScreenWeb() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const debouncedLocation = useDebounce(location, 320);
+  const lastSavedSnapshotRef = useRef("");
+  const saveRequestGenRef = useRef(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +83,12 @@ export function ProfileEditScreenWeb() {
       setLocation(loc);
       setLocationIsValidated(true);
       setAvatarUrl(u.avatar);
+      lastSavedSnapshotRef.current = snapshotFromFields({
+        name: u.name?.trim() ?? "",
+        handicap: u.handicap?.trim() ?? "",
+        location: loc,
+        avatar: u.avatar,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load profile.");
     } finally {
@@ -160,7 +175,6 @@ export function ProfileEditScreenWeb() {
         throw new Error(json.error ?? "Upload failed.");
       }
       setAvatarUrl(json.url);
-      setMessage(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
@@ -168,75 +182,114 @@ export function ProfileEditScreenWeb() {
     }
   }
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    setMessage(null);
+  useEffect(() => {
+    if (loading || uploading) return;
+    const nextSnapshot = snapshotFromFields({
+      name,
+      handicap,
+      location,
+      avatar: avatarUrl,
+    });
+    if (nextSnapshot === lastSavedSnapshotRef.current) return;
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError("Name is required.");
-      setSaving(false);
+      setSaveNote(null);
+      setProfileSaving(false);
       return;
     }
 
     const h = handicap.trim();
     if (h.length > 0 && !HCP_RE.test(h)) {
-      setError("Handicap must look like 12 or 12.4 (up to two digits before and after the decimal).");
-      setSaving(false);
+      setSaveNote(null);
+      setProfileSaving(false);
       return;
     }
 
     if (location.trim().length > 0 && !locationIsValidated) {
-      setError("Choose your city from the location suggestions (Google Places).");
-      setSaving(false);
+      setSaveNote(null);
+      setProfileSaving(false);
       return;
     }
 
-    try {
-      const res = await fetch("/api/users/me", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    setSaveNote(null);
+    const timer = setTimeout(async () => {
+      const gen = ++saveRequestGenRef.current;
+      setError(null);
+      setProfileSaving(true);
+      try {
+        const res = await fetch("/api/users/me", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: trimmedName,
+            handicap: h.length > 0 ? h : null,
+            location: location.trim().length > 0 ? location.trim() : null,
+            avatar: avatarUrl,
+          }),
+        });
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(json.error ?? "Could not save.");
+        if (gen !== saveRequestGenRef.current) return;
+        lastSavedSnapshotRef.current = snapshotFromFields({
           name: trimmedName,
-          handicap: h.length > 0 ? h : null,
-          location: location.trim().length > 0 ? location.trim() : null,
+          handicap: h,
+          location: location.trim(),
           avatar: avatarUrl,
-        }),
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Could not save.");
-      setMessage("Profile saved.");
-      setLocationIsValidated(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save.");
-    } finally {
-      setSaving(false);
-    }
-  }
+        });
+        setLocationIsValidated(true);
+        setProfileSaving(false);
+        setSaveNote("Saved");
+      } catch (err) {
+        if (gen !== saveRequestGenRef.current) return;
+        setError(err instanceof Error ? err.message : "Could not save.");
+        setProfileSaving(false);
+        setSaveNote("Save failed");
+      }
+    }, 650);
+    return () => clearTimeout(timer);
+  }, [
+    loading,
+    uploading,
+    name,
+    handicap,
+    location,
+    avatarUrl,
+    locationIsValidated,
+  ]);
 
   return (
     <section className="space-y-6 pb-10">
-      <Link
-        href={"/profile" as Route}
-        className="inline-flex items-center gap-1 text-sm font-semibold text-[#1a3c2a]"
-      >
-        <span aria-hidden>&larr;</span> Profile
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link
+          href={"/profile" as Route}
+          className="inline-flex items-center gap-1 text-sm font-semibold text-[#1a3c2a]"
+        >
+          <span aria-hidden>&larr;</span> Profile
+        </Link>
+        {!loading && (profileSaving || saveNote != null) ? (
+          <span
+            className="rounded-full border border-[#ece8e1] bg-[#edf4ef] px-2.5 py-1 text-xs font-bold text-[#1a3c2a]"
+            aria-live="polite"
+          >
+            {profileSaving ? "Saving…" : saveNote}
+          </span>
+        ) : null}
+      </div>
 
       <div>
         <h1 className="parfade-page-title">Edit profile</h1>
         <p className="parfade-page-sub">
-          Photo, name, handicap, and location. Email is managed with your sign-in provider.
+          Photo, name, handicap, and location save automatically after you stop typing. Email is managed
+          with your sign-in provider.
         </p>
       </div>
 
       {loading ? (
         <ParfadeLoadingBlock className="py-12" message="Loading…" size="md" />
       ) : (
-        <form onSubmit={onSubmit} className="space-y-6">
-          <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,200px)_minmax(0,1fr)] lg:items-start lg:gap-10 xl:grid-cols-[minmax(0,220px)_minmax(0,1fr)] xl:gap-12">
+          <div className="flex flex-col items-center gap-3 lg:items-center lg:self-start">
             <div className="relative h-[120px] w-[120px] overflow-hidden rounded-[22px] bg-white shadow-[0_8px_20px_rgba(0,0,0,0.12)]">
               {avatarUrl ? (
                 <Image
@@ -276,10 +329,12 @@ export function ProfileEditScreenWeb() {
             >
               {uploading ? "Uploading…" : "Upload new photo"}
             </button>
-            <p className="text-center text-xs text-[#6e6e6e]">JPG, PNG, WebP, or GIF · up to 5MB</p>
+            <p className="text-center text-xs text-[#6e6e6e] lg:max-w-[200px]">
+              JPG, PNG, WebP, or GIF · up to 5MB
+            </p>
           </div>
 
-          <div className="space-y-4 rounded-[18px] border border-[#ece8e1] bg-white p-4 shadow-sm">
+          <div className="min-w-0 space-y-4 rounded-[18px] border border-[#ece8e1] bg-white p-4 shadow-sm lg:p-5">
             <div>
               <label className="parfade-label" htmlFor="edit-name">
                 Name
@@ -377,26 +432,10 @@ export function ProfileEditScreenWeb() {
                 </p>
               ) : null}
             </div>
+
+            {error ? <p className="text-sm text-red-600">{error}</p> : null}
           </div>
-
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          {message ? <p className="text-sm font-medium text-[#1a3c2a]">{message}</p> : null}
-
-          <button
-            type="submit"
-            disabled={saving || uploading}
-            className="parfade-btn-primary inline-flex w-full max-w-md items-center justify-center gap-2 disabled:opacity-40"
-          >
-            {saving ? (
-              <>
-                <ParfadeSpinner size="sm" variant="onPrimary" aria-label="Saving" />
-                Saving…
-              </>
-            ) : (
-              "Save profile"
-            )}
-          </button>
-        </form>
+        </div>
       )}
     </section>
   );

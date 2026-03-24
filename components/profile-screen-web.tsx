@@ -158,7 +158,7 @@ export function ProfileScreenWeb() {
           </div>
 
           {user?.id ? (
-            <div className="mt-6 flex w-full max-w-lg border-y border-[#ece8e1] py-5">
+            <div className="mt-6 flex w-full max-w-lg border-y border-[#ece8e1] py-5 lg:max-w-none">
               <div className="flex flex-1 flex-col items-center gap-1 py-1">
                 <span className="text-xl font-extrabold text-[#1c1c1e]">
                   {user.handicap?.trim() || "—"}

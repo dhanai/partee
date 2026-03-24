@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Ctx = { openCreateSheet: () => void };
@@ -19,6 +19,15 @@ export function AppCreateProvider({ children }: { children: React.ReactNode }) {
   const [visible, setVisible] = useState(false);
   const router = useRouter();
 
+  useEffect(() => {
+    if (!visible) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setVisible(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [visible]);
+
   function pick(mode: "planning" | "scheduled") {
     setVisible(false);
     const session = Date.now().toString();
@@ -29,7 +38,7 @@ export function AppCreateProvider({ children }: { children: React.ReactNode }) {
     <CreateSheetContext.Provider value={{ openCreateSheet: () => setVisible(true) }}>
       {children}
       {visible ? (
-        <div className="fixed inset-0 z-[100] flex flex-col justify-end">
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end items-stretch md:justify-center md:items-center md:p-4">
           <button
             type="button"
             className="absolute inset-0 bg-black/40"
@@ -37,14 +46,15 @@ export function AppCreateProvider({ children }: { children: React.ReactNode }) {
             onClick={() => setVisible(false)}
           />
           <div
-            className="relative max-h-[min(85vh,520px)] overflow-y-auto rounded-t-[20px] bg-white shadow-[0_-8px_32px_rgba(0,0,0,0.12)]"
+            className="relative max-h-[min(85vh,520px)] w-full overflow-y-auto rounded-t-[20px] bg-white shadow-[0_-8px_32px_rgba(0,0,0,0.12)] md:max-h-[min(90vh,560px)] md:max-w-md md:rounded-[20px] md:shadow-[0_24px_48px_rgba(0,0,0,0.16)]"
             role="dialog"
+            aria-modal="true"
             aria-labelledby="create-sheet-title"
           >
-            <div className="sticky top-0 flex justify-center bg-white pb-2 pt-2">
+            <div className="sticky top-0 flex justify-center bg-white pb-2 pt-2 md:hidden">
               <div className="h-1 w-10 rounded-full bg-[#ece8e1]" aria-hidden />
             </div>
-            <div className="space-y-2.5 px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] pt-0">
+            <div className="space-y-2.5 px-4 pt-2 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] md:space-y-4 md:px-6 md:pt-8 md:pb-7">
               <h2 id="create-sheet-title" className="text-xl font-bold text-[#1c1c1e]">
                 What do you want to create?
               </h2>

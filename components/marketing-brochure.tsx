@@ -57,7 +57,7 @@ function DeviceShot({
 export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null }) {
   return (
     <div className="min-h-dvh bg-cream-100 text-charcoal antialiased">
-      <header className="border-b border-[#ece8e1] bg-cream-100/90 px-5 py-4 backdrop-blur-md sm:px-8">
+      <header className="border-b border-[#ece8e1] bg-cream-100/90 px-5 py-4 backdrop-blur-md sm:px-8 lg:px-10 xl:px-12">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
           <ParfadeWordmark widthPx={132} className="shrink-0" />
           <Link
@@ -77,7 +77,7 @@ export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null 
               <p className="text-[13px] font-bold uppercase tracking-[0.08em] text-gold">
                 Organize golf with your crew
               </p>
-              <h1 className="mt-3 text-balance text-[2.25rem] font-bold leading-[1.12] tracking-tight sm:text-[2.75rem]">
+              <h1 className="mt-3 text-balance text-[2.25rem] font-bold leading-[1.12] tracking-tight sm:text-[2.75rem] lg:text-[3rem]">
                 Golf plans without the group text chaos.
               </h1>
               <p className="mt-4 text-pretty text-[17px] leading-snug text-charcoal-400">
@@ -120,7 +120,7 @@ export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null 
         </section>
 
         <section className="border-t border-[#ece8e1] bg-white/60 py-14 sm:py-16">
-          <div className="mx-auto max-w-5xl px-5 sm:px-8">
+          <div className="mx-auto max-w-5xl px-5 sm:px-8 lg:px-10 xl:px-12">
             <h2 className="text-[13px] font-bold uppercase tracking-[0.08em] text-charcoal-400">
               Inside the app
             </h2>
@@ -147,7 +147,7 @@ export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null 
           </div>
         </section>
 
-        <section className="mx-auto max-w-5xl px-5 py-16 sm:px-8 sm:py-20">
+        <section className="mx-auto max-w-5xl px-5 py-16 sm:px-8 sm:py-20 lg:px-10 xl:px-12">
           <div className="rounded-3xl border border-[#ece8e1] bg-fairway px-6 py-10 text-center shadow-[0_12px_40px_-12px_rgba(26,60,42,0.35)] sm:px-10 sm:py-12">
             <h2 className="text-balance text-[1.35rem] font-bold leading-tight text-cream-100 sm:text-2xl">
               Ready when your group is.
@@ -177,7 +177,7 @@ export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null 
         </section>
       </main>
 
-      <footer className="border-t border-[#ece8e1] px-5 py-8 sm:px-8">
+      <footer className="border-t border-[#ece8e1] px-5 py-8 sm:px-8 lg:px-10 xl:px-12">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 text-center text-[13px] text-charcoal-400 sm:flex-row sm:text-left">
           <ParfadeWordmark widthPx={100} className="opacity-90" />
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:justify-end">

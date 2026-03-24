@@ -119,17 +119,17 @@ export function AppTabBar() {
   const { showBadge } = useNotificationBadgeWeb();
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-5">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-5 lg:px-6">
       <nav
-        className="pointer-events-auto w-full max-w-lg rounded-2xl border border-[#ece8e1] bg-white/95 shadow-[0_8px_32px_rgba(0,0,0,0.1),0_2px_8px_rgba(0,0,0,0.04)] backdrop-blur-md supports-[backdrop-filter]:bg-white/90 sm:max-w-2xl"
+        className="pointer-events-auto w-full max-w-lg rounded-2xl border border-[#ece8e1] bg-white/95 shadow-[0_8px_32px_rgba(0,0,0,0.1),0_2px_8px_rgba(0,0,0,0.04)] backdrop-blur-md supports-[backdrop-filter]:bg-white/90 sm:max-w-2xl lg:max-w-3xl lg:rounded-3xl xl:max-w-4xl"
         aria-label="Main"
       >
-        <div className="flex h-[66px] items-center justify-between gap-0 px-2">
+        <div className="flex h-[66px] items-center justify-between gap-0 px-2 lg:h-[68px] lg:px-3">
           {tabs.map((tab) => {
             const { href, label, Icon, match } = tab;
             const active = !onRoundInvite && match(pathname);
             const className =
-              "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg py-1 text-[11px] font-semibold transition-colors active:opacity-80";
+              "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg py-1 text-[11px] font-semibold transition-colors active:opacity-80 lg:text-xs";
             const showTabDot = showBadge && href === "/dashboard";
 
             if ("openSheet" in tab && tab.openSheet && createSheet) {

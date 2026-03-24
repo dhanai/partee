@@ -307,7 +307,7 @@ export default function DiscoverPage() {
 
   useEffect(() => {
     setHeaderActions(
-      <div className="flex max-w-[min(260px,calc(100vw-140px))] items-center gap-2">
+      <div className="flex max-w-[min(260px,calc(100vw-140px))] items-center gap-2 lg:max-w-[min(340px,calc(100vw-220px))]">
         <span
           className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-[#1c1c1e]"
           title={locationLabel}

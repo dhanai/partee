@@ -3,10 +3,11 @@
 import { useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { useAppAlert } from "@/components/app-alert-dialog";
 import { OpenInParfadeGameSessionBar } from "@/components/open-in-parfade-game-session";
-import { ParfadeLoadingBlock } from "@/components/parfade-spinner";
+import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
 import { getGameDefinition } from "@/lib/games-registry";
 
 type SessionRow = {
@@ -42,9 +43,12 @@ function statusLabel(s: string) {
 
 export function GameSessionScreenWeb() {
   const params = useParams();
+  const router = useRouter();
   const sessionId = typeof params.sessionId === "string" ? params.sessionId : "";
-  const { getToken, isLoaded } = useAuth();
+  const { getToken, isLoaded, userId } = useAuth();
+  const { confirm, showAlert } = useAppAlert();
   const [browserUrl, setBrowserUrl] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const [session, setSession] = useState<SessionRow | null>(null);
   const [players, setPlayers] = useState<GamePlayerRow[]>([]);
@@ -97,6 +101,42 @@ export function GameSessionScreenWeb() {
     void load();
   }, [isLoaded, load]);
 
+  const handleDeleteGame = useCallback(async () => {
+    if (deleteBusy || !sessionId) return;
+    const accepted = await confirm(
+      "This removes the game and all recorded holes for everyone in the group.",
+      {
+        title: "Delete game?",
+        variant: "destructive",
+        confirmLabel: "Delete",
+      },
+    );
+    if (!accepted) return;
+    setDeleteBusy(true);
+    try {
+      const token = await getToken();
+      if (!token) {
+        await showAlert("Sign in to delete this game.", { title: "Could not delete" });
+        return;
+      }
+      const res = await fetch(`/api/games/${sessionId}/delete`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        await showAlert(json.error ?? "Could not delete game.", {
+          title: "Could not delete",
+        });
+        return;
+      }
+      router.push("/games");
+      router.refresh();
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [confirm, deleteBusy, getToken, sessionId, router, showAlert]);
+
   if (!sessionId) {
     return <p className="text-sm text-red-600">Missing session.</p>;
   }
@@ -123,6 +163,8 @@ export function GameSessionScreenWeb() {
   const title = def?.title ?? session.gameType;
   const holesWithData = holes.length;
   const sortedPlayers = [...players].sort((a, b) => a.sortOrder - b.sortOrder);
+  const canDeleteGame =
+    Boolean(userId) && sortedPlayers.some((p) => p.userId === userId);
 
   return (
     <section className="space-y-5 pb-2">
@@ -185,6 +227,29 @@ export function GameSessionScreenWeb() {
           ))}
         </ul>
       </div>
+
+      {canDeleteGame ? (
+        <div className="border-t border-[#ece8e1] pt-5">
+          <button
+            type="button"
+            disabled={deleteBusy}
+            onClick={() => void handleDeleteGame()}
+            className="w-full rounded-xl border border-red-200 bg-red-50 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+          >
+            {deleteBusy ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <ParfadeSpinner size="sm" variant="muted" aria-label="Deleting" />
+                Deleting…
+              </span>
+            ) : (
+              "Delete game"
+            )}
+          </button>
+          <p className="mt-2 text-xs text-[#6e6e6e]">
+            Removes this session and all hole scores for everyone in the group.
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

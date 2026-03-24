@@ -1,28 +1,52 @@
 import * as Linking from "expo-linking";
+import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
+import { useEffect, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { discoverHouseAdCopy, discoverHouseStoreUrl } from "../lib/discover-house-ad";
+import type { DiscoverAdDisplay } from "../lib/discover-house-ad";
 import { colors } from "../lib/theme";
+
+type Props = {
+  display: DiscoverAdDisplay;
+};
 
 /**
  * In-feed promo card (not AdMob). Same visual weight as native ad rows.
  */
-export function DiscoverHouseAdRow() {
-  const url = discoverHouseStoreUrl();
-  const { title, subtitle, cta, imageUrl } = discoverHouseAdCopy();
-  if (!url) return null;
+export function DiscoverHouseAdRow({ display }: Props) {
+  const videoRef = useRef<Video | null>(null);
+
+  useEffect(() => {
+    return () => {
+      void videoRef.current?.unloadAsync();
+    };
+  }, []);
+
+  const { targetUrl, title, subtitle, cta, mediaUrl, mediaKind } = display;
 
   return (
     <View style={styles.outer}>
       <Text style={styles.badge}>Promo</Text>
       <Pressable
         style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-        onPress={() => void Linking.openURL(url)}
+        onPress={() => void Linking.openURL(targetUrl)}
         accessibilityRole="link"
         accessibilityLabel={`${title}. ${subtitle}`}
       >
-        {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.media} contentFit="cover" />
+        {mediaKind === "video" && mediaUrl ? (
+          <Video
+            ref={(r) => {
+              videoRef.current = r;
+            }}
+            source={{ uri: mediaUrl }}
+            style={styles.media}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay
+            isLooping
+            isMuted
+          />
+        ) : mediaUrl ? (
+          <Image source={{ uri: mediaUrl }} style={styles.media} contentFit="cover" />
         ) : null}
         <View style={styles.textBlock}>
           <Text style={styles.headline} numberOfLines={2}>

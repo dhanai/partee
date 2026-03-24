@@ -6,6 +6,7 @@ import Link from "next/link";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { ConfirmedSpotsRowWeb } from "@/components/confirmed-spots-row-web";
 import { OpenInParfadeAppBar } from "@/components/open-in-parfade-app";
+import { RoundDetailHostMenu } from "@/components/round-detail-host-menu";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
 import { PlanningRoundBadgeWeb } from "@/components/planning-round-badge-web";
 type RoundPlayer = { id: string; name: string; avatar: string | null };
@@ -239,6 +240,7 @@ export default function RoundInvitePage({
 
   return (
     <section className="space-y-5">
+      <RoundDetailHostMenu inviteToken={params.token} isHost={round.isHost} />
       <OpenInParfadeAppBar inviteToken={params.token} browserUrl={browserUrl} />
 
       <div className="space-y-2">

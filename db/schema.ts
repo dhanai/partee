@@ -342,6 +342,20 @@ export const userFollows = pgTable(
   }),
 );
 
+/** Admin-managed promos: Discover feed slots + full-screen post-game (mobile). */
+export const housePromoConfig = pgTable("house_promo_config", {
+  slot: text("slot").primaryKey().notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  targetUrl: text("target_url"),
+  mediaUrl: text("media_url"),
+  mediaKind: text("media_kind"),
+  title: text("title").notNull().default(""),
+  subtitle: text("subtitle").notNull().default(""),
+  ctaLabel: text("cta_label").notNull().default(""),
+  discoverMixPercent: integer("discover_mix_percent").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Round = typeof rounds.$inferSelect;
 export type Spot = typeof spots.$inferSelect;
@@ -352,3 +366,4 @@ export type RoundMessage = typeof roundMessages.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
 export type GameSessionPlayer = typeof gameSessionPlayers.$inferSelect;
 export type GameHoleEvent = typeof gameHoleEvents.$inferSelect;
+export type HousePromoConfigRow = typeof housePromoConfig.$inferSelect;
