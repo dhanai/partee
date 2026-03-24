@@ -31,7 +31,7 @@ type DialogState =
       title?: string;
       message: string;
       confirmLabel: string;
-      finish: (_ok?: boolean) => void;
+      finish: (ok?: boolean) => void;
     }
   | {
       kind: "confirm";
@@ -70,7 +70,8 @@ export function AppAlertDialogProvider({ children }: { children: ReactNode }) {
         message,
         title: options?.title,
         confirmLabel: options?.confirmLabel ?? "OK",
-        finish: (_ok?: boolean) => {
+        finish: (ok?: boolean) => {
+          void ok;
           setState(null);
           resolve();
         },
