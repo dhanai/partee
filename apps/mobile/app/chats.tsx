@@ -19,7 +19,7 @@ import { colors } from "../lib/theme";
 type ChatRow = {
   inviteToken: string;
   courseName: string;
-  imageUrl: string;
+  imageUrl: string | null;
   lastChatMessage: {
     body: string;
     senderName: string;
@@ -93,12 +93,18 @@ export default function ChatsScreen() {
             })
           }
         >
-          <RoundCoverImage
-            recyclingKey={`chat-${item.inviteToken}`}
-            uri={toAbsoluteUrl(item.imageUrl)}
-            style={styles.avatar}
-            transitionMs={200}
-          />
+          {item.imageUrl ? (
+            <RoundCoverImage
+              recyclingKey={`chat-${item.inviteToken}`}
+              uri={toAbsoluteUrl(item.imageUrl)}
+              style={styles.avatar}
+              transitionMs={200}
+            />
+          ) : (
+            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+              <Ionicons name="golf-outline" size={22} color={colors.muted} />
+            </View>
+          )}
           <View style={styles.textCol}>
             <Text
               style={[styles.courseName, unread && styles.courseNameUnread]}
@@ -194,6 +200,11 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
+  },
+  avatarPlaceholder: {
+    backgroundColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
   textCol: {
     flex: 1,

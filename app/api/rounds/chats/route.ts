@@ -22,19 +22,24 @@ export async function GET(req: Request) {
     const latestMsgSubquery = db
       .select({
         roundId: roundMessages.roundId,
-        lastCreatedAt: sql<Date>`MAX(${roundMessages.createdAt})`.as("last_created_at"),
+        lastCreatedAt: sql<string>`MAX(${roundMessages.createdAt})`.as("last_created_at"),
       })
       .from(roundMessages)
       .groupBy(roundMessages.roundId)
       .as("latest_msg");
 
+    const hostAvatarSubquery = sql<string | null>`(SELECT ${users.avatar} FROM ${users} WHERE ${users.id} = ${rounds.hostId})`;
+
     const rows = await db
       .select({
         roundId: rounds.id,
         inviteToken: rounds.inviteToken,
+        mode: rounds.mode,
         courseName: rounds.courseName,
+        targetDate: rounds.targetDate,
         courseId: rounds.courseId,
         customImageUrl: rounds.customImageUrl,
+        hostAvatar: hostAvatarSubquery,
         lastMessageAt: latestMsgSubquery.lastCreatedAt,
         lastMsgBody: roundMessages.body,
         lastMsgSenderName: users.name,
@@ -68,22 +73,30 @@ export async function GET(req: Request) {
       }
     }
 
-    const chats = rows.map((r) => ({
-      inviteToken: r.inviteToken,
-      courseName: r.courseName ?? "Course TBD",
-      imageUrl: resolveRoundImageUrl({
+    const chats = rows.map((r) => {
+      const roundImage = resolveRoundImageUrl({
         customImageUrl: r.customImageUrl ?? undefined,
         courseMetadata: r.courseId ? metaById.get(r.courseId) : null,
-      }),
+      });
+      let title = r.courseName ?? "Course TBD";
+      if (r.mode === "planning" && !r.courseName && r.targetDate) {
+        title = new Date(r.targetDate).toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        });
+      }
+      return {
+      inviteToken: r.inviteToken,
+      courseName: title,
+      imageUrl: roundImage ?? r.hostAvatar ?? null,
       lastChatMessage: {
         body: r.lastMsgBody,
         senderName: r.lastMsgSenderName,
-        createdAt:
-          r.lastMessageAt instanceof Date
-            ? r.lastMessageAt.toISOString()
-            : String(r.lastMessageAt),
+        createdAt: new Date(r.lastMessageAt).toISOString(),
       },
-    }));
+    };
+    });
 
     return NextResponse.json({ chats });
   } catch (error) {
