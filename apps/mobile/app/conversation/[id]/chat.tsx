@@ -169,9 +169,14 @@ export default function ConversationChatScreen() {
           authToken,
         );
         setMsgs((prev) => {
+          const optimisticMsg = prev.find((m) => m.id === tempId);
           const without = prev.filter((m) => m.id !== tempId);
           if (without.some((m) => m.id === data.message.id)) return without;
-          const merged = [...without, data.message];
+          const serverMsg = {
+            ...data.message,
+            parentPreview: data.message.parentPreview ?? optimisticMsg?.parentPreview ?? null,
+          };
+          const merged = [...without, serverMsg];
           void setCachedMessages(conversationId, merged);
           return merged;
         });

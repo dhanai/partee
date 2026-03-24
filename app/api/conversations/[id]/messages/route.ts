@@ -201,6 +201,22 @@ export async function POST(req: Request, { params }: RouteContext) {
       body: parsed.body,
     }).catch((err) => console.error("[POST messages] ably publish", err));
 
+    let parentPreview: { body: string; senderName: string } | null = null;
+    if (inserted.parentId) {
+      const [parent] = await db
+        .select({ body: messages.body, userName: users.name })
+        .from(messages)
+        .innerJoin(users, eq(users.id, messages.userId))
+        .where(eq(messages.id, inserted.parentId))
+        .limit(1);
+      if (parent) {
+        parentPreview = {
+          body: parent.body.length > 80 ? parent.body.slice(0, 77) + "…" : parent.body,
+          senderName: parent.userName,
+        };
+      }
+    }
+
     return NextResponse.json({
       message: {
         id: inserted.id,
@@ -208,7 +224,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         createdAt: inserted.createdAt.toISOString(),
         isMine: true,
         parentId: inserted.parentId,
-        parentPreview: null,
+        parentPreview,
         user: { id: viewer.id, name: viewer.name, avatar: viewer.avatar },
         reactions: {},
       },

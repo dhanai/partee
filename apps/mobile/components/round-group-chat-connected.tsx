@@ -326,9 +326,14 @@ export function RoundGroupChatConnected({
         const vidSend = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
         if (vidSend) setViewerId(vidSend);
         setMessages((prev) => {
+          const optimisticMsg = prev.find((m) => m.id === tempId);
           const without = prev.filter((m) => m.id !== tempId);
           if (without.some((m) => m.id === data.message.id)) return without;
-          return sortMessagesByTime([...without, data.message]);
+          const merged = {
+            ...data.message,
+            parentPreview: data.message.parentPreview ?? optimisticMsg?.parentPreview ?? null,
+          };
+          return sortMessagesByTime([...without, merged]);
         });
 
         if (ablyConnected) {

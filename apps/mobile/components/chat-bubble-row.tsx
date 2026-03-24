@@ -112,6 +112,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   }, []);
 
   const triggerReply = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onReply?.(m);
   }, [m, onReply]);
 
@@ -221,13 +222,13 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   ) : null;
 
   const replyPreview = m.parentPreview ? (
-    <View style={styles.replyPreview}>
-      <View style={styles.replyBar} />
+    <View style={[styles.replyPreview, isMine ? styles.replyPreviewMine : styles.replyPreviewTheirs]}>
+      <View style={[styles.replyBar, isMine ? styles.replyBarMine : null]} />
       <View style={styles.replyTextCol}>
-        <Text style={styles.replySender} numberOfLines={1}>
+        <Text style={[styles.replySender, isMine ? styles.replySenderMine : null]} numberOfLines={1}>
           {m.parentPreview.senderName}
         </Text>
-        <Text style={styles.replyBody} numberOfLines={1}>
+        <Text style={[styles.replyBody, isMine ? styles.replyBodyMine : null]} numberOfLines={2}>
           {m.parentPreview.body}
         </Text>
       </View>
@@ -238,8 +239,8 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     <>
       <View style={legacyStyles.bubbleRowFlex} />
       <View ref={bubbleRef} style={styles.bubbleCol}>
-        {replyPreview}
-        <View style={[legacyStyles.bubble, legacyStyles.bubbleMine]}>
+        <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, m.parentPreview ? styles.bubbleWithReply : null]}>
+          {replyPreview}
           <Text style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}>
             {m.body}
           </Text>
@@ -255,8 +256,8 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     <>
       {avatarEl}
       <View ref={bubbleRef} style={styles.bubbleCol}>
-        {replyPreview}
-        <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs]}>
+        <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, m.parentPreview ? styles.bubbleWithReply : null]}>
+          {replyPreview}
           <Text style={legacyStyles.bubbleName}>{m.user.name}</Text>
           <Text style={legacyStyles.bubbleBody}>{m.body}</Text>
           <Text style={legacyStyles.bubbleTime}>{formatTime(m.createdAt)}</Text>
@@ -364,19 +365,34 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontWeight: "600",
   },
+  bubbleWithReply: {
+    paddingTop: 4,
+    paddingHorizontal: 4,
+  },
   replyPreview: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
-    paddingLeft: 4,
+    marginBottom: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 10,
     gap: 6,
+  },
+  replyPreviewTheirs: {
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
+  replyPreviewMine: {
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
   replyBar: {
     width: 3,
-    height: "100%",
+    alignSelf: "stretch",
     backgroundColor: colors.fairway,
     borderRadius: 1.5,
-    minHeight: 24,
+    minHeight: 20,
+  },
+  replyBarMine: {
+    backgroundColor: "rgba(255,255,255,0.6)",
   },
   replyTextCol: {
     flex: 1,
@@ -387,9 +403,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.fairway,
   },
+  replySenderMine: {
+    color: "rgba(255,255,255,0.85)",
+  },
   replyBody: {
     fontSize: 12,
     color: colors.muted,
+  },
+  replyBodyMine: {
+    color: "rgba(255,255,255,0.7)",
   },
   pickerOverlay: {
     flex: 1,

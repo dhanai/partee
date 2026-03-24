@@ -321,18 +321,22 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     publishAfterRoundDetailChanged(token, "chat-message");
 
+    const mapped = mapMessageRow(
+      {
+        id: inserted.id,
+        body: inserted.body,
+        parentId: inserted.parentId,
+        createdAt: inserted.createdAt,
+        userId: inserted.userId,
+        userName: viewer.name,
+        userAvatar: viewer.avatar,
+      },
+      viewer.id,
+    );
+    const [withPreview] = await attachParentPreviews([mapped]);
+
     return NextResponse.json({
-      message: mapMessageRow(
-        {
-          id: inserted.id,
-          body: inserted.body,
-          createdAt: inserted.createdAt,
-          userId: inserted.userId,
-          userName: viewer.name,
-          userAvatar: viewer.avatar,
-        },
-        viewer.id,
-      ),
+      message: withPreview,
       viewerId: viewer.id,
     });
   } catch (error) {
