@@ -36,6 +36,7 @@ export async function GET(req: Request) {
         inviteToken: rounds.inviteToken,
         mode: rounds.mode,
         courseName: rounds.courseName,
+        teeTime: rounds.teeTime,
         targetDate: rounds.targetDate,
         courseId: rounds.courseId,
         customImageUrl: rounds.customImageUrl,
@@ -78,13 +79,23 @@ export async function GET(req: Request) {
         customImageUrl: r.customImageUrl ?? undefined,
         courseMetadata: r.courseId ? metaById.get(r.courseId) : null,
       });
-      let title = r.courseName ?? "Course TBD";
-      if (r.mode === "planning" && !r.courseName && r.targetDate) {
-        title = new Date(r.targetDate).toLocaleDateString("en-US", {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-        });
+      const dateFmt = (d: Date) =>
+        d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+      let title: string;
+      if (r.mode === "planning" && !r.courseName) {
+        title = r.targetDate ? dateFmt(new Date(r.targetDate)) : "Round TBD";
+      } else {
+        const shortName = (r.courseName ?? "")
+          .replace(/\b(golf\s+)?(course|club|country\s+club|links|resort)\b/gi, "")
+          .replace(/\s{2,}/g, " ")
+          .trim();
+        const dateStr = r.teeTime
+          ? dateFmt(new Date(r.teeTime))
+          : r.targetDate
+            ? dateFmt(new Date(r.targetDate))
+            : null;
+        title = dateStr ? `${shortName || r.courseName} · ${dateStr}` : (shortName || r.courseName || "Course TBD");
       }
       return {
       inviteToken: r.inviteToken,
