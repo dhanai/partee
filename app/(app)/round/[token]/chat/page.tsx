@@ -32,6 +32,18 @@ export default function RoundChatPage({ params }: { params: { token: string } })
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!canUse) return;
+    const markRead = () =>
+      fetch("/api/rounds/chats/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteToken: params.token }),
+      }).catch(() => {});
+    void markRead();
+    return () => void markRead();
+  }, [canUse, params.token]);
+
   const canUse =
     round != null && (round.isHost || round.currentUserSpotStatus === "confirmed");
 

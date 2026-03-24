@@ -85,4 +85,5 @@ export type MineRound = {
   }>;
   spotStatus?: "invited" | "confirmed" | "declined" | "requested";
   lastChatMessageAt?: string | null;
+  isChatUnread?: boolean;
 };

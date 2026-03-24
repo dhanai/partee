@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { courses, roundMessages, rounds, spots, users } from "@/db/schema";
+import { chatReadReceipts, courses, roundMessages, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
@@ -105,6 +105,19 @@ export async function GET(req: Request) {
       }
     }
 
+    const readReceiptMap = new Map<string, Date>();
+    if (roundIds.length > 0) {
+      const receipts = await db
+        .select({ roundId: chatReadReceipts.roundId, lastReadAt: chatReadReceipts.lastReadAt })
+        .from(chatReadReceipts)
+        .where(
+          and(eq(chatReadReceipts.userId, user.id), inArray(chatReadReceipts.roundId, roundIds)),
+        );
+      for (const rc of receipts) {
+        readReceiptMap.set(rc.roundId, rc.lastReadAt);
+      }
+    }
+
     const chats = rows.map((r) => {
       const hasCourseImage = r.customImageUrl?.trim() || (r.courseId && metaById.has(r.courseId));
       const roundImage = hasCourseImage
@@ -132,17 +145,22 @@ export async function GET(req: Request) {
         title = dateStr ? `${shortName || r.courseName} · ${dateStr}` : (shortName || r.courseName || "Course TBD");
       }
       const playerAvatars = avatarsByRound.get(r.roundId) ?? [];
+      const msgIso = new Date(r.lastMessageAt).toISOString();
+      const lastRead = readReceiptMap.get(r.roundId);
+      const isUnread = !lastRead || new Date(r.lastMessageAt).getTime() > lastRead.getTime();
+
       return {
-      inviteToken: r.inviteToken,
-      courseName: title,
-      imageUrl: roundImage,
-      playerAvatars: !roundImage ? playerAvatars.slice(0, 3) : [],
-      lastChatMessage: {
-        body: r.lastMsgBody,
-        senderName: r.lastMsgSenderName,
-        createdAt: new Date(r.lastMessageAt).toISOString(),
-      },
-    };
+        inviteToken: r.inviteToken,
+        courseName: title,
+        imageUrl: roundImage,
+        playerAvatars: !roundImage ? playerAvatars.slice(0, 3) : [],
+        isUnread,
+        lastChatMessage: {
+          body: r.lastMsgBody,
+          senderName: r.lastMsgSenderName,
+          createdAt: msgIso,
+        },
+      };
     });
 
     return NextResponse.json({ chats });

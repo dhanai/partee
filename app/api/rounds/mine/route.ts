@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { courses, roundMessages, rounds, spots, users } from "@/db/schema";
+import { chatReadReceipts, courses, roundMessages, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { requireDbUser } from "@/lib/auth";
 import { resolveRoundImageUrl } from "@/lib/round-images";
@@ -56,6 +56,16 @@ export async function GET(req: Request) {
 
     const lastChatSubquery = sql<string | null>`(SELECT MAX(${roundMessages.createdAt}) FROM ${roundMessages} WHERE ${roundMessages.roundId} = ${rounds.id})`;
 
+    const isChatUnreadSubquery = sql<boolean>`(
+      SELECT CASE
+        WHEN MAX(${roundMessages.createdAt}) IS NULL THEN false
+        WHEN (SELECT ${chatReadReceipts.lastReadAt} FROM ${chatReadReceipts} WHERE ${chatReadReceipts.userId} = ${sql.raw(`'${user.id}'`)} AND ${chatReadReceipts.roundId} = ${rounds.id}) IS NULL THEN true
+        WHEN MAX(${roundMessages.createdAt}) > (SELECT ${chatReadReceipts.lastReadAt} FROM ${chatReadReceipts} WHERE ${chatReadReceipts.userId} = ${sql.raw(`'${user.id}'`)} AND ${chatReadReceipts.roundId} = ${rounds.id}) THEN true
+        ELSE false
+      END
+      FROM ${roundMessages} WHERE ${roundMessages.roundId} = ${rounds.id}
+    )`.mapWith(Boolean);
+
     const hosting = await db
       .select({
         id: rounds.id,
@@ -76,6 +86,7 @@ export async function GET(req: Request) {
             Number,
           ),
         lastChatMessageAt: lastChatSubquery,
+        isChatUnread: isChatUnreadSubquery,
       })
       .from(rounds)
       .leftJoin(spots, eq(spots.roundId, rounds.id))
@@ -105,6 +116,7 @@ export async function GET(req: Request) {
         hostId: rounds.hostId,
         spotStatus: spots.status,
         lastChatMessageAt: lastChatSubquery,
+        isChatUnread: isChatUnreadSubquery,
       })
       .from(spots)
       .innerJoin(rounds, eq(rounds.id, spots.roundId))
@@ -135,6 +147,7 @@ export async function GET(req: Request) {
         hostId: rounds.hostId,
         spotStatus: spots.status,
         lastChatMessageAt: lastChatSubquery,
+        isChatUnread: isChatUnreadSubquery,
       })
       .from(spots)
       .innerJoin(rounds, eq(rounds.id, spots.roundId))

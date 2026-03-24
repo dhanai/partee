@@ -21,6 +21,7 @@ type ChatRow = {
   courseName: string;
   imageUrl: string | null;
   playerAvatars: string[];
+  isUnread: boolean;
   lastChatMessage: {
     body: string;
     senderName: string;
@@ -48,7 +49,7 @@ export default function ChatsScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
-  const { isRoundChatUnread, reportRounds } = useChatUnread();
+  const { reportRounds } = useChatUnread();
 
   const [chats, setChats] = useState<ChatRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +65,7 @@ export default function ChatsScreen() {
       reportRounds(
         data.chats.map((c) => ({
           inviteToken: c.inviteToken,
-          lastChatMessageAt: c.lastChatMessage.createdAt,
+          isChatUnread: c.isUnread,
         })),
       );
     } catch (e) {
@@ -83,7 +84,7 @@ export default function ChatsScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: ChatRow }) => {
-      const unread = isRoundChatUnread(item.inviteToken);
+      const unread = item.isUnread;
       return (
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
@@ -144,7 +145,7 @@ export default function ChatsScreen() {
         </Pressable>
       );
     },
-    [isRoundChatUnread, router],
+    [router],
   );
 
   if (loading && chats.length === 0) {

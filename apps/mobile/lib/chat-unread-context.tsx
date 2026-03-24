@@ -1,65 +1,35 @@
-import * as SecureStore from "expo-secure-store";
 import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
-
-const STORE_PREFIX = "chat.lastRead:";
 
 type ChatUnreadContextValue = {
   hasAnyUnreadChat: boolean;
   isRoundChatUnread: (inviteToken: string) => boolean;
   markChatRead: (inviteToken: string) => void;
-  reportRounds: (rounds: Array<{ inviteToken: string; lastChatMessageAt?: string | null }>) => void;
+  reportRounds: (rounds: Array<{ inviteToken: string; isChatUnread?: boolean }>) => void;
 };
 
 const ChatUnreadContext = createContext<ChatUnreadContextValue | null>(null);
 
-function loadLastReadAt(inviteToken: string): string | null {
-  try {
-    return SecureStore.getItem(`${STORE_PREFIX}${inviteToken}`);
-  } catch {
-    return null;
-  }
-}
-
-function persistLastReadAt(inviteToken: string, iso: string) {
-  try {
-    SecureStore.setItem(`${STORE_PREFIX}${inviteToken}`, iso);
-  } catch {
-    /* best-effort */
-  }
-}
-
 export function ChatUnreadProvider({ children }: { children: ReactNode }) {
   const [unreadTokens, setUnreadTokens] = useState<Set<string>>(new Set());
-  const lastReadMap = useRef<Map<string, string>>(new Map());
 
   const reportRounds = useCallback(
-    (rounds: Array<{ inviteToken: string; lastChatMessageAt?: string | null }>) => {
-      const next = new Set<string>();
-      for (const r of rounds) {
-        if (!r.lastChatMessageAt) continue;
-        const msgTime = new Date(r.lastChatMessageAt).getTime();
-        if (Number.isNaN(msgTime)) continue;
-
-        let readIso = lastReadMap.current.get(r.inviteToken);
-        if (readIso === undefined) {
-          readIso = loadLastReadAt(r.inviteToken) ?? "";
-          if (readIso) lastReadMap.current.set(r.inviteToken, readIso);
-        }
-
-        if (!readIso || msgTime > new Date(readIso).getTime()) {
-          next.add(r.inviteToken);
-        }
-      }
+    (rounds: Array<{ inviteToken: string; isChatUnread?: boolean }>) => {
       setUnreadTokens((prev) => {
+        const next = new Set(prev);
+        for (const r of rounds) {
+          if (r.isChatUnread) {
+            next.add(r.inviteToken);
+          } else {
+            next.delete(r.inviteToken);
+          }
+        }
         if (prev.size === next.size && [...next].every((t) => prev.has(t))) return prev;
         return next;
       });
@@ -68,9 +38,6 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
   );
 
   const markChatRead = useCallback((inviteToken: string) => {
-    const now = new Date().toISOString();
-    lastReadMap.current.set(inviteToken, now);
-    persistLastReadAt(inviteToken, now);
     setUnreadTokens((prev) => {
       if (!prev.has(inviteToken)) return prev;
       const next = new Set(prev);
