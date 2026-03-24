@@ -84,4 +84,5 @@ export type MineRound = {
     avatar: string | null;
   }>;
   spotStatus?: "invited" | "confirmed" | "declined" | "requested";
+  lastChatMessageAt?: string | null;
 };

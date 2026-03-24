@@ -36,6 +36,7 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
   const submit = useCallback(async () => {
     const text = draft.trim();
     if (!text || sendBusy) return;
+    inputRef.current?.clear();
     setDraft("");
     const ok = await onSend(text);
     if (!ok) setDraft(text);

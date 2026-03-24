@@ -1,7 +1,8 @@
 import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { View } from "react-native";
+import { useChatUnread } from "../../../lib/chat-unread-context";
 import { RoundGroupChat } from "../../../components/round-group-chat";
 
 export default function RoundGroupChatScreen() {
@@ -9,6 +10,11 @@ export default function RoundGroupChatScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
+  const { markChatRead } = useChatUnread();
+
+  useEffect(() => {
+    if (token) markChatRead(token);
+  }, [token, markChatRead]);
 
   if (!token) {
     return null;

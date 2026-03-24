@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { courses, rounds, spots, users } from "@/db/schema";
+import { courses, roundMessages, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { requireDbUser } from "@/lib/auth";
 import { resolveRoundImageUrl } from "@/lib/round-images";
@@ -54,6 +54,8 @@ export async function GET(req: Request) {
     const cursor = Number.isFinite(parsedCursor) ? Math.max(0, Math.trunc(parsedCursor)) : 0;
     const now = new Date();
 
+    const lastChatSubquery = sql<string | null>`(SELECT MAX(${roundMessages.createdAt}) FROM ${roundMessages} WHERE ${roundMessages.roundId} = ${rounds.id})`;
+
     const hosting = await db
       .select({
         id: rounds.id,
@@ -73,6 +75,7 @@ export async function GET(req: Request) {
           sql<number>`coalesce(sum(case when ${spots.status} = 'confirmed' then 1 else 0 end), 0)`.mapWith(
             Number,
           ),
+        lastChatMessageAt: lastChatSubquery,
       })
       .from(rounds)
       .leftJoin(spots, eq(spots.roundId, rounds.id))
@@ -101,6 +104,7 @@ export async function GET(req: Request) {
         courseId: rounds.courseId,
         hostId: rounds.hostId,
         spotStatus: spots.status,
+        lastChatMessageAt: lastChatSubquery,
       })
       .from(spots)
       .innerJoin(rounds, eq(rounds.id, spots.roundId))
@@ -130,6 +134,7 @@ export async function GET(req: Request) {
         courseId: rounds.courseId,
         hostId: rounds.hostId,
         spotStatus: spots.status,
+        lastChatMessageAt: lastChatSubquery,
       })
       .from(spots)
       .innerJoin(rounds, eq(rounds.id, spots.roundId))

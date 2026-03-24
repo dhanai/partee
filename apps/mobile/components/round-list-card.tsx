@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { toAbsoluteUrl } from "../lib/api";
+import { NotificationMustardDot } from "./notification-mustard-dot";
 import { RoundCoverImage } from "./round-cover-image";
 import {
   planningWindowTheme,
@@ -44,6 +45,7 @@ export type RoundListCardProps = {
    * Pressable cancel → visual flash (e.g. My Rounds swipe rows).
    */
   delayPressIn?: number;
+  hasUnread?: boolean;
 };
 
 export function RoundListCard({
@@ -65,6 +67,7 @@ export function RoundListCard({
   trailingAfterSpots,
   footer,
   delayPressIn,
+  hasUnread,
 }: RoundListCardProps) {
   const planningMetaLine =
     mode === "planning"
@@ -92,6 +95,7 @@ export function RoundListCard({
           onPressIn={onCardPressIn}
           onPress={onPress}
         />
+        {hasUnread ? <NotificationMustardDot style={styles.unreadDot} /> : null}
         <View style={styles.cardForeground} pointerEvents="box-none">
           <View style={styles.cardPressInner} pointerEvents="none">
             {mode === "scheduled" ? (
@@ -218,5 +222,10 @@ const styles = StyleSheet.create({
   },
   trailingWrap: {
     flexShrink: 0,
+  },
+  unreadDot: {
+    top: -4,
+    right: -4,
+    zIndex: 2,
   },
 });

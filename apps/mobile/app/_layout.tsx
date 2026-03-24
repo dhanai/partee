@@ -10,6 +10,7 @@ import { BuildConfigMissingScreen } from "../components/build-config-missing-scr
 import { ParfadeAppRealtimeGate } from "../components/parfade-app-realtime";
 import { AblyChatProviders } from "../lib/ably-chat-context";
 import { InAppToastProvider } from "../lib/in-app-toast-context";
+import { ChatUnreadProvider } from "../lib/chat-unread-context";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
 import { setApiSessionInvalidHandler } from "../lib/api-session-invalid";
@@ -82,6 +83,7 @@ export default function RootLayout() {
       <ClerkLoadedSplashSync />
       <ApiSessionInvalidBridge />
       <NotificationBadgeProvider>
+        <ChatUnreadProvider>
         <InAppToastProvider>
           <AblyChatProviders>
             <KeyboardProvider>
@@ -218,6 +220,7 @@ export default function RootLayout() {
             </KeyboardProvider>
           </AblyChatProviders>
         </InAppToastProvider>
+        </ChatUnreadProvider>
       </NotificationBadgeProvider>
     </ClerkProvider>
   );

@@ -31,6 +31,7 @@ import {
   emitRoundListsShouldRefresh,
   subscribeRoundListsRefresh,
 } from "../../lib/round-lists-refresh";
+import { useChatUnread } from "../../lib/chat-unread-context";
 import { colors } from "../../lib/theme";
 import { MineRound } from "../../types/round";
 
@@ -97,6 +98,7 @@ export default function MyRoundsScreen() {
   const { getToken } = useAuth();
   const { showBadge: showNotificationBadge, refresh: refreshNotificationBadge } =
     useNotificationBadge();
+  const { isRoundChatUnread, reportRounds } = useChatUnread();
   const params = useLocalSearchParams<{
     tab?: string | string[];
     refresh?: string | string[];
@@ -351,6 +353,10 @@ export default function MyRoundsScreen() {
   useEffect(() => {
     void loadTabRoundsRef.current("hosting", { reset: true });
   }, []);
+
+  useEffect(() => {
+    reportRounds([...hosting, ...joined]);
+  }, [hosting, joined, reportRounds]);
 
   useEffect(() => {
     const listLen =
@@ -655,6 +661,7 @@ export default function MyRoundsScreen() {
             >
               <RoundListCard
                 roundId={round.id}
+                hasUnread={isRoundChatUnread(round.inviteToken)}
                 delayPressIn={
                   swipeVariant !== "none" && swipeEnabled ? 200 : undefined
                 }

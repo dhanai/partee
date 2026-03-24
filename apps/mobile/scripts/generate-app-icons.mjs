@@ -13,8 +13,8 @@ const assets = join(root, "assets");
 
 const BG = "#1a3c2a";
 const GOLD = "#c9a32d";
-/** ~1/3 icon width like previous solid circle (glyph bbox ~81×87 in logo units). */
-const MARK_SCALE = 4.22;
+/** Additional +25% from prior icon tuning for legibility. */
+const MARK_SCALE = 6.59375;
 /** Circle center in logo coordinates (ring around “P”). */
 const CX = 41.13;
 const CY = 39.68;
