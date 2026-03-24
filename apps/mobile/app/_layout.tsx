@@ -174,6 +174,13 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="chats"
+              options={{
+                title: "Chats",
+                headerBackTitle: "Back",
+              }}
+            />
+            <Stack.Screen
               name="notifications"
               options={{
                 title: "Notifications",

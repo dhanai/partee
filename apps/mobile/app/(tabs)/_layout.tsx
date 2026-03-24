@@ -6,14 +6,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { AnimatedBottomSheetFrame } from "../../components/animated-bottom-sheet-frame";
 import { NotificationMustardDot } from "../../components/notification-mustard-dot";
 import { ParfadeLogo } from "../../components/parfade-logo";
-import { useChatUnread } from "../../lib/chat-unread-context";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
 import { colors } from "../../lib/theme";
 
 export default function TabsLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { showBadge: showNotificationBadge } = useNotificationBadge();
-  const { hasAnyUnreadChat } = useChatUnread();
   const [createSheetOpen, setCreateSheetOpen] = useState(false);
   const showAdvancedCreateTypes = false;
 
@@ -106,7 +104,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, focused }) => (
               <View style={styles.tabIconWrap}>
                 <Ionicons name={focused ? "list" : "list-outline"} size={22} color={color} />
-                {showNotificationBadge || hasAnyUnreadChat ? (
+                {showNotificationBadge ? (
                   <NotificationMustardDot style={styles.tabBarNotificationDot} />
                 ) : null}
               </View>

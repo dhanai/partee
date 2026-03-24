@@ -13,7 +13,9 @@ export default function RoundGroupChatScreen() {
   const { markChatRead } = useChatUnread();
 
   useEffect(() => {
-    if (token) markChatRead(token);
+    if (!token) return;
+    markChatRead(token);
+    return () => markChatRead(token);
   }, [token, markChatRead]);
 
   if (!token) {

@@ -98,7 +98,7 @@ export default function MyRoundsScreen() {
   const { getToken } = useAuth();
   const { showBadge: showNotificationBadge, refresh: refreshNotificationBadge } =
     useNotificationBadge();
-  const { isRoundChatUnread, reportRounds } = useChatUnread();
+  const { hasAnyUnreadChat, reportRounds } = useChatUnread();
   const params = useLocalSearchParams<{
     tab?: string | string[];
     refresh?: string | string[];
@@ -249,21 +249,35 @@ export default function MyRoundsScreen() {
         paddingRight: 12,
       },
       headerRight: () => (
-        <Pressable
-          style={styles.headerBellBtn}
-          onPress={() => router.push("/notifications")}
-          accessibilityLabel={
-            showNotificationBadge ? "Open notifications, has unread" : "Open notifications"
-          }
-        >
-          <Ionicons name="notifications-outline" size={18} color={colors.fairway} />
-          {showNotificationBadge ? (
-            <NotificationMustardDot style={styles.headerBellDot} />
-          ) : null}
-        </Pressable>
+        <View style={styles.headerRightRow}>
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={() => router.push("/chats")}
+            accessibilityLabel={
+              hasAnyUnreadChat ? "Open chats, has unread" : "Open chats"
+            }
+          >
+            <Ionicons name="paper-plane-outline" size={17} color={colors.fairway} />
+            {hasAnyUnreadChat ? (
+              <NotificationMustardDot style={styles.headerIconDot} />
+            ) : null}
+          </Pressable>
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={() => router.push("/notifications")}
+            accessibilityLabel={
+              showNotificationBadge ? "Open notifications, has unread" : "Open notifications"
+            }
+          >
+            <Ionicons name="notifications-outline" size={18} color={colors.fairway} />
+            {showNotificationBadge ? (
+              <NotificationMustardDot style={styles.headerIconDot} />
+            ) : null}
+          </Pressable>
+        </View>
       ),
     });
-  }, [navigation, router, showNotificationBadge]);
+  }, [navigation, router, showNotificationBadge, hasAnyUnreadChat]);
 
   const loadTabRounds = useCallback(
     async (tab: MineTab, options?: { reset?: boolean }) => {
@@ -661,7 +675,6 @@ export default function MyRoundsScreen() {
             >
               <RoundListCard
                 roundId={round.id}
-                hasUnread={isRoundChatUnread(round.inviteToken)}
                 delayPressIn={
                   swipeVariant !== "none" && swipeEnabled ? 200 : undefined
                 }
@@ -817,7 +830,12 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     alignItems: "center",
   },
-  headerBellBtn: {
+  headerRightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerIconBtn: {
     position: "relative",
     width: 30,
     height: 30,
@@ -829,7 +847,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "visible",
   },
-  headerBellDot: {
+  headerIconDot: {
     top: 3,
     right: 3,
   },
