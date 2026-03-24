@@ -2,12 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ParfadeWordmark } from "@/components/parfade-wordmark";
 import { PublicSiteFooter } from "@/components/public-site-footer";
+import { loadSupportPageContent } from "@/lib/page-content";
 
-export const metadata: Metadata = {
-  title: "Support — Parfade",
-  description: "Get help with Parfade for iOS and the web.",
-  robots: { index: true, follow: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const content = await loadSupportPageContent();
+  return {
+    title: `${content.title} — Parfade`,
+    description: content.intro,
+    robots: { index: true, follow: true },
+  };
+}
 
 function supportEmail(): string {
   return (
@@ -15,9 +19,10 @@ function supportEmail(): string {
   );
 }
 
-export default function SupportPage() {
+export default async function SupportPage() {
   const email = supportEmail();
   const mailto = `mailto:${email}?subject=${encodeURIComponent("Parfade support")}`;
+  const content = await loadSupportPageContent();
 
   return (
     <div className="min-h-dvh bg-cream-100 text-charcoal antialiased">
@@ -40,21 +45,14 @@ export default function SupportPage() {
       </header>
 
       <main className="mx-auto max-w-2xl px-5 py-10 sm:px-8 sm:py-14 lg:max-w-3xl lg:px-10 xl:max-w-4xl">
-        <h1 className="text-[28px] font-bold leading-tight tracking-tight text-charcoal">
-          Support
-        </h1>
-        <p className="mt-3 text-[17px] leading-relaxed text-charcoal-400">
-          We’re here to help with Parfade on <strong className="font-semibold text-charcoal">iOS</strong> and the{" "}
-          <strong className="font-semibold text-charcoal">web</strong>.
-        </p>
+        <h1 className="text-[28px] font-bold leading-tight tracking-tight text-charcoal">{content.title}</h1>
+        <p className="mt-3 text-[17px] leading-relaxed text-charcoal-400">{content.intro}</p>
 
         <div className="mt-10 space-y-8">
           <section className="rounded-2xl border border-[#ece8e1] bg-white p-6 shadow-sm">
-            <h2 className="text-[13px] font-bold uppercase tracking-[0.06em] text-charcoal-400">
-              Contact us
-            </h2>
+            <h2 className="text-[13px] font-bold uppercase tracking-[0.06em] text-charcoal-400">{content.contactHeading}</h2>
             <p className="mt-3 text-[15px] leading-relaxed text-charcoal-400">
-              For account issues, bugs, or general questions, email us and we’ll get back as soon as we can.
+              {content.contactBlurb}
             </p>
             <a
               href={mailto}

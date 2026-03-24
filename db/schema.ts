@@ -81,6 +81,8 @@ export const users = pgTable(
     hideHostedRoundsFromDiscover: boolean("hide_hosted_rounds_from_discover")
       .notNull()
       .default(false),
+    /** Platform admin role used to access /admin and admin APIs. */
+    isAdmin: boolean("is_admin").notNull().default(false),
     notificationsLastViewedAt: timestamp("notifications_last_viewed_at", {
       withTimezone: true,
     }),
@@ -513,6 +515,27 @@ export const housePromoConfig = pgTable("house_promo_config", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Admin-managed public site metadata used for social sharing defaults. */
+export const siteMetaConfig = pgTable("site_meta_config", {
+  id: text("id").primaryKey().notNull(),
+  title: text("title").notNull().default(""),
+  description: text("description").notNull().default(""),
+  ogTitle: text("og_title").notNull().default(""),
+  ogDescription: text("og_description").notNull().default(""),
+  ogImageUrl: text("og_image_url"),
+  twitterTitle: text("twitter_title").notNull().default(""),
+  twitterDescription: text("twitter_description").notNull().default(""),
+  twitterImageUrl: text("twitter_image_url"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Admin-managed copy/content for public pages. */
+export const pageContentConfig = pgTable("page_content_config", {
+  pageKey: text("page_key").primaryKey().notNull(),
+  content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Round = typeof rounds.$inferSelect;
 export type Spot = typeof spots.$inferSelect;
@@ -531,3 +554,5 @@ export type ConversationParticipant = typeof conversationParticipants.$inferSele
 export type Message = typeof messages.$inferSelect;
 export type MessageReaction = typeof messageReactions.$inferSelect;
 export type ConversationReadReceipt = typeof conversationReadReceipts.$inferSelect;
+export type SiteMetaConfigRow = typeof siteMetaConfig.$inferSelect;
+export type PageContentConfigRow = typeof pageContentConfig.$inferSelect;

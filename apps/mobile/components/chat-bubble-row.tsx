@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { memo, useCallback, useRef, useState } from "react";
 import {
   Image,
@@ -81,13 +82,28 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const bubbleRef = useRef<View>(null);
   const translateX = useSharedValue(0);
 
+  const myCurrentEmoji = (() => {
+    const vid = viewerId ?? "";
+    if (!m.reactions || !vid) return null;
+    for (const [emoji, data] of Object.entries(m.reactions)) {
+      if (data.userIds?.includes(vid)) return emoji;
+    }
+    return null;
+  })();
+
   const toggleHeart = useCallback(() => {
     if (!onReaction) return;
-    const hasMyHeart = m.reactions?.heart?.userIds?.includes(viewerId ?? "");
-    onReaction(m.id, "heart", hasMyHeart ? "remove" : "add");
-  }, [m.id, m.reactions, viewerId, onReaction]);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (myCurrentEmoji === "heart") {
+      onReaction(m.id, "heart", "remove");
+    } else {
+      if (myCurrentEmoji) onReaction(m.id, myCurrentEmoji, "remove");
+      onReaction(m.id, "heart", "add");
+    }
+  }, [m.id, myCurrentEmoji, onReaction]);
 
   const showPicker = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     bubbleRef.current?.measureInWindow((x, y, width, height) => {
       setBubbleLayout({ x, y, width, height });
       setPickerVisible(true);
@@ -147,12 +163,16 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const handlePickReaction = useCallback(
     (emoji: string) => {
       setPickerVisible(false);
-      if (onReaction) {
-        const hasMyEmoji = m.reactions?.[emoji]?.userIds?.includes(viewerId ?? "");
-        onReaction(m.id, emoji, hasMyEmoji ? "remove" : "add");
+      if (!onReaction) return;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (myCurrentEmoji === emoji) {
+        onReaction(m.id, emoji, "remove");
+      } else {
+        if (myCurrentEmoji) onReaction(m.id, myCurrentEmoji, "remove");
+        onReaction(m.id, emoji, "add");
       }
     },
-    [m.id, m.reactions, viewerId, onReaction],
+    [m.id, myCurrentEmoji, onReaction],
   );
 
   const avatarEl = m.user.avatar ? (
@@ -179,7 +199,15 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
           <Pressable
             key={emoji}
             style={[styles.reactionChip, isOwn && styles.reactionChipOwn]}
-            onPress={() => onReaction?.(m.id, emoji, isOwn ? "remove" : "add")}
+            onPress={() => {
+              if (!onReaction) return;
+              if (isOwn) {
+                onReaction(m.id, emoji, "remove");
+              } else {
+                if (myCurrentEmoji) onReaction(m.id, myCurrentEmoji, "remove");
+                onReaction(m.id, emoji, "add");
+              }
+            }}
           >
             <Text style={styles.reactionEmoji}>{emojiDisplay(emoji)}</Text>
             {data.count > 1 && (

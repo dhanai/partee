@@ -2,22 +2,25 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ParfadeWordmark } from "@/components/parfade-wordmark";
 import { PublicSiteFooter } from "@/components/public-site-footer";
+import { loadPrivacyPageContent } from "@/lib/page-content";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy — Parfade",
-  description: "How Parfade collects, uses, and protects your information.",
-  robots: { index: true, follow: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const content = await loadPrivacyPageContent();
+  return {
+    title: `${content.title} — Parfade`,
+    description: content.intro,
+    robots: { index: true, follow: true },
+  };
+}
 
 function supportEmail(): string {
   return process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim() || "support@parfade.com";
 }
 
-const EFFECTIVE_DATE = "March 24, 2026";
-
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
   const email = supportEmail();
   const mailto = `mailto:${email}?subject=${encodeURIComponent("Parfade privacy request")}`;
+  const content = await loadPrivacyPageContent();
 
   return (
     <div className="min-h-dvh bg-cream-100 text-charcoal antialiased">
@@ -41,14 +44,13 @@ export default function PrivacyPage() {
 
       <main className="mx-auto max-w-2xl px-5 py-10 sm:px-8 sm:py-14 lg:max-w-3xl lg:px-10 xl:max-w-4xl">
         <h1 className="text-[28px] font-bold leading-tight tracking-tight text-charcoal">
-          Privacy Policy
+          {content.title}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-charcoal-400">
-          Effective date: <strong className="font-semibold text-charcoal">{EFFECTIVE_DATE}</strong>
+          Effective date: <strong className="font-semibold text-charcoal">{content.effectiveDate}</strong>
         </p>
         <p className="mt-4 text-[17px] leading-relaxed text-charcoal-400">
-          This Privacy Policy explains how Parfade collects, uses, and shares information when you use
-          our iOS app and web app.
+          {content.intro}
         </p>
 
         <div className="mt-10 space-y-8">

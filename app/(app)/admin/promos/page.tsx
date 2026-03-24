@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { ParfadeSpinner } from "@/components/parfade-spinner";
 
 type Slot = {
@@ -260,21 +259,11 @@ export default function AdminPromosPage() {
   }
 
   return (
-    <section className="space-y-6 pb-16">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link
-          href="/settings"
-          className="text-sm font-semibold text-[#1a3c2a] underline-offset-2 hover:underline"
-        >
-          ← Settings
-        </Link>
-      </div>
+    <section className="space-y-6">
       <div>
-        <h1 className="text-[28px] font-bold text-[#1c1c1e]">House promos</h1>
+        <h1 className="text-[30px] font-bold text-[#1c1c1e]">House promos</h1>
         <p className="mt-1 text-sm text-[#6e6e6e]">
-          Control Discover feed promos and the full-screen promo after a game ends (mobile). Set{" "}
-          <code className="rounded bg-[#ece8e1] px-1">PARFADE_ADMIN_EMAILS</code> on the server to your
-          account email.
+          Control Discover feed promos and the full-screen promo after a game ends (mobile).
         </p>
       </div>
 

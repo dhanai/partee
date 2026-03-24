@@ -120,6 +120,27 @@
       "when": 1774700000000,
       "tag": "0016_round_message_reactions",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1774800000000,
+      "tag": "0017_site_meta_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1774900000000,
+      "tag": "0018_users_admin_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1775000000000,
+      "tag": "0019_page_content_config",
+      "breakpoints": true
     }
   ]
 }

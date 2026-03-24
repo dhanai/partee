@@ -65,6 +65,7 @@ export async function GET(req: Request) {
         name: user.name,
         email: user.email,
         avatar: user.avatar,
+        isAdmin: user.isAdmin,
         handicap: user.handicap,
         location: user.homeCourse,
         homeCourse: user.homeCourse,

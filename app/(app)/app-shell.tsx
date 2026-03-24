@@ -22,6 +22,8 @@ const tabBarStackVar = {
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
   const chatImmersive = isRoundChatPath(pathname);
+  const adminImmersive = pathname === "/admin" || pathname?.startsWith("/admin/");
+  const hideTabBar = chatImmersive || adminImmersive;
 
   return (
     <AppAlertDialogProvider>
@@ -44,14 +46,16 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
               </header>
               <main
                 className={
-                  chatImmersive
+                  adminImmersive
+                    ? "w-full flex-1 p-0"
+                    : hideTabBar
                     ? "mx-auto w-full max-w-lg flex-1 px-5 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-4 sm:max-w-2xl sm:px-6 lg:max-w-3xl lg:px-8 lg:pt-5 xl:max-w-4xl"
                     : "mx-auto w-full max-w-lg flex-1 px-5 pb-[var(--app-tab-bar-stack)] pt-4 sm:max-w-2xl sm:px-6 lg:max-w-3xl lg:px-8 lg:pt-5 xl:max-w-4xl"
                 }
               >
                 {children}
               </main>
-              {chatImmersive ? null : <AppTabBar />}
+              {hideTabBar ? null : <AppTabBar />}
             </div>
           </NotificationBadgeWebProvider>
         </AppHeaderActionsProvider>

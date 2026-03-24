@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ParfadeWordmark } from "@/components/parfade-wordmark";
 import { PublicSiteFooter } from "@/components/public-site-footer";
+import type { HomePageContent } from "@/lib/page-content";
 
 const gallery = [
   {
@@ -55,7 +56,13 @@ function DeviceShot({
   );
 }
 
-export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null }) {
+export function MarketingBrochure({
+  appStoreUrl,
+  content,
+}: {
+  appStoreUrl: string | null;
+  content: HomePageContent;
+}) {
   return (
     <div className="min-h-dvh bg-cream-100 text-charcoal antialiased">
       <header className="border-b border-[#ece8e1] bg-cream-100/90 px-5 py-4 backdrop-blur-md sm:px-8 lg:px-10 xl:px-12">
@@ -76,14 +83,13 @@ export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null 
           <div className="grid items-center gap-12 lg:grid-cols-[1fr_minmax(260px,320px)] lg:gap-16">
             <div className="max-w-xl">
               <p className="text-[13px] font-bold uppercase tracking-[0.08em] text-gold">
-                Organize golf with your crew
+                {content.heroEyebrow}
               </p>
               <h1 className="mt-3 text-balance text-[2.25rem] font-bold leading-[1.12] tracking-tight sm:text-[2.75rem] lg:text-[3rem]">
-                Golf plans without the group text chaos.
+                {content.heroTitle}
               </h1>
               <p className="mt-4 text-pretty text-[17px] leading-snug text-charcoal-400">
-                Parfade is for inviting friends, filling open spots, and keeping rounds and side games
-                in one calm place—on the course or on the couch.
+                {content.heroDescription}
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 {appStoreUrl ? (
@@ -93,7 +99,7 @@ export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null 
                     rel="noopener noreferrer"
                     className="inline-flex h-[52px] items-center justify-center rounded-2xl bg-fairway px-6 text-[15px] font-bold text-cream-100 shadow-[0_4px_14px_rgba(26,60,42,0.28)] transition hover:bg-fairway-600 active:scale-[0.99]"
                   >
-                    Download on the App Store
+                    {content.ctaAppLabel}
                   </a>
                 ) : null}
                 <Link
@@ -104,7 +110,7 @@ export function MarketingBrochure({ appStoreUrl }: { appStoreUrl: string | null 
                       : "inline-flex h-[52px] items-center justify-center rounded-2xl border border-fairway/20 bg-fairway px-6 text-[15px] font-bold text-cream-100 shadow-[0_4px_14px_rgba(26,60,42,0.22)] transition hover:bg-fairway-600 active:scale-[0.99] sm:min-w-[200px]"
                   }
                 >
-                  {appStoreUrl ? "Use the web app" : "Get started"}
+                  {appStoreUrl ? content.ctaWebLabel : "Get started"}
                 </Link>
               </div>
             </div>

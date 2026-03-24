@@ -4,7 +4,7 @@ import path from "path";
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { requireDbUser } from "@/lib/auth";
-import { adminEmailsConfigured, isUserAdmin } from "@/lib/require-admin";
+import { isUserAdmin } from "@/lib/require-admin";
 
 export const runtime = "nodejs";
 
@@ -52,12 +52,6 @@ function resolvedMime(blob: Blob, nameHint: string): string {
 
 export async function POST(req: Request) {
   try {
-    if (!adminEmailsConfigured()) {
-      return NextResponse.json(
-        { error: "Admin is not configured (set PARFADE_ADMIN_EMAILS)." },
-        { status: 503 },
-      );
-    }
     const user = await requireDbUser(req);
     if (!isUserAdmin(user)) {
       return NextResponse.json({ error: "Not authorized." }, { status: 403 });

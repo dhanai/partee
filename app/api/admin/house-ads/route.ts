@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireDbUser } from "@/lib/auth";
 import { loadHousePromosForApi, saveHousePromoSlot, type HousePromoSlotDto } from "@/lib/house-promo";
-import { adminEmailsConfigured, isUserAdmin } from "@/lib/require-admin";
+import { isUserAdmin } from "@/lib/require-admin";
 
 const nullableUrl = z
   .union([z.string().url(), z.literal(""), z.null()])
@@ -33,12 +33,6 @@ function forbidden(msg: string) {
 
 export async function GET(req: Request) {
   try {
-    if (!adminEmailsConfigured()) {
-      return NextResponse.json(
-        { error: "Admin is not configured (set PARFADE_ADMIN_EMAILS)." },
-        { status: 503 },
-      );
-    }
     const user = await requireDbUser(req);
     if (!isUserAdmin(user)) {
       return forbidden("Not authorized.");
@@ -69,12 +63,6 @@ function applySlotPatch(base: HousePromoSlotDto, patch: z.infer<typeof slotPatch
 
 export async function PATCH(req: Request) {
   try {
-    if (!adminEmailsConfigured()) {
-      return NextResponse.json(
-        { error: "Admin is not configured (set PARFADE_ADMIN_EMAILS)." },
-        { status: 503 },
-      );
-    }
     const user = await requireDbUser(req);
     if (!isUserAdmin(user)) {
       return forbidden("Not authorized.");

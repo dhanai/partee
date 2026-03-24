@@ -46,6 +46,15 @@ export async function POST(req: Request, { params }: RouteContext) {
     const { emoji } = postSchema.parse(await req.json());
 
     await db
+      .delete(roundMessageReactions)
+      .where(
+        and(
+          eq(roundMessageReactions.messageId, messageId),
+          eq(roundMessageReactions.userId, viewer.id),
+        ),
+      );
+
+    await db
       .insert(roundMessageReactions)
       .values({ messageId, userId: viewer.id, emoji })
       .onConflictDoNothing();
