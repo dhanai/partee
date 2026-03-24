@@ -5,7 +5,7 @@ export const BOTTOM_SHEET_BACKDROP_COLOR = "rgba(0,0,0,0.42)";
 
 /** Off-screen offset for slide animation (enough to clear typical sheet height). */
 export function bottomSheetSlideDistance(): number {
-  return Math.min(420, Math.round(Dimensions.get("window").height * 0.5));
+  return Math.round(Dimensions.get("window").height * 0.92);
 }
 
 /** Same curve for open, close, and other bottom-anchored panels (e.g. auth sheets). */

@@ -109,8 +109,9 @@ export function AnimatedBottomSheetFrame({
         <Animated.View
           style={[
             styles.sheet,
+            { paddingBottom: bottomPad },
             sheetStyle,
-            { paddingBottom: bottomPad, transform: [{ translateY: sheetY }] },
+            { transform: [{ translateY: sheetY }] },
           ]}
         >
           {children}

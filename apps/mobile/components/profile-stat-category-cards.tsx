@@ -44,7 +44,8 @@ const TITLES: Record<string, string> = {
 export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
   const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
-  const [sheetCat, setSheetCat] = useState<ProfileStatCategoryId | null>(null);
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [displayedCat, setDisplayedCat] = useState<ProfileStatCategoryId | null>(null);
   const [badgeSheetOpen, setBadgeSheetOpen] = useState(false);
   const [badgeSheet, setBadgeSheet] = useState<{
     badge: AchievementBadgeDefinition;
@@ -55,11 +56,12 @@ export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
   const unlockedBadgeIds = isSelf ? new Set(DEV_UNLOCKED_BADGE_IDS) : new Set<string>();
 
   const openSheet = useCallback((cat: ProfileStatCategoryId) => {
-    setSheetCat(cat);
+    setDisplayedCat(cat);
+    setSheetVisible(true);
   }, []);
 
   const closeSheet = useCallback(() => {
-    setSheetCat(null);
+    setSheetVisible(false);
   }, []);
 
   if (loading || !grouped) {
@@ -73,9 +75,9 @@ export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
     );
   }
 
-  const block = sheetCat ? grouped[sheetCat] : null;
-  const theme = sheetCat ? PROFILE_STAT_THEMES[sheetCat] : null;
-  const badgeCat = sheetCat as BadgeSheetCategory | null;
+  const block = displayedCat ? grouped[displayedCat] : null;
+  const theme = displayedCat ? PROFILE_STAT_THEMES[displayedCat] : null;
+  const badgeCat = displayedCat as BadgeSheetCategory | null;
   const catalogBadges = badgeCat
     ? ACHIEVEMENT_BADGES_CATALOG.filter((b) => b.category === badgeCat)
     : [];
@@ -146,21 +148,19 @@ export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
       </View>
 
       <AnimatedBottomSheetFrame
-        visible={sheetCat !== null}
+        visible={sheetVisible}
         onClose={closeSheet}
         sheetStyle={dStyles.sheet}
       >
-        {block && theme && sheetCat ? (
+        {block && theme && displayedCat ? (
           <ScrollView
             style={dStyles.scroll}
             contentContainerStyle={dStyles.scrollContent}
             showsVerticalScrollIndicator={false}
-            bounces={false}
           >
-            <View style={dStyles.sheetHandle} />
-            <Text style={dStyles.sheetTitle}>{TITLES[sheetCat]}</Text>
-
-            <ProfileStatHeroCard category={sheetCat} block={block} variant="floating" />
+            <View style={dStyles.heroWrap}>
+              <ProfileStatHeroCard category={displayedCat} block={block} variant="floating" />
+            </View>
 
             <View style={dStyles.section}>
               <View style={dStyles.sectionHeader}>
@@ -190,7 +190,7 @@ export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
                   <View style={[dStyles.sectionAccent, { backgroundColor: theme.accent }]} />
                   <Text style={dStyles.sectionLabel} numberOfLines={1}>Badges</Text>
                 </View>
-                {sheetCat === "social" ? (
+                {displayedCat === "social" ? (
                   <Pressable
                     onPress={() => {
                       closeSheet();
@@ -278,33 +278,19 @@ const styles = StyleSheet.create({
 
 const dStyles = StyleSheet.create({
   sheet: {
-    maxHeight: "85%",
+    height: "86%",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingTop: 0,
+    paddingBottom: 0,
   },
-  scroll: {
-    flex: 1,
-  },
+  scroll: {},
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: 40,
+    paddingTop: 20,
   },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
-    alignSelf: "center",
-    marginTop: 10,
-    marginBottom: 12,
-  },
-  sheetTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: colors.text,
-    textAlign: "center",
-    marginBottom: 16,
-    letterSpacing: -0.3,
+  heroWrap: {
+    paddingHorizontal: 20,
   },
   section: {
     paddingHorizontal: 20,
