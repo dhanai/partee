@@ -3,10 +3,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   LayoutAnimation,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   UIManager,
@@ -318,31 +318,24 @@ export default function ConversationChatScreen() {
 
   return (
     <View style={[cStyles.root, { paddingBottom: keyboardPadding }]}>
-      {loading && msgs.length === 0 ? (
-        <View style={cStyles.loaderWrap}>
-          <ActivityIndicator color={colors.fairway} size="small" />
-        </View>
-      ) : error && msgs.length === 0 ? (
-        <Text style={cStyles.errorText}>{error}</Text>
-      ) : msgs.length === 0 ? (
-        <View style={cStyles.emptyFlex}>
-          <Text style={cStyles.emptyText}>No messages yet. Say hi!</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={invertedItems}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          inverted
-          contentContainerStyle={cStyles.listContent}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="none"
-        />
-      )}
+      <FlatList
+        data={invertedItems}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        inverted
+        contentContainerStyle={cStyles.listContent}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="none"
+        ListEmptyComponent={
+          loading ? null : (
+            <View style={cStyles.emptyInverted}>
+              <Text style={cStyles.emptyText}>No messages yet. Say hi!</Text>
+            </View>
+          )
+        }
+      />
 
-      {error && msgs.length > 0 ? (
-        <Text style={cStyles.errorText}>{error}</Text>
-      ) : null}
+      {error ? <Text style={cStyles.errorText}>{error}</Text> : null}
 
       <View style={{ paddingBottom: composerBottomPadding }}>
         <TypingIndicator names={typingNames} />
@@ -379,18 +372,13 @@ const cStyles = StyleSheet.create({
     minHeight: 0,
     paddingHorizontal: 12,
   },
-  loaderWrap: {
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  emptyFlex: {
-    flex: 1,
-    justifyContent: "center",
+  emptyInverted: {
+    transform: [{ scaleY: -1 }],
+    paddingVertical: 32,
   },
   emptyText: {
     color: colors.muted,
     fontSize: 13,
-    paddingVertical: 8,
     textAlign: "center",
   },
   listContent: {

@@ -284,31 +284,24 @@ export function RoundGroupChatPoll({
   if (isFullscreen) {
     return (
       <View style={[styles.fullscreenRoot, { paddingBottom: keyboardPadding }]}>
-        {loading && messages.length === 0 ? (
-          <View style={styles.loaderWrap}>
-            <ActivityIndicator color={colors.fairway} size="small" />
-          </View>
-        ) : loadError && messages.length === 0 ? (
-          <Text style={styles.errorInline}>{loadError}</Text>
-        ) : messages.length === 0 ? (
-          <View style={styles.emptyFlex}>
-            <Text style={styles.empty}>No messages yet. Say hi!</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={invertedMessages}
-            renderItem={renderItem}
-            keyExtractor={keyExtractor}
-            inverted
-            contentContainerStyle={styles.invertedListContent}
-            keyboardShouldPersistTaps="always"
-            keyboardDismissMode="none"
-          />
-        )}
+        <FlatList
+          data={invertedMessages}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          inverted
+          contentContainerStyle={styles.invertedListContent}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="none"
+          ListEmptyComponent={
+            loading ? null : (
+              <View style={styles.emptyInverted}>
+                <Text style={styles.empty}>No messages yet. Say hi!</Text>
+              </View>
+            )
+          }
+        />
 
-        {loadError && messages.length > 0 ? (
-          <Text style={styles.errorInline}>{loadError}</Text>
-        ) : null}
+        {loadError ? <Text style={styles.errorInline}>{loadError}</Text> : null}
 
         <View style={{ paddingBottom: composerBottomPadding }}>{composerRow}</View>
       </View>
@@ -367,6 +360,7 @@ const styles = StyleSheet.create({
   },
   loaderWrap: { paddingVertical: 16, alignItems: "center" },
   emptyFlex: { flex: 1, justifyContent: "center" },
+  emptyInverted: { transform: [{ scaleY: -1 }], paddingVertical: 32 },
   messageList: { marginTop: 4 },
   messageListContent: { gap: 10, paddingBottom: 4 },
   invertedListContent: { gap: 10, paddingTop: GROUP_CHAT_COMPOSER_GAP },
