@@ -275,7 +275,7 @@ function SignInFields({
         setError("Password sign-in failed. Try again or use Google.");
         return;
       }
-      if (result.status === "needs_second_factor") {
+      if (result.status === "needs_second_factor" || (result as any).status === "needs_client_trust") {
         const factors = result.supportedSecondFactors ?? signIn.supportedSecondFactors;
         const step = pickSecondFactor(factors);
         if (!step) {
@@ -299,8 +299,10 @@ function SignInFields({
         setSecondFactorCode("");
         return;
       }
+      console.warn("[onSignIn] unexpected status:", result.status, JSON.stringify(result, null, 2));
       setError("Sign-in could not be completed. Try again or use Google.");
     } catch (signInError) {
+      console.warn("[onSignIn] caught error:", signInError);
       setError(formatClerkError(signInError));
     } finally {
       setSubmitting(false);

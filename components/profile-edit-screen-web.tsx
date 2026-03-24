@@ -42,6 +42,98 @@ function useDebounce(value: string, delayMs: number): string {
 }
 
 const HCP_RE = /^\d{1,2}(\.\d{1,2})?$/;
+const AVATAR_TARGET_BYTES = 3 * 1024 * 1024;
+const AVATAR_MAX_BYTES = 12 * 1024 * 1024;
+const AVATAR_ALLOWED_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+const AVATAR_MAX_DIMENSION = 1600;
+
+function fileExtensionFromMime(mime: string): string {
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  if (mime === "image/gif") return "gif";
+  return "jpg";
+}
+
+async function fileToImage(file: File): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new window.Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Could not read image."));
+      img.src = url;
+    });
+    return img;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  mime: string,
+  quality?: number,
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Could not compress image."));
+          return;
+        }
+        resolve(blob);
+      },
+      mime,
+      quality,
+    );
+  });
+}
+
+async function compressAvatarForUpload(file: File): Promise<File> {
+  if (file.size <= AVATAR_TARGET_BYTES) return file;
+
+  const image = await fileToImage(file);
+  const ratio = Math.min(
+    1,
+    AVATAR_MAX_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight),
+  );
+  let width = Math.max(1, Math.round(image.naturalWidth * ratio));
+  let height = Math.max(1, Math.round(image.naturalHeight * ratio));
+
+  const outputMime =
+    file.type === "image/jpeg" || file.type === "image/webp"
+      ? file.type
+      : "image/webp";
+  const qualitySteps = [0.9, 0.82, 0.74, 0.66, 0.58, 0.5, 0.42];
+
+  for (let i = 0; i < qualitySteps.length; i += 1) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Could not process image.");
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0, width, height);
+    const blob = await canvasToBlob(canvas, outputMime, qualitySteps[i]);
+    if (blob.size <= AVATAR_TARGET_BYTES) {
+      const ext = fileExtensionFromMime(outputMime);
+      const baseName = file.name.replace(/\.[a-z0-9]+$/i, "") || "avatar";
+      return new File([blob], `${baseName}.${ext}`, { type: outputMime });
+    }
+
+    // If quality reductions are not enough, reduce dimensions for the next pass.
+    width = Math.max(320, Math.round(width * 0.86));
+    height = Math.max(320, Math.round(height * 0.86));
+  }
+
+  throw new Error("Could not compress image under 3MB. Try a smaller photo.");
+}
 
 export function ProfileEditScreenWeb() {
   const [loading, setLoading] = useState(true);
@@ -164,11 +256,20 @@ export function ProfileEditScreenWeb() {
 
   async function handlePhotoChange(file: File | null) {
     if (!file) return;
+    if (!AVATAR_ALLOWED_TYPES.has(file.type)) {
+      setError("Use JPG, PNG, WebP, or GIF.");
+      return;
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      setError("Image must be 12MB or smaller.");
+      return;
+    }
     setUploading(true);
     setError(null);
     try {
+      const uploadFile = await compressAvatarForUpload(file);
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", uploadFile);
       const res = await fetch("/api/uploads/avatar", { method: "POST", body: formData });
       const json = (await res.json()) as { url?: string; error?: string };
       if (!res.ok || !json.url) {
@@ -330,7 +431,7 @@ export function ProfileEditScreenWeb() {
               {uploading ? "Uploading…" : "Upload new photo"}
             </button>
             <p className="text-center text-xs text-[#6e6e6e] lg:max-w-[200px]">
-              JPG, PNG, WebP, or GIF · up to 5MB
+              JPG, PNG, WebP, or GIF · auto-compressed to &lt;=3MB (raw up to 12MB)
             </p>
           </div>
 

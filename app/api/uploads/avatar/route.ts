@@ -7,7 +7,7 @@ import { requireDbUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 12 * 1024 * 1024;
 const MIME_EXTENSION: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
       return withCors(
         req,
         NextResponse.json(
-          { error: "Image must be 5MB or smaller." },
+          { error: "Image must be 12MB or smaller." },
           { status: 400 },
         ),
       );

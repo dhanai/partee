@@ -88,7 +88,7 @@ export default function DiscoverScreen() {
   const roundsRef = useRef<DiscoverRound[]>([]);
   const hasManualLocationRef = useRef(false);
   const loadRoundsRef = useRef<
-    ((options?: { reset?: boolean; distanceMiles?: number }) => Promise<void>) | null
+    ((options?: { reset?: boolean; distanceMiles?: number; overrideCoords?: { lat: number; lng: number } }) => Promise<void>) | null
   >(null);
 
   useEffect(() => {
@@ -223,10 +223,11 @@ export default function DiscoverScreen() {
     });
   }, [navigation, locationLabel]);
 
-  const loadRounds = useCallback(async (options?: { reset?: boolean; distanceMiles?: number }) => {
+  const loadRounds = useCallback(async (options?: { reset?: boolean; distanceMiles?: number; overrideCoords?: { lat: number; lng: number } }) => {
     const reset = options?.reset ?? false;
     if (!reset && (!hasMoreDiscover || loadingMore)) return;
     const effectiveRadius = options?.distanceMiles ?? radiusMiles;
+    const effectiveCoords = options?.overrideCoords ?? coords;
     try {
       setError(null);
       if (reset) {
@@ -239,9 +240,9 @@ export default function DiscoverScreen() {
       }
       const authToken = await getTokenRef.current();
       const params = new URLSearchParams();
-      if (coords) {
-        params.set("lat", String(coords.lat));
-        params.set("lng", String(coords.lng));
+      if (effectiveCoords) {
+        params.set("lat", String(effectiveCoords.lat));
+        params.set("lng", String(effectiveCoords.lng));
         params.set("distanceMiles", String(effectiveRadius));
       }
       params.set("limit", "20");
@@ -766,13 +767,15 @@ export default function DiscoverScreen() {
                   style={styles.listRow}
                   onPress={async () => {
                     hasManualLocationRef.current = true;
-                    setCoords({ lat: item.lat, lng: item.lng });
+                    const newCoords = { lat: item.lat, lng: item.lng };
+                    setCoords(newCoords);
                     setLocationStatus("ready");
                     setLocationLabel(item.label);
                     setLocationQuery(item.label);
                     setLocationResults([]);
                     setShowLocationResults(false);
                     setLocationModalOpen(false);
+                    void loadRoundsRef.current?.({ reset: true, overrideCoords: newCoords });
                     await saveManualLocationOverride({
                       label: item.label,
                       lat: item.lat,
