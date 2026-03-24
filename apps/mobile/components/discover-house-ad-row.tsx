@@ -9,11 +9,12 @@ import {
   Text,
   View,
 } from "react-native";
-import type { DiscoverAdDisplay } from "../lib/discover-house-ad";
+import type { DiscoverAdCreative, DiscoverAdDisplay } from "../lib/discover-house-ad";
 import { colors } from "../lib/theme";
 
 type Props = {
   display: DiscoverAdDisplay;
+  slotIndex?: number;
 };
 
 function InlinePromoVideo({ uri }: { uri: string }) {
@@ -52,8 +53,12 @@ function AdImage({ uri }: { uri: string }) {
 /**
  * In-feed promo card (not AdMob). Same visual weight as native ad rows.
  */
-export function DiscoverHouseAdRow({ display }: Props) {
-  const { targetUrl, title, subtitle, cta, mediaUrl, mediaKind } = display;
+export function DiscoverHouseAdRow({ display, slotIndex = 0 }: Props) {
+  const ads = display.ads;
+  const ad: DiscoverAdCreative = ads.length > 1
+    ? ads[slotIndex % ads.length]
+    : ads[0] ?? display;
+  const { targetUrl, title, subtitle, cta, mediaUrl, mediaKind } = ad;
 
   return (
     <View style={styles.outer}>

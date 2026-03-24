@@ -576,7 +576,7 @@ export default function DiscoverScreen() {
         renderItem={({ item }) =>
           item.type === "ad" ? (
             discoverHouseDisplay && shouldShowDiscoverHouseAd(item.slotId, discoverHouseDisplay) ? (
-              <DiscoverHouseAdRow display={discoverHouseDisplay} />
+              <DiscoverHouseAdRow display={discoverHouseDisplay} slotIndex={item.adIndex} />
             ) : (
               <DiscoverNativeAdRow />
             )

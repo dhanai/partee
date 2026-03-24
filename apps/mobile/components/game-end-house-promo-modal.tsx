@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Modal,
   PanResponder,
@@ -43,10 +43,24 @@ function FullscreenPromoVideo({ uri, active }: { uri: string; active: boolean })
 export function GameEndHousePromoModal({ visible, slot, onDismiss }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const url = slot.targetUrl?.trim() ?? "";
-  const mediaUri = slot.mediaUrl?.trim() ?? "";
-  const title = slot.title?.trim() || "";
-  const cta = slot.ctaLabel?.trim() || "Learn more";
+
+  const ad = useMemo(() => {
+    if (!visible) return null;
+    const ads = slot.ads?.filter(
+      (a) => a.targetUrl?.trim() && a.mediaUrl?.trim() && (a.mediaKind === "image" || a.mediaKind === "video"),
+    );
+    if (ads && ads.length > 0) {
+      return ads[Math.floor(Math.random() * ads.length)];
+    }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-pick on each open
+  }, [visible]);
+
+  const url = ad?.targetUrl?.trim() || slot.targetUrl?.trim() || "";
+  const mediaUri = ad?.mediaUrl?.trim() || slot.mediaUrl?.trim() || "";
+  const mediaKind = ad?.mediaKind || slot.mediaKind;
+  const title = ad?.title?.trim() || slot.title?.trim() || "";
+  const cta = ad?.ctaLabel?.trim() || slot.ctaLabel?.trim() || "Learn more";
 
   const openTarget = useCallback(() => {
     if (!url) return;
@@ -72,7 +86,7 @@ export function GameEndHousePromoModal({ visible, slot, onDismiss }: Props) {
             accessibilityRole="button"
             accessibilityLabel={`Open sponsor link: ${title}`}
           >
-            {slot.mediaKind === "video" && mediaUri ? (
+            {mediaKind === "video" && mediaUri ? (
               <FullscreenPromoVideo uri={mediaUri} active={visible} />
             ) : mediaUri ? (
               <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} contentFit="cover" />

@@ -41,10 +41,21 @@ export function clearHousePromoCache(): void {
 }
 
 export function isGameEndHousePromoReady(slot: HousePromoSlotClient): boolean {
-  return Boolean(
-    slot.enabled &&
-      slot.targetUrl?.trim() &&
-      slot.mediaUrl?.trim() &&
-      (slot.mediaKind === "image" || slot.mediaKind === "video"),
-  );
+  if (!slot.enabled) return false;
+  if (
+    slot.targetUrl?.trim() &&
+    slot.mediaUrl?.trim() &&
+    (slot.mediaKind === "image" || slot.mediaKind === "video")
+  ) {
+    return true;
+  }
+  if (slot.ads && slot.ads.length > 0) {
+    return slot.ads.some(
+      (a) =>
+        a.targetUrl?.trim() &&
+        a.mediaUrl?.trim() &&
+        (a.mediaKind === "image" || a.mediaKind === "video"),
+    );
+  }
+  return false;
 }
