@@ -137,15 +137,22 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     });
 
   const panGesture = Gesture.Pan()
-    .activeOffsetX(20)
+    .activeOffsetX(isMine ? -20 : 20)
     .failOffsetY([-10, 10])
     .onUpdate((e) => {
-      if (e.translationX > 0) {
-        translateX.value = Math.min(e.translationX, 80);
+      if (isMine) {
+        if (e.translationX < 0) {
+          translateX.value = Math.max(e.translationX, -80);
+        }
+      } else {
+        if (e.translationX > 0) {
+          translateX.value = Math.min(e.translationX, 80);
+        }
       }
     })
     .onEnd(() => {
-      if (translateX.value > SWIPE_THRESHOLD && onReply) {
+      const distance = Math.abs(translateX.value);
+      if (distance > SWIPE_THRESHOLD && onReply) {
         runOnJS(triggerReply)();
       }
       translateX.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.quad) });
@@ -157,10 +164,13 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     transform: [{ translateX: translateX.value }],
   }));
 
-  const replyIconStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(translateX.value / SWIPE_THRESHOLD, 1),
-    transform: [{ scale: Math.min(translateX.value / SWIPE_THRESHOLD, 1) }],
-  }));
+  const replyIconStyle = useAnimatedStyle(() => {
+    const progress = Math.min(Math.abs(translateX.value) / SWIPE_THRESHOLD, 1);
+    return {
+      opacity: progress,
+      transform: [{ scale: progress }],
+    };
+  });
 
   const handlePickReaction = useCallback(
     (emoji: string) => {
@@ -269,7 +279,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   return (
     <View style={styles.swipeContainer}>
-      <Animated.View style={[styles.replyIconWrap, replyIconStyle]}>
+      <Animated.View style={[styles.replyIconWrap, isMine ? styles.replyIconRight : styles.replyIconLeft, replyIconStyle]}>
         <Ionicons name="arrow-undo" size={18} color={colors.muted} />
       </Animated.View>
       <GestureDetector gesture={composed}>
@@ -324,12 +334,17 @@ const styles = StyleSheet.create({
   },
   replyIconWrap: {
     position: "absolute",
-    left: 4,
     top: 0,
     bottom: 0,
     justifyContent: "center",
     alignItems: "center",
     width: 32,
+  },
+  replyIconLeft: {
+    left: 4,
+  },
+  replyIconRight: {
+    right: 4,
   },
   bubbleCol: {
     flexShrink: 1,
