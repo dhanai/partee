@@ -3,8 +3,9 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Parfade",
-  description: "Create golf rounds, invite friends, and discover open spots.",
+  title: "Parfade — Golf plans without the group text chaos",
+  description:
+    "Organize rounds, find players, and run side games. Download Parfade for iOS or get started on the web.",
 };
 
 export const viewport: Viewport = {

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ParfadeLoadingBlock } from "@/components/parfade-spinner";
 import { RoundListCardWeb } from "@/components/round-list-card-web";
-import { RoundsHeaderBell } from "@/components/rounds-header-bell";
 import {
   formatPlanningHeaderDate,
   formatPlanningWindow,
@@ -106,7 +105,6 @@ export function DashboardScreenWeb() {
 
   return (
     <section className="space-y-6">
-      <RoundsHeaderBell />
       <div>
         <h1 className="parfade-page-title">My rounds</h1>
         <p className="parfade-page-sub">

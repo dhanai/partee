@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AppHeaderNotificationBell } from "@/components/app-header-notification-bell";
 
 type Value = {
   node: ReactNode | null;
@@ -43,8 +44,9 @@ export function useAppHeaderActions() {
 export function AppHeaderActionsSlot() {
   const ctx = useContext(AppHeaderActionsContext);
   return (
-    <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1">
-      {ctx?.node ?? null}
+    <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+      <div className="flex min-w-0 items-center justify-end gap-1">{ctx?.node ?? null}</div>
+      <AppHeaderNotificationBell />
     </div>
   );
 }

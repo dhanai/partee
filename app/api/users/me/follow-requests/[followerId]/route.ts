@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { userFollows } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { publishAfterProfileUpdated } from "@/lib/parfade-ably-publish";
 
 const actionSchema = z.object({
   action: z.enum(["approve", "decline"]),
@@ -39,10 +40,12 @@ export async function POST(req: Request, { params }: RouteContext) {
         .update(userFollows)
         .set({ status: "accepted", updatedAt: new Date() })
         .where(eq(userFollows.id, existing.id));
+      publishAfterProfileUpdated(viewer.id);
       return NextResponse.json({ ok: true, status: "accepted" });
     }
 
     await db.delete(userFollows).where(eq(userFollows.id, existing.id));
+    publishAfterProfileUpdated(viewer.id);
     return NextResponse.json({ ok: true, status: "declined" });
   } catch (error) {
     if (error instanceof z.ZodError) {

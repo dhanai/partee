@@ -182,6 +182,12 @@ export default function SettingsScreen() {
                 ios_backgroundColor="#ece8e1"
               />
             </View>
+            {followVisibility === "private" ? (
+              <Text style={styles.hintText}>
+                New followers need your approval. Requests show on the Notifications tab, where you can
+                approve or decline.
+              </Text>
+            ) : null}
           </View>
 
           <View style={styles.card}>
@@ -239,6 +245,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: "400",
     fontSize: 14,
+  },
+  hintText: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
   },
   headerSavePill: {
     alignSelf: "center",

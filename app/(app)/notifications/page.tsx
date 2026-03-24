@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useNotificationBadgeWeb } from "@/components/notification-badge-web-context";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
 
 type MineRound = {
@@ -63,6 +64,7 @@ function formatInviteWhen(round: MineRound) {
 }
 
 export default function NotificationsPage() {
+  const { refresh: refreshNotificationBadge } = useNotificationBadgeWeb();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inviteRounds, setInviteRounds] = useState<MineRound[]>([]);
@@ -111,8 +113,9 @@ export default function NotificationsPage() {
     }
 
     await markNotificationsSeen();
+    await refreshNotificationBadge();
     setLoading(false);
-  }, []);
+  }, [refreshNotificationBadge]);
 
   useEffect(() => {
     void load();

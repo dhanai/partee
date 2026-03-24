@@ -2,7 +2,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ParfadeSpinner } from "@/components/parfade-spinner";
 
 type ChatMessage = {
@@ -165,12 +165,24 @@ export function RoundChatPanel({
     }
   }
 
-  const listBottomRef = useRef<HTMLDivElement>(null);
+  const pageScrollRef = useRef<HTMLDivElement>(null);
+  const inlineListRef = useRef<HTMLUListElement>(null);
 
-  useEffect(() => {
-    if (variant !== "page" || !pollActive) return;
-    listBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, variant, pollActive]);
+  const lastMessageKey = messages.length ? messages[messages.length - 1]!.id : "";
+
+  useLayoutEffect(() => {
+    if (!pollActive) return;
+    if (variant === "page") {
+      if (loading && messages.length === 0) return;
+      const el = pageScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+      return;
+    }
+    if (variant === "inline" && messages.length > 0) {
+      const el = inlineListRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+  }, [variant, pollActive, loading, messages.length, lastMessageKey]);
 
   const listClassInline =
     "mt-3 max-h-60 space-y-2 overflow-y-auto rounded-xl border border-cream-200 bg-cream-50 p-3";
@@ -252,7 +264,10 @@ export function RoundChatPanel({
       <div className="flex min-h-0 flex-1 flex-col">
         {pollActive ? (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto px-0.5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] pt-1">
+            <div
+              ref={pageScrollRef}
+              className="min-h-0 flex-1 overflow-y-auto px-0.5 pb-[calc(7rem+max(0.75rem,env(safe-area-inset-bottom,0px)))] pt-1"
+            >
               {loading && messages.length === 0 ? (
                 <div className="flex items-center justify-center gap-2 py-10 text-sm text-[#6e6e6e]">
                   <ParfadeSpinner size="sm" variant="muted" />
@@ -297,7 +312,6 @@ export function RoundChatPanel({
                   })}
                 </ul>
               )}
-              <div ref={listBottomRef} className="h-px w-full shrink-0" aria-hidden />
             </div>
 
             {error && messages.length > 0 ? (
@@ -306,7 +320,10 @@ export function RoundChatPanel({
 
             <div
               className="fixed left-0 right-0 z-[35] border-t border-[#ece8e1] bg-[#faf8f5]/95 px-5 pb-3 pt-3 shadow-[0_-8px_32px_-8px_rgba(0,0,0,0.1)] backdrop-blur-md supports-[backdrop-filter]:bg-[#faf8f5]/85 sm:px-6"
-              style={{ bottom: "calc(66px + env(safe-area-inset-bottom, 0px))" }}
+              style={{
+                bottom:
+                  "var(--app-tab-bar-stack, calc(4.125rem + max(0.75rem, env(safe-area-inset-bottom, 0px))))",
+              }}
             >
               <div className="mx-auto w-full max-w-lg sm:max-w-2xl">{composer}</div>
             </div>
@@ -340,7 +357,7 @@ export function RoundChatPanel({
           ) : error && messages.length === 0 ? (
             <p className="mt-3 text-sm text-red-600">{error}</p>
           ) : (
-            <ul className={listClassInline}>
+            <ul ref={inlineListRef} className={listClassInline}>
               {messages.length === 0 ? (
                 <li className="text-center text-sm text-charcoal-300">No messages yet.</li>
               ) : (

@@ -1,10 +1,14 @@
 import { ChatMessageEventType } from "@ably/chat";
 import { useChatConnection, useMessages } from "@ably/chat/react";
+import type { Message } from "ably";
+import { useAbly } from "ably/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, ScrollView, Text, View } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
+import { parfadeRoundDetailChannel } from "../lib/parfade-ably-channels";
+import { parseParfadeRealtimeMessage } from "../lib/parfade-ably-messages";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
 import { RoundGroupChatComposer } from "./round-group-chat-composer";
@@ -19,6 +23,7 @@ type MessagesResponse = { messages: ChatMessage[]; viewerId?: string };
 
 const POLL_MS = 4200;
 const MAX_LIST_HEIGHT = 240;
+const PARFADE_EVENT = "parfade";
 
 function sortMessagesByTime(list: ChatMessage[]): ChatMessage[] {
   return [...list].sort(
@@ -35,7 +40,11 @@ function headerStr(
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
-/** Ably Chat + API persistence: history from API, live from Ably; poll only when disconnected. */
+/**
+ * Ably Chat carries mobile→mobile fan-out; web chat only POSTs to the API (no Ably Chat publish).
+ * Server emits `round-detail-updated` / `chat-message` on `parfade:v1:round-detail:{token}` — subscribe
+ * so laptop/web sends appear here while Ably Chat is connected (HTTP poll is disabled in that case).
+ */
 export function RoundGroupChatConnected({
   inviteToken,
   getToken,
@@ -61,6 +70,7 @@ export function RoundGroupChatConnected({
   viewerIdRef.current = viewerId;
   const loadGenRef = useRef(0);
   const prevMessageCountRef = useRef(0);
+  const ably = useAbly();
 
   const { currentStatus } = useChatConnection();
   const ablyConnected = currentStatus === "connected";
@@ -127,6 +137,82 @@ export function RoundGroupChatConnected({
     }
   }, [inviteToken]);
 
+  /** Merge messages written via web/API (and any missed Chat events) using the same cursor as polling. */
+  const pullNewMessagesFromApi = useCallback(async () => {
+    const pollToken = inviteTokenRef.current;
+    try {
+      const authToken = await getTokenRef.current();
+      if (!authToken) return;
+      const list = messagesRef.current;
+      if (inviteTokenRef.current !== pollToken) return;
+      if (list.length === 0) {
+        const data = await apiGet<MessagesResponse>(
+          `/api/rounds/${pollToken}/messages`,
+          authToken,
+        );
+        if (inviteTokenRef.current !== pollToken) return;
+        setViewerId((prev) => {
+          const v = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
+          const next = v || prev || null;
+          return next === prev ? prev : next;
+        });
+        const incoming = data.messages ?? [];
+        if (incoming.length > 0) {
+          setMessages((prev) => (prev.length > 0 ? prev : sortMessagesByTime(incoming)));
+        }
+        return;
+      }
+      const last = list[list.length - 1];
+      const data = await apiGet<MessagesResponse>(
+        `/api/rounds/${pollToken}/messages?after=${encodeURIComponent(last.id)}`,
+        authToken,
+      );
+      if (inviteTokenRef.current !== pollToken) return;
+      setViewerId((prev) => {
+        const v = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
+        const next = v || prev || null;
+        return next === prev ? prev : next;
+      });
+      const incoming = data.messages ?? [];
+      if (incoming.length === 0) return;
+      setMessages((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        let added = 0;
+        const merged = [...prev];
+        for (const m of incoming) {
+          if (!seen.has(m.id)) {
+            seen.add(m.id);
+            merged.push(m);
+            added += 1;
+          }
+        }
+        return added === 0 ? prev : sortMessagesByTime(merged);
+      });
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = inviteToken.trim();
+    if (!t) return;
+    const channel = ably.channels.get(parfadeRoundDetailChannel(t));
+    const handler = (message: Message) => {
+      const parsed = parseParfadeRealtimeMessage(message.data);
+      if (
+        parsed?.type === "round-detail-updated" &&
+        parsed.inviteToken === t &&
+        parsed.reason === "chat-message"
+      ) {
+        void pullNewMessagesFromApi();
+      }
+    };
+    void channel.subscribe(PARFADE_EVENT, handler);
+    return () => {
+      void channel.unsubscribe(PARFADE_EVENT, handler);
+    };
+  }, [ably, inviteToken, pullNewMessagesFromApi]);
+
   useEffect(() => {
     setMessages([]);
     setLoadError(null);
@@ -138,63 +224,11 @@ export function RoundGroupChatConnected({
 
   useEffect(() => {
     if (!pollActive || ablyConnected) return;
-    const pollForToken = inviteToken;
     const id = setInterval(() => {
-      void (async () => {
-        if (inviteTokenRef.current !== pollForToken) return;
-        const list = messagesRef.current;
-        try {
-          const authToken = await getTokenRef.current();
-          if (!authToken) return;
-          if (inviteTokenRef.current !== pollForToken) return;
-          if (list.length === 0) {
-            const data = await apiGet<MessagesResponse>(
-              `/api/rounds/${pollForToken}/messages`,
-              authToken,
-            );
-            if (inviteTokenRef.current !== pollForToken) return;
-            setViewerId((prev) => {
-              const v = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
-              const next = v || prev || null;
-              return next === prev ? prev : next;
-            });
-            const incoming = data.messages ?? [];
-            if (incoming.length > 0) setMessages(incoming);
-            return;
-          }
-          const last = list[list.length - 1];
-          const data = await apiGet<MessagesResponse>(
-            `/api/rounds/${pollForToken}/messages?after=${encodeURIComponent(last.id)}`,
-            authToken,
-          );
-          if (inviteTokenRef.current !== pollForToken) return;
-          setViewerId((prev) => {
-            const v = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
-            const next = v || prev || null;
-            return next === prev ? prev : next;
-          });
-          const incoming = data.messages ?? [];
-          if (incoming.length === 0) return;
-          setMessages((prev) => {
-            const seen = new Set(prev.map((m) => m.id));
-            let added = 0;
-            const merged = [...prev];
-            for (const m of incoming) {
-              if (!seen.has(m.id)) {
-                seen.add(m.id);
-                merged.push(m);
-                added += 1;
-              }
-            }
-            return added === 0 ? prev : sortMessagesByTime(merged);
-          });
-        } catch {
-          /* ignore poll errors */
-        }
-      })();
+      void pullNewMessagesFromApi();
     }, POLL_MS);
     return () => clearInterval(id);
-  }, [pollActive, inviteToken, ablyConnected]);
+  }, [pollActive, ablyConnected, pullNewMessagesFromApi]);
 
   useEffect(() => {
     if (!pollActive) return;

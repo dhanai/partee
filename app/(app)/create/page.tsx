@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
 import { PlanningTimeWindowChipsWeb } from "@/components/planning-time-window-chips-web";
@@ -80,8 +79,6 @@ function CreateRoundPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [createdInvitePath, setCreatedInvitePath] = useState<string | null>(null);
   const [createdInvitedCount, setCreatedInvitedCount] = useState(0);
-  const [customImageUrl, setCustomImageUrl] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
 
   const debouncedCourse = useDebounce(query, 300);
   const debouncedFriend = useDebounce(friendQuery, 300);
@@ -93,15 +90,10 @@ function CreateRoundPageInner() {
             targetDate &&
               planningLocation.trim().length >= 2 &&
               planningLocationIsValidated &&
-              !submitting &&
-              !uploadingImage,
+              !submitting,
           )
         : Boolean(
-            selectedCourse &&
-              teeDate &&
-              teeTimePart &&
-              !submitting &&
-              !uploadingImage,
+            selectedCourse && teeDate && teeTimePart && !submitting,
           ),
     [
       isPlanningRound,
@@ -112,7 +104,6 @@ function CreateRoundPageInner() {
       planningLocation,
       planningLocationIsValidated,
       submitting,
-      uploadingImage,
     ],
   );
 
@@ -241,7 +232,6 @@ function CreateRoundPageInner() {
     setError(null);
     setCreatedInvitePath(null);
     setCreatedInvitedCount(0);
-    setCustomImageUrl(null);
     setFriendQuery("");
     setFriendResults([]);
     setShowFriendResults(false);
@@ -263,31 +253,6 @@ function CreateRoundPageInner() {
   function clearCourse() { setSelectedCourse(null); setQuery(""); setResults([]); }
   function addFriend(f: UserSearchResult) { if (!selectedFriends.some((s) => s.id === f.id)) { setSelectedFriends((p) => [...p, f]); setFriendResults((p) => p.filter((r) => r.id !== f.id)); } }
   function removeFriend(id: string) { setSelectedFriends((p) => p.filter((f) => f.id !== id)); }
-
-  async function handleImageUpload(file: File | null) {
-    if (!file) return;
-    setUploadingImage(true);
-    setError(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/uploads/event-image", {
-        method: "POST",
-        body: formData,
-      });
-      const json = (await response.json()) as { url?: string; error?: string };
-      if (!response.ok || !json.url) {
-        throw new Error(json.error ?? "Failed to upload image.");
-      }
-      setCustomImageUrl(json.url);
-    } catch (uploadError) {
-      setError(
-        uploadError instanceof Error ? uploadError.message : "Failed to upload image.",
-      );
-    } finally {
-      setUploadingImage(false);
-    }
-  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -314,7 +279,6 @@ function CreateRoundPageInner() {
           totalSpots,
           visibility,
           joinPolicy,
-          customImageUrl,
           inviteeUserIds: selectedFriends.map((f) => f.id),
         }),
       });
@@ -343,53 +307,6 @@ function CreateRoundPageInner() {
         onSubmit={handleSubmit}
         className="space-y-2.5 rounded-[18px] border border-[#ece8e1] bg-white p-3 shadow-sm sm:p-3.5"
       >
-        <div>
-          <p className="parfade-label">Event image (optional)</p>
-          <label className="parfade-input flex cursor-pointer items-center justify-between">
-            <span className="inline-flex items-center gap-2 text-sm text-charcoal-400">
-              {uploadingImage ? (
-                <>
-                  <ParfadeSpinner size="xs" variant="muted" aria-label="Uploading" />
-                  Uploading…
-                </>
-              ) : (
-                "Upload custom cover image"
-              )}
-            </span>
-            <span className="text-xs font-semibold text-fairway">Choose file</span>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(event) =>
-                void handleImageUpload(event.currentTarget.files?.[0] ?? null)
-              }
-            />
-          </label>
-          <p className="mt-2 text-xs text-charcoal-300">
-            If you skip this, we&apos;ll try Google Places imagery first.
-          </p>
-
-          {customImageUrl && (
-            <div className="mt-3">
-              <Image
-                src={customImageUrl}
-                alt="Custom event cover"
-                width={1200}
-                height={700}
-                className="h-36 w-full rounded-xl object-cover"
-              />
-              <button
-                type="button"
-                className="mt-2 text-xs font-medium text-charcoal-400 underline"
-                onClick={() => setCustomImageUrl(null)}
-              >
-                Remove custom image
-              </button>
-            </div>
-          )}
-        </div>
-
         {isPlanningRound ? (
           <div>
             <p className="parfade-label">Target date</p>
