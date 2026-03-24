@@ -1,7 +1,14 @@
 import * as Linking from "expo-linking";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  Image as RNImage,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type { DiscoverAdDisplay } from "../lib/discover-house-ad";
 import { colors } from "../lib/theme";
 
@@ -17,6 +24,28 @@ function InlinePromoVideo({ uri }: { uri: string }) {
   });
   return (
     <VideoView player={player} style={styles.media} contentFit="cover" nativeControls={false} />
+  );
+}
+
+function AdImage({ uri }: { uri: string }) {
+  const [ratio, setRatio] = useState(1);
+
+  useEffect(() => {
+    RNImage.getSize(
+      uri,
+      (w, h) => {
+        if (w > 0 && h > 0) setRatio(w / h);
+      },
+      () => {},
+    );
+  }, [uri]);
+
+  return (
+    <Image
+      source={{ uri }}
+      style={[styles.media, { aspectRatio: ratio }]}
+      contentFit="cover"
+    />
   );
 }
 
@@ -38,7 +67,7 @@ export function DiscoverHouseAdRow({ display }: Props) {
         {mediaKind === "video" && mediaUrl ? (
           <InlinePromoVideo uri={mediaUrl} />
         ) : mediaUrl ? (
-          <Image source={{ uri: mediaUrl }} style={styles.media} contentFit="cover" />
+          <AdImage uri={mediaUrl} />
         ) : null}
         <View style={styles.textBlock}>
           <Text style={styles.headline} numberOfLines={2}>
@@ -82,7 +111,7 @@ const styles = StyleSheet.create({
   },
   media: {
     width: "100%",
-    height: 160,
+    aspectRatio: 1,
     backgroundColor: "rgba(0,0,0,0.04)",
   },
   textBlock: {

@@ -45,7 +45,7 @@ export function GameEndHousePromoModal({ visible, slot, onDismiss }: Props) {
   const insets = useSafeAreaInsets();
   const url = slot.targetUrl?.trim() ?? "";
   const mediaUri = slot.mediaUrl?.trim() ?? "";
-  const title = slot.title?.trim() || "Sponsored";
+  const title = slot.title?.trim() || "";
   const cta = slot.ctaLabel?.trim() || "Learn more";
 
   const openTarget = useCallback(() => {
@@ -105,9 +105,11 @@ export function GameEndHousePromoModal({ visible, slot, onDismiss }: Props) {
             <Ionicons name="chevron-up" size={18} color="rgba(255,255,255,0.85)" />
             <Text style={styles.swipeHintText}>Swipe up for more</Text>
           </View>
-          <Text style={styles.title} numberOfLines={2}>
-            {title}
-          </Text>
+          {title ? (
+            <Text style={styles.title} numberOfLines={2}>
+              {title}
+            </Text>
+          ) : null}
           {slot.subtitle?.trim() ? (
             <Text style={styles.subtitle} numberOfLines={2}>
               {slot.subtitle.trim()}
