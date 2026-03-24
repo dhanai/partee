@@ -151,7 +151,7 @@ export default function AdminUsersPage() {
         </div>
       ) : (
         <div className="relative">
-          <div className={selectedUser ? "pr-0 xl:pr-[360px]" : ""}>
+          <div>
             <div className="space-y-2">
               {users.map((user) => {
                 const selected = user.id === selectedUserId;

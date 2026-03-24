@@ -34,7 +34,13 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
               className="flex min-h-dvh flex-col bg-[#faf8f5] text-[#1c1c1e] antialiased"
               style={tabBarStackVar}
             >
-              <header className="sticky top-0 z-30 flex h-[52px] shrink-0 items-center gap-2 border-b border-[#ece8e1] bg-[#faf8f5]/95 px-5 backdrop-blur-md sm:px-6 lg:h-14 lg:px-8">
+              <header
+                className={
+                  adminImmersive
+                    ? "fixed inset-x-0 top-0 z-40 flex h-[52px] items-center gap-2 border-b border-[#ece8e1] bg-[#faf8f5]/95 px-5 backdrop-blur-md sm:px-6 lg:h-14 lg:px-8"
+                    : "sticky top-0 z-30 flex h-[52px] shrink-0 items-center gap-2 border-b border-[#ece8e1] bg-[#faf8f5]/95 px-5 backdrop-blur-md sm:px-6 lg:h-14 lg:px-8"
+                }
+              >
                 <Link
                   href="/discover"
                   className="-ml-0.5 block shrink-0 origin-left rounded-md transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1a3c2a]/30 lg:scale-[1.06]"
@@ -47,7 +53,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
               <main
                 className={
                   adminImmersive
-                    ? "w-full flex-1 p-0"
+                    ? "w-full flex-1 pt-[52px] lg:pt-14"
                     : hideTabBar
                     ? "mx-auto w-full max-w-lg flex-1 px-5 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-4 sm:max-w-2xl sm:px-6 lg:max-w-3xl lg:px-8 lg:pt-5 xl:max-w-4xl"
                     : "mx-auto w-full max-w-lg flex-1 px-5 pb-[var(--app-tab-bar-stack)] pt-4 sm:max-w-2xl sm:px-6 lg:max-w-3xl lg:px-8 lg:pt-5 xl:max-w-4xl"

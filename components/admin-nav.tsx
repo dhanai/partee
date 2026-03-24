@@ -5,7 +5,6 @@ import type { Route } from "next";
 import { usePathname } from "next/navigation";
 
 const tabs = [
-  { href: "/admin", label: "Overview" },
   { href: "/admin/promos", label: "House promos" },
   { href: "/admin/site-meta", label: "Site metadata" },
   { href: "/admin/content", label: "Content" },
@@ -17,8 +16,7 @@ export function AdminNav({ compact = false }: { compact?: boolean }) {
   return (
     <nav className={compact ? "flex flex-wrap items-center gap-2" : "flex flex-col gap-1"}>
       {tabs.map((tab) => {
-        const active =
-          pathname === tab.href || (tab.href !== "/admin" && pathname?.startsWith(`${tab.href}/`));
+        const active = pathname === tab.href || pathname?.startsWith(`${tab.href}/`);
         return (
           <Link
             key={tab.href}

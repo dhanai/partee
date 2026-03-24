@@ -117,11 +117,11 @@ function SlotFields({
           <p className="break-all text-xs text-[#6e6e6e]">{slot.mediaUrl}</p>
         ) : null}
         {slot.mediaKind === "video" && slot.mediaUrl ? (
-          <video src={slot.mediaUrl} controls className="mt-2 max-h-64 w-full rounded-lg bg-black" />
+          <video src={slot.mediaUrl} controls className="mt-2 h-auto w-full rounded-lg bg-black" />
         ) : null}
         {slot.mediaKind === "image" && slot.mediaUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={slot.mediaUrl} alt="" className="mt-2 max-h-48 w-full rounded-lg object-cover" />
+          <img src={slot.mediaUrl} alt="" className="mt-2 h-auto w-full rounded-lg" />
         ) : null}
       </div>
 
@@ -282,22 +282,24 @@ export default function AdminPromosPage() {
         </div>
       ) : (
         <>
-          <SlotFields
-            label="Discover (inline feed)"
-            slot={discover}
-            onChange={setDiscover}
-            showMix
-            uploadBusy={uploadTarget === "discover"}
-            onPickFile={(f) => void uploadFor("discover", f)}
-          />
-          <SlotFields
-            label="After game (full screen)"
-            slot={gameEnd}
-            onChange={setGameEnd}
-            showMix={false}
-            uploadBusy={uploadTarget === "gameEnd"}
-            onPickFile={(f) => void uploadFor("gameEnd", f)}
-          />
+          <div className="grid gap-4 xl:grid-cols-2">
+            <SlotFields
+              label="Discover (inline feed)"
+              slot={discover}
+              onChange={setDiscover}
+              showMix
+              uploadBusy={uploadTarget === "discover"}
+              onPickFile={(f) => void uploadFor("discover", f)}
+            />
+            <SlotFields
+              label="After game (full screen)"
+              slot={gameEnd}
+              onChange={setGameEnd}
+              showMix={false}
+              uploadBusy={uploadTarget === "gameEnd"}
+              onPickFile={(f) => void uploadFor("gameEnd", f)}
+            />
+          </div>
           <button
             type="button"
             disabled={saving}
