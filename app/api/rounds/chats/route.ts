@@ -28,11 +28,10 @@ export async function GET(req: Request) {
       .groupBy(roundMessages.roundId)
       .as("latest_msg");
 
-    const hostAvatarSubquery = sql<string | null>`(SELECT ${users.avatar} FROM ${users} WHERE ${users.id} = ${rounds.hostId})`;
-
     const rows = await db
       .select({
         roundId: rounds.id,
+        hostId: rounds.hostId,
         inviteToken: rounds.inviteToken,
         mode: rounds.mode,
         courseName: rounds.courseName,
@@ -40,7 +39,6 @@ export async function GET(req: Request) {
         targetDate: rounds.targetDate,
         courseId: rounds.courseId,
         customImageUrl: rounds.customImageUrl,
-        hostAvatar: hostAvatarSubquery,
         lastMessageAt: latestMsgSubquery.lastCreatedAt,
         lastMsgBody: roundMessages.body,
         lastMsgSenderName: users.name,
@@ -74,11 +72,47 @@ export async function GET(req: Request) {
       }
     }
 
+    const roundIds = rows.map((r) => r.roundId);
+    const avatarsByRound = new Map<string, string[]>();
+    if (roundIds.length > 0) {
+      const spotRows = await db
+        .select({
+          roundId: spots.roundId,
+          avatar: users.avatar,
+        })
+        .from(spots)
+        .innerJoin(users, eq(users.id, spots.userId))
+        .where(
+          and(eq(spots.status, "confirmed"), inArray(spots.roundId, roundIds)),
+        );
+      for (const sr of spotRows) {
+        if (!sr.avatar) continue;
+        const list = avatarsByRound.get(sr.roundId) ?? [];
+        list.push(sr.avatar);
+        avatarsByRound.set(sr.roundId, list);
+      }
+      const hostRows = await db
+        .select({ id: users.id, avatar: users.avatar })
+        .from(users)
+        .where(inArray(users.id, [...new Set(rows.map((r) => r.hostId))]));
+      const hostAvatarById = new Map(hostRows.map((h) => [h.id, h.avatar]));
+      for (const r of rows) {
+        const hostAv = hostAvatarById.get(r.hostId);
+        if (!hostAv) continue;
+        const list = avatarsByRound.get(r.roundId) ?? [];
+        if (!list.includes(hostAv)) list.unshift(hostAv);
+        avatarsByRound.set(r.roundId, list);
+      }
+    }
+
     const chats = rows.map((r) => {
-      const roundImage = resolveRoundImageUrl({
-        customImageUrl: r.customImageUrl ?? undefined,
-        courseMetadata: r.courseId ? metaById.get(r.courseId) : null,
-      });
+      const hasCourseImage = r.customImageUrl?.trim() || (r.courseId && metaById.has(r.courseId));
+      const roundImage = hasCourseImage
+        ? resolveRoundImageUrl({
+            customImageUrl: r.customImageUrl ?? undefined,
+            courseMetadata: r.courseId ? metaById.get(r.courseId) : null,
+          })
+        : null;
       const dateFmt = (d: Date) =>
         d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
@@ -97,10 +131,12 @@ export async function GET(req: Request) {
             : null;
         title = dateStr ? `${shortName || r.courseName} · ${dateStr}` : (shortName || r.courseName || "Course TBD");
       }
+      const playerAvatars = avatarsByRound.get(r.roundId) ?? [];
       return {
       inviteToken: r.inviteToken,
       courseName: title,
-      imageUrl: roundImage ?? r.hostAvatar ?? null,
+      imageUrl: roundImage,
+      playerAvatars: !roundImage ? playerAvatars.slice(0, 3) : [],
       lastChatMessage: {
         body: r.lastMsgBody,
         senderName: r.lastMsgSenderName,

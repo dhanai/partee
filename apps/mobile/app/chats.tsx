@@ -20,6 +20,7 @@ type ChatRow = {
   inviteToken: string;
   courseName: string;
   imageUrl: string | null;
+  playerAvatars: string[];
   lastChatMessage: {
     body: string;
     senderName: string;
@@ -100,6 +101,21 @@ export default function ChatsScreen() {
               style={styles.avatar}
               transitionMs={200}
             />
+          ) : item.playerAvatars.length > 0 ? (
+            <View style={styles.avatarStack}>
+              {item.playerAvatars.slice(0, 3).map((uri, i) => (
+                <RoundCoverImage
+                  key={uri}
+                  recyclingKey={`chat-av-${item.inviteToken}-${i}`}
+                  uri={toAbsoluteUrl(uri)}
+                  style={[
+                    styles.stackedAvatar,
+                    { zIndex: 3 - i, marginLeft: i === 0 ? 0 : -10 },
+                  ]}
+                  transitionMs={200}
+                />
+              ))}
+            </View>
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
               <Ionicons name="golf-outline" size={22} color={colors.muted} />
@@ -205,6 +221,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
+  },
+  avatarStack: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: 48,
+    height: 48,
+  },
+  stackedAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: colors.background,
   },
   textCol: {
     flex: 1,
