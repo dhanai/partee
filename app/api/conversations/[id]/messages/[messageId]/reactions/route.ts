@@ -91,7 +91,7 @@ export async function DELETE(req: Request, { params }: RouteContext) {
     const { searchParams } = new URL(req.url);
     const emoji = searchParams.get("emoji");
 
-    if (!emoji || !VALID_EMOJIS.includes(emoji as any)) {
+    if (!emoji || !(VALID_EMOJIS as readonly string[]).includes(emoji)) {
       return NextResponse.json({ error: "Invalid emoji." }, { status: 400 });
     }
 
@@ -101,7 +101,7 @@ export async function DELETE(req: Request, { params }: RouteContext) {
         and(
           eq(messageReactions.messageId, messageId),
           eq(messageReactions.userId, viewer.id),
-          eq(messageReactions.emoji, emoji as any),
+          eq(messageReactions.emoji, emoji as typeof VALID_EMOJIS[number]),
         ),
       );
 

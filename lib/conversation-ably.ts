@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { conversationParticipants } from "@/db/schema";
 import { publishParfadeMessage } from "@/lib/parfade-ably-publish";
@@ -23,7 +23,7 @@ export async function publishConversationMessage(input: {
     senderId: input.senderId,
     senderName: input.senderName,
     bodyPreview: input.body.length > 100 ? input.body.slice(0, 97) + "…" : input.body,
-  } as any);
+  });
 
   const participants = await db
     .select({ userId: conversationParticipants.userId })
@@ -55,5 +55,5 @@ export async function publishConversationReaction(input: {
     userId: input.userId,
     emoji: input.emoji,
     action: input.action,
-  } as any);
+  });
 }

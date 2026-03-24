@@ -26,7 +26,7 @@
         "NSRemindersUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar.",
         "NSRemindersFullAccessUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar."
       },
-      "buildNumber": "31"
+      "buildNumber": "32"
     },
     "android": {
       "label": "Parfade",

@@ -11,4 +11,22 @@ export type ParfadeRealtimeMessageV1 =
       roundTitle: string;
       senderLabel: string;
       bodyPreview: string;
+    }
+  | {
+      v: 1;
+      type: "conversation-message";
+      conversationId: string;
+      messageId: string;
+      senderId: string;
+      senderName: string;
+      bodyPreview: string;
+    }
+  | {
+      v: 1;
+      type: "conversation-reaction";
+      conversationId: string;
+      messageId: string;
+      userId: string;
+      emoji: string;
+      action: "add" | "remove";
     };
