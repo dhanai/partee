@@ -12,12 +12,16 @@ type ChatUnreadContextValue = {
   isRoundChatUnread: (inviteToken: string) => boolean;
   markChatRead: (inviteToken: string) => void;
   reportRounds: (rounds: Array<{ inviteToken: string; isChatUnread?: boolean }>) => void;
+  unreadConversationIds: Set<string>;
+  markConversationRead: (conversationId: string) => void;
+  reportConversations: (convos: Array<{ id: string; isUnread: boolean }>) => void;
 };
 
 const ChatUnreadContext = createContext<ChatUnreadContextValue | null>(null);
 
 export function ChatUnreadProvider({ children }: { children: ReactNode }) {
   const [unreadTokens, setUnreadTokens] = useState<Set<string>>(new Set());
+  const [unreadConvIds, setUnreadConvIds] = useState<Set<string>>(new Set());
 
   const reportRounds = useCallback(
     (rounds: Array<{ inviteToken: string; isChatUnread?: boolean }>) => {
@@ -51,14 +55,41 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
     [unreadTokens],
   );
 
+  const reportConversations = useCallback(
+    (convos: Array<{ id: string; isUnread: boolean }>) => {
+      setUnreadConvIds((prev) => {
+        const next = new Set(prev);
+        for (const c of convos) {
+          if (c.isUnread) next.add(c.id);
+          else next.delete(c.id);
+        }
+        if (prev.size === next.size && [...next].every((t) => prev.has(t))) return prev;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const markConversationRead = useCallback((conversationId: string) => {
+    setUnreadConvIds((prev) => {
+      if (!prev.has(conversationId)) return prev;
+      const next = new Set(prev);
+      next.delete(conversationId);
+      return next;
+    });
+  }, []);
+
   const value = useMemo(
     () => ({
-      hasAnyUnreadChat: unreadTokens.size > 0,
+      hasAnyUnreadChat: unreadTokens.size > 0 || unreadConvIds.size > 0,
       isRoundChatUnread,
       markChatRead,
       reportRounds,
+      unreadConversationIds: unreadConvIds,
+      markConversationRead,
+      reportConversations,
     }),
-    [unreadTokens, isRoundChatUnread, markChatRead, reportRounds],
+    [unreadTokens, unreadConvIds, isRoundChatUnread, markChatRead, reportRounds, markConversationRead, reportConversations],
   );
 
   return (

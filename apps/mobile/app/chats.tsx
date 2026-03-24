@@ -1,22 +1,39 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useFocusEffect, useRouter, Stack } from "expo-router";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { RoundCoverImage } from "../components/round-cover-image";
 import { NotificationMustardDot } from "../components/notification-mustard-dot";
 import { apiGet, toAbsoluteUrl } from "../lib/api";
 import { useChatUnread } from "../lib/chat-unread-context";
 import { colors } from "../lib/theme";
 
-type ChatRow = {
+type ConversationRow = {
+  id: string;
+  type: "dm" | "round";
+  roundId: string | null;
+  title: string;
+  imageUrl: string | null;
+  participantAvatars: string[];
+  isUnread: boolean;
+  lastMessage: {
+    body: string;
+    senderName: string;
+    senderId: string;
+    createdAt: string;
+  };
+  participantCount: number;
+};
+
+type LegacyChatRow = {
   inviteToken: string;
   courseName: string;
   imageUrl: string | null;
@@ -29,7 +46,20 @@ type ChatRow = {
   };
 };
 
-type ChatsResponse = { chats: ChatRow[] };
+type ConversationsResponse = { conversations: ConversationRow[] };
+type LegacyChatsResponse = { chats: LegacyChatRow[] };
+
+type UnifiedRow = {
+  id: string;
+  type: "dm" | "round";
+  roundInviteToken?: string;
+  conversationId?: string;
+  title: string;
+  imageUrl: string | null;
+  avatars: string[];
+  isUnread: boolean;
+  lastMessage: { body: string; senderName: string; createdAt: string };
+};
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -49,9 +79,9 @@ export default function ChatsScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
-  const { reportRounds } = useChatUnread();
+  const { reportRounds, reportConversations } = useChatUnread();
 
-  const [chats, setChats] = useState<ChatRow[]>([]);
+  const [rows, setRows] = useState<UnifiedRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,21 +90,74 @@ export default function ChatsScreen() {
     try {
       setError(null);
       const authToken = await getTokenRef.current();
-      const data = await apiGet<ChatsResponse>("/api/rounds/chats", authToken);
-      setChats(data.chats);
-      reportRounds(
-        data.chats.map((c) => ({
-          inviteToken: c.inviteToken,
-          isChatUnread: c.isUnread,
-        })),
+
+      const [convResult, legacyResult] = await Promise.allSettled([
+        apiGet<ConversationsResponse>("/api/conversations", authToken),
+        apiGet<LegacyChatsResponse>("/api/rounds/chats", authToken),
+      ]);
+
+      const unified: UnifiedRow[] = [];
+      const seenRoundIds = new Set<string>();
+
+      if (convResult.status === "fulfilled") {
+        const convos = convResult.value.conversations;
+        reportConversations(convos.map((c) => ({ id: c.id, isUnread: c.isUnread })));
+        for (const c of convos) {
+          if (c.roundId) seenRoundIds.add(c.roundId);
+          unified.push({
+            id: c.id,
+            type: c.type,
+            conversationId: c.id,
+            title: c.title,
+            imageUrl: c.imageUrl,
+            avatars: c.participantAvatars,
+            isUnread: c.isUnread,
+            lastMessage: {
+              body: c.lastMessage.body,
+              senderName: c.lastMessage.senderName,
+              createdAt: c.lastMessage.createdAt,
+            },
+          });
+        }
+      }
+
+      if (legacyResult.status === "fulfilled") {
+        const chats = legacyResult.value.chats;
+        reportRounds(
+          chats.map((c) => ({ inviteToken: c.inviteToken, isChatUnread: c.isUnread })),
+        );
+        for (const c of chats) {
+          unified.push({
+            id: `round-${c.inviteToken}`,
+            type: "round",
+            roundInviteToken: c.inviteToken,
+            title: c.courseName,
+            imageUrl: c.imageUrl,
+            avatars: c.playerAvatars,
+            isUnread: c.isUnread,
+            lastMessage: {
+              body: c.lastChatMessage.body,
+              senderName: c.lastChatMessage.senderName,
+              createdAt: c.lastChatMessage.createdAt,
+            },
+          });
+        }
+      }
+
+      unified.sort(
+        (a, b) =>
+          new Date(b.lastMessage.createdAt).getTime() -
+          new Date(a.lastMessage.createdAt).getTime(),
       );
+
+      setRows(unified);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load chats.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [reportRounds]);
+  }, [reportRounds, reportConversations]);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,62 +166,69 @@ export default function ChatsScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: ChatRow }) => {
+    ({ item }: { item: UnifiedRow }) => {
       const unread = item.isUnread;
       return (
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-          onPress={() =>
-            router.push({
-              pathname: "/round/[token]/chat",
-              params: { token: item.inviteToken },
-            })
-          }
+          onPress={() => {
+            if (item.conversationId) {
+              router.push({
+                pathname: "/conversation/[id]/chat",
+                params: { id: item.conversationId },
+              });
+            } else if (item.roundInviteToken) {
+              router.push({
+                pathname: "/round/[token]/chat",
+                params: { token: item.roundInviteToken },
+              });
+            }
+          }}
         >
           {item.imageUrl ? (
-            <RoundCoverImage
-              recyclingKey={`chat-${item.inviteToken}`}
-              uri={toAbsoluteUrl(item.imageUrl)}
+            <Image
+              source={{ uri: toAbsoluteUrl(item.imageUrl) }}
               style={styles.avatar}
-              transitionMs={200}
             />
-          ) : item.playerAvatars.length > 0 ? (
+          ) : item.avatars.length > 0 ? (
             <View style={styles.avatarStack}>
-              {item.playerAvatars.slice(0, 3).map((uri, i) => (
-                <RoundCoverImage
-                  key={uri}
-                  recyclingKey={`chat-av-${item.inviteToken}-${i}`}
-                  uri={toAbsoluteUrl(uri)}
+              {item.avatars.slice(0, 3).map((uri, i) => (
+                <Image
+                  key={`${item.id}-${i}`}
+                  source={{ uri: toAbsoluteUrl(uri) }}
                   style={[
                     styles.stackedAvatar,
                     { zIndex: 3 - i, marginLeft: i === 0 ? 0 : -10 },
                   ]}
-                  transitionMs={200}
                 />
               ))}
             </View>
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <Ionicons name="golf-outline" size={22} color={colors.muted} />
+              <Ionicons
+                name={item.type === "dm" ? "person-outline" : "golf-outline"}
+                size={22}
+                color={colors.muted}
+              />
             </View>
           )}
           <View style={styles.textCol}>
             <Text
-              style={[styles.courseName, unread && styles.courseNameUnread]}
+              style={[styles.chatTitle, unread && styles.chatTitleUnread]}
               numberOfLines={1}
             >
-              {item.courseName}
+              {item.title}
             </Text>
             <Text
               style={[styles.preview, unread && styles.previewUnread]}
               numberOfLines={1}
             >
-              {item.lastChatMessage.senderName}: {item.lastChatMessage.body}
+              {item.lastMessage.senderName}: {item.lastMessage.body}
             </Text>
           </View>
           <View style={styles.trailingCol}>
             <Text style={styles.time}>
-              {relativeTime(item.lastChatMessage.createdAt)}
+              {relativeTime(item.lastMessage.createdAt)}
             </Text>
             {unread ? <NotificationMustardDot style={styles.unreadDot} /> : null}
           </View>
@@ -148,47 +238,59 @@ export default function ChatsScreen() {
     [router],
   );
 
-  if (loading && chats.length === 0) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.fairway} />
-      </View>
-    );
-  }
-
-  if (error && chats.length === 0) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <Pressable style={styles.retryBtn} onPress={() => void loadChats()}>
-          <Text style={styles.retryText}>Retry</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
   return (
-    <FlatList
-      data={chats}
-      keyExtractor={(item) => item.inviteToken}
-      renderItem={renderItem}
-      style={styles.list}
-      contentContainerStyle={chats.length === 0 ? styles.emptyContainer : styles.listContent}
-      refreshing={refreshing}
-      onRefresh={() => {
-        setRefreshing(true);
-        void loadChats();
-      }}
-      ListEmptyComponent={
-        <View style={styles.emptyWrap}>
-          <Ionicons name="chatbubbles-outline" size={40} color={colors.border} />
-          <Text style={styles.emptyTitle}>No group chats yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Join or create a round to start chatting with your group.
-          </Text>
+    <>
+      <Stack.Screen
+        options={{
+          title: "Chats",
+          headerRight: () => (
+            <Pressable
+              onPress={() => router.push("/new-chat")}
+              hitSlop={8}
+              style={{ marginRight: 4 }}
+            >
+              <Ionicons name="create-outline" size={24} color={colors.text} />
+            </Pressable>
+          ),
+        }}
+      />
+      {loading && rows.length === 0 ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.fairway} />
         </View>
-      }
-    />
+      ) : error && rows.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable style={styles.retryBtn} onPress={() => void loadChats()}>
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          style={styles.list}
+          contentContainerStyle={
+            rows.length === 0 ? styles.emptyContainer : styles.listContent
+          }
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            void loadChats();
+          }}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <Ionicons name="chatbubbles-outline" size={40} color={colors.border} />
+              <Text style={styles.emptyTitle}>No chats yet</Text>
+              <Text style={styles.emptySubtitle}>
+                Start a conversation with a friend or join a round to chat with your group.
+              </Text>
+            </View>
+          }
+        />
+      )}
+    </>
   );
 }
 
@@ -241,12 +343,12 @@ const styles = StyleSheet.create({
     gap: 2,
     minWidth: 0,
   },
-  courseName: {
+  chatTitle: {
     fontSize: 15,
     fontWeight: "600",
     color: colors.text,
   },
-  courseNameUnread: {
+  chatTitleUnread: {
     fontWeight: "800",
   },
   preview: {

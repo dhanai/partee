@@ -5,6 +5,7 @@ import { ClerkProvider, useAuth, useClerk } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { useEffect } from "react";
 import { View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { BuildConfigMissingScreen } from "../components/build-config-missing-screen";
 import { ParfadeAppRealtimeGate } from "../components/parfade-app-realtime";
@@ -86,6 +87,7 @@ export default function RootLayout() {
         <ChatUnreadProvider>
         <InAppToastProvider>
           <AblyChatProviders>
+            <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <ParfadeAppRealtimeGate />
               <NotificationDeepLinkEffects />
@@ -181,6 +183,20 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="new-chat"
+              options={{
+                title: "New Message",
+                headerBackTitle: "Chats",
+              }}
+            />
+            <Stack.Screen
+              name="conversation/[id]/chat"
+              options={{
+                title: "Chat",
+                headerBackTitle: "Back",
+              }}
+            />
+            <Stack.Screen
               name="notifications"
               options={{
                 title: "Notifications",
@@ -225,6 +241,7 @@ export default function RootLayout() {
                 </Stack>
               </View>
             </KeyboardProvider>
+            </GestureHandlerRootView>
           </AblyChatProviders>
         </InAppToastProvider>
         </ChatUnreadProvider>

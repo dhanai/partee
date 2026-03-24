@@ -56,6 +56,14 @@ export const gameSessionStatusEnum = pgEnum("game_session_status", [
   "abandoned",
 ]);
 
+export const conversationTypeEnum = pgEnum("conversation_type", ["dm", "round"]);
+export const reactionEmojiEnum = pgEnum("reaction_emoji", [
+  "heart",
+  "laugh",
+  "thumbs_up",
+  "thumbs_down",
+]);
+
 export const users = pgTable(
   "users",
   {
@@ -312,6 +320,110 @@ export const roundMessages = pgTable(
   }),
 );
 
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    type: conversationTypeEnum("type").notNull(),
+    roundId: uuid("round_id").references(() => rounds.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    roundIdIdx: index("conversations_round_id_idx").on(table.roundId),
+    typeIdx: index("conversations_type_idx").on(table.type),
+  }),
+);
+
+export const conversationParticipants = pgTable(
+  "conversation_participants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    convUserUnique: uniqueIndex("conversation_participants_conv_user_unique").on(
+      table.conversationId,
+      table.userId,
+    ),
+    userIdx: index("conversation_participants_user_idx").on(table.userId),
+    convIdx: index("conversation_participants_conv_idx").on(table.conversationId),
+  }),
+);
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    parentId: uuid("parent_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    convCreatedIdx: index("messages_conversation_id_created_at_idx").on(
+      table.conversationId,
+      table.createdAt,
+    ),
+    convIdx: index("messages_conversation_id_idx").on(table.conversationId),
+  }),
+);
+
+export const messageReactions = pgTable(
+  "message_reactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    emoji: reactionEmojiEnum("emoji").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    msgUserEmojiUnique: uniqueIndex("message_reactions_msg_user_emoji_unique").on(
+      table.messageId,
+      table.userId,
+      table.emoji,
+    ),
+    messageIdx: index("message_reactions_message_idx").on(table.messageId),
+  }),
+);
+
+export const conversationReadReceipts = pgTable(
+  "conversation_read_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    lastReadAt: timestamp("last_read_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    userConvUnique: uniqueIndex("conversation_read_receipts_user_conv_unique").on(
+      table.userId,
+      table.conversationId,
+    ),
+  }),
+);
+
 export const chatReadReceipts = pgTable(
   "chat_read_receipts",
   {
@@ -390,3 +502,8 @@ export type GameSession = typeof gameSessions.$inferSelect;
 export type GameSessionPlayer = typeof gameSessionPlayers.$inferSelect;
 export type GameHoleEvent = typeof gameHoleEvents.$inferSelect;
 export type HousePromoConfigRow = typeof housePromoConfig.$inferSelect;
+export type Conversation = typeof conversations.$inferSelect;
+export type ConversationParticipant = typeof conversationParticipants.$inferSelect;
+export type Message = typeof messages.$inferSelect;
+export type MessageReaction = typeof messageReactions.$inferSelect;
+export type ConversationReadReceipt = typeof conversationReadReceipts.$inferSelect;

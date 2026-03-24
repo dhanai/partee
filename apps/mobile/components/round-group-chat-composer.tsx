@@ -22,6 +22,7 @@ type Props = {
   sendBusy: boolean;
   onSend: (text: string) => Promise<boolean>;
   onComposerFocus?: () => void;
+  onTyping?: () => void;
 };
 
 export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
@@ -29,9 +30,18 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
   sendBusy,
   onSend,
   onComposerFocus,
+  onTyping,
 }: Props) {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<TextInput>(null);
+
+  const handleChangeText = useCallback(
+    (text: string) => {
+      setDraft(text);
+      onTyping?.();
+    },
+    [onTyping],
+  );
 
   const submit = useCallback(async () => {
     const text = draft.trim();
@@ -47,7 +57,7 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
       <TextInput
         ref={inputRef}
         value={draft}
-        onChangeText={setDraft}
+        onChangeText={handleChangeText}
         onFocus={() => onComposerFocus?.()}
         placeholder="Message the group…"
         placeholderTextColor={colors.muted}
