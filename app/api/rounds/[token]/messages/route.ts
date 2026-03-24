@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
@@ -24,6 +24,7 @@ const postSchema = z.object({
     .trim()
     .min(1, "Message cannot be empty.")
     .max(MAX_BODY, `Message must be ${MAX_BODY} characters or fewer.`),
+  parentId: z.string().uuid().optional(),
 });
 
 type MappedMessage = {
@@ -31,6 +32,8 @@ type MappedMessage = {
   body: string;
   createdAt: string;
   isMine: boolean;
+  parentId?: string | null;
+  parentPreview?: { body: string; senderName: string } | null;
   user: { id: string; name: string; avatar: string | null };
   reactions?: Record<string, { count: number; userIds: string[] }>;
 };
@@ -43,6 +46,7 @@ function mapMessageRow(
     userId: string;
     userName: string;
     userAvatar: string | null;
+    parentId?: string | null;
   },
   viewerId: string,
 ): MappedMessage {
@@ -51,6 +55,7 @@ function mapMessageRow(
     body: r.body,
     createdAt: r.createdAt.toISOString(),
     isMine: r.userId === viewerId,
+    parentId: r.parentId ?? null,
     user: {
       id: r.userId,
       name: r.userName,
@@ -89,6 +94,41 @@ async function attachReactions(msgs: MappedMessage[]): Promise<MappedMessage[]> 
   return msgs.map((m) => {
     const reactions = map.get(m.id);
     return reactions ? { ...m, reactions } : m;
+  });
+}
+
+async function attachParentPreviews(msgs: MappedMessage[]): Promise<MappedMessage[]> {
+  const parentIds = [
+    ...new Set(msgs.map((m) => m.parentId).filter((p): p is string => Boolean(p))),
+  ];
+  if (parentIds.length === 0) return msgs;
+
+  const parentRows = await db
+    .select({
+      id: roundMessages.id,
+      body: roundMessages.body,
+      userName: users.name,
+    })
+    .from(roundMessages)
+    .innerJoin(users, eq(users.id, roundMessages.userId))
+    .where(sql`${roundMessages.id} IN (${sql.join(parentIds.map((id) => sql`${id}`), sql`, `)})`);
+
+  const parentMap = new Map(
+    parentRows.map((p) => [p.id, { body: p.body, userName: p.userName }]),
+  );
+
+  return msgs.map((m) => {
+    if (!m.parentId) return m;
+    const parent = parentMap.get(m.parentId);
+    return {
+      ...m,
+      parentPreview: parent
+        ? {
+            body: parent.body.length > 80 ? parent.body.slice(0, 77) + "…" : parent.body,
+            senderName: parent.userName,
+          }
+        : null,
+    };
   });
 }
 
@@ -150,6 +190,7 @@ export async function GET(req: Request, { params }: RouteContext) {
         .select({
           id: roundMessages.id,
           body: roundMessages.body,
+          parentId: roundMessages.parentId,
           createdAt: roundMessages.createdAt,
           userId: roundMessages.userId,
           userName: users.name,
@@ -163,7 +204,7 @@ export async function GET(req: Request, { params }: RouteContext) {
 
       const mapped = rows.map((row) => mapMessageRow(row, viewer.id));
       return NextResponse.json({
-        messages: await attachReactions(mapped),
+        messages: await attachParentPreviews(await attachReactions(mapped)),
         viewerId: viewer.id,
       });
     }
@@ -172,6 +213,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       .select({
         id: roundMessages.id,
         body: roundMessages.body,
+        parentId: roundMessages.parentId,
         createdAt: roundMessages.createdAt,
         userId: roundMessages.userId,
         userName: users.name,
@@ -186,7 +228,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     const chronological = [...rowsDesc].reverse();
     const mapped = chronological.map((row) => mapMessageRow(row, viewer.id));
     return NextResponse.json({
-      messages: await attachReactions(mapped),
+      messages: await attachParentPreviews(await attachReactions(mapped)),
       viewerId: viewer.id,
     });
   } catch (error) {
@@ -237,10 +279,12 @@ export async function POST(req: Request, { params }: RouteContext) {
         roundId: round.id,
         userId: viewer.id,
         body: parsed.body,
+        parentId: parsed.parentId ?? null,
       })
       .returning({
         id: roundMessages.id,
         body: roundMessages.body,
+        parentId: roundMessages.parentId,
         createdAt: roundMessages.createdAt,
         userId: roundMessages.userId,
       });

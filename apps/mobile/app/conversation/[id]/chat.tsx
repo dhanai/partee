@@ -339,27 +339,13 @@ export default function ConversationChatScreen() {
 
       <View style={{ paddingBottom: composerBottomPadding }}>
         <TypingIndicator names={typingNames} />
-        {replyTo ? (
-          <View style={cStyles.replyBanner}>
-            <View style={cStyles.replyBannerBar} />
-            <View style={cStyles.replyBannerText}>
-              <Text style={cStyles.replyBannerName} numberOfLines={1}>
-                Replying to {replyTo.user.name}
-              </Text>
-              <Text style={cStyles.replyBannerBody} numberOfLines={1}>
-                {replyTo.body}
-              </Text>
-            </View>
-            <Pressable onPress={() => setReplyTo(null)} hitSlop={8}>
-              <Ionicons name="close-circle" size={20} color={colors.muted} />
-            </Pressable>
-          </View>
-        ) : null}
         <RoundGroupChatComposer
           styles={composerStyles}
           sendBusy={false}
           onSend={handleSend}
           onTyping={publishTyping}
+          replyTo={replyTo}
+          onCancelReply={() => setReplyTo(null)}
         />
       </View>
     </View>

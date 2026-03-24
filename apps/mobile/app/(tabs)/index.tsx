@@ -724,6 +724,7 @@ export default function DiscoverScreen() {
                   await clearManualLocationOverride();
                   await resolveCurrentLocation();
                   setLocationModalOpen(false);
+                  void loadRoundsRef.current?.({ reset: true });
                 } catch {
                   setLocationStatus("unavailable");
                 }

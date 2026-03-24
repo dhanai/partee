@@ -12,10 +12,11 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  Easing,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { toAbsoluteUrl } from "../lib/api";
 import { colors } from "../lib/theme";
@@ -146,7 +147,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       if (translateX.value > SWIPE_THRESHOLD && onReply) {
         runOnJS(triggerReply)();
       }
-      translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+      translateX.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.quad) });
     });
 
   const composed = Gesture.Race(panGesture, Gesture.Simultaneous(longPress, tapGestures));

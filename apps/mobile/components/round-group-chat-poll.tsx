@@ -14,7 +14,7 @@ import { getCachedMeProfile } from "../lib/me-profile-cache";
 import { useFullscreenChatKeyboard } from "../lib/use-group-chat-layout";
 import { colors } from "../lib/theme";
 import { ChatBubbleRow } from "./chat-bubble-row";
-import { RoundGroupChatComposer } from "./round-group-chat-composer";
+import { RoundGroupChatComposer, type ReplyTarget } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
 
 export type ChatMessage = {
@@ -22,6 +22,8 @@ export type ChatMessage = {
   body: string;
   createdAt: string;
   isMine?: boolean;
+  parentId?: string | null;
+  parentPreview?: { body: string; senderName: string } | null;
   user: { id: string; name: string; avatar: string | null };
   reactions?: Record<string, { count: number; userIds: string[] }>;
 };
@@ -68,6 +70,7 @@ export function RoundGroupChatPoll({
   const inviteTokenRef = useRef(inviteToken);
   inviteTokenRef.current = inviteToken;
   const [viewerId, setViewerId] = useState<string | null>(() => getCachedMeProfile()?.id ?? null);
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const loadGenRef = useRef(0);
   const prevMessageCountRef = useRef(0);
 
@@ -203,11 +206,22 @@ export function RoundGroupChatPoll({
 
       const me = getCachedMeProfile();
       const tempId = `optimistic-${Date.now()}`;
+      const parentId = replyTo?.id ?? null;
+      const parentPreview = replyTo
+        ? {
+            body: replyTo.body.length > 80 ? replyTo.body.slice(0, 77) + "…" : replyTo.body,
+            senderName: replyTo.user.name,
+          }
+        : null;
+      setReplyTo(null);
+
       const optimistic: ChatMessage = {
         id: tempId,
         body: trimmed,
         createdAt: new Date().toISOString(),
         isMine: true,
+        parentId,
+        parentPreview,
         user: {
           id: me?.id ?? "",
           name: me?.name ?? "You",
@@ -225,7 +239,7 @@ export function RoundGroupChatPoll({
         }
         const data = await apiPost<MessagesResponse & { message: ChatMessage }>(
           `/api/rounds/${inviteToken}/messages`,
-          { body: trimmed },
+          { body: trimmed, ...(parentId ? { parentId } : {}) },
           authToken,
         );
         const vidSend = data.viewerId?.trim() || getCachedMeProfile()?.id?.trim();
@@ -242,7 +256,7 @@ export function RoundGroupChatPoll({
         return false;
       }
     },
-    [inviteToken],
+    [inviteToken, replyTo],
   );
 
   const composerStyles = useMemo(
@@ -255,12 +269,18 @@ export function RoundGroupChatPoll({
     [],
   );
 
+  const handleReply = useCallback((msg: ChatMessage) => {
+    setReplyTo({ id: msg.id, body: msg.body, user: { name: msg.user.name } });
+  }, []);
+
   const composerRow = (
     <RoundGroupChatComposer
       styles={composerStyles}
       sendBusy={sendBusy}
       onSend={handleSend}
       onComposerFocus={onComposerFocus}
+      replyTo={replyTo}
+      onCancelReply={() => setReplyTo(null)}
     />
   );
 
@@ -314,17 +334,17 @@ export function RoundGroupChatPoll({
   const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const renderItem = useCallback(
     ({ item }: { item: ChatMessage }) => (
-      <ChatBubbleRow message={item} isMine={resolveMine(item)} viewerId={viewerId} onReaction={handleReaction} />
+      <ChatBubbleRow message={item} isMine={resolveMine(item)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewerId, handleReaction],
+    [viewerId, handleReaction, handleReply],
   );
   const renderBubbleInline = useCallback(
     (m: ChatMessage) => (
-      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} viewerId={viewerId} onReaction={handleReaction} />
+      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewerId, handleReaction],
+    [viewerId, handleReaction, handleReply],
   );
   const keyExtractor = useCallback((m: ChatMessage) => m.id, []);
 
