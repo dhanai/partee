@@ -56,7 +56,24 @@ export const gameSessionStatusEnum = pgEnum("game_session_status", [
   "abandoned",
 ]);
 
-export const conversationTypeEnum = pgEnum("conversation_type", ["dm", "round"]);
+export const conversationTypeEnum = pgEnum("conversation_type", ["dm", "round", "group"]);
+
+export const groupJoinPolicyEnum = pgEnum("group_join_policy", [
+  "public",
+  "approval",
+  "invite_only",
+]);
+export const groupMemberRoleEnum = pgEnum("group_member_role", [
+  "owner",
+  "admin",
+  "member",
+]);
+export const groupJoinRequestStatusEnum = pgEnum("group_join_request_status", [
+  "pending",
+  "accepted",
+  "declined",
+]);
+
 export const reactionEmojiEnum = pgEnum("reaction_emoji", [
   "heart",
   "laugh",
@@ -169,6 +186,7 @@ export const rounds = pgTable(
     status: roundStatusEnum("status").notNull().default("forming"),
     joinPolicy: joinPolicyEnum("join_policy").notNull().default("instant"),
     customImageUrl: text("custom_image_url"),
+    groupId: uuid("group_id"),
     inviteToken: text("invite_token").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -180,6 +198,7 @@ export const rounds = pgTable(
     ),
     hostIdx: index("rounds_host_id_idx").on(table.hostId),
     teeTimeIdx: index("rounds_tee_time_idx").on(table.teeTime),
+    groupIdx: index("rounds_group_id_idx").on(table.groupId),
     totalSpotsCheck: check(
       "rounds_total_spots_check",
       sql`${table.totalSpots} >= 2 AND ${table.totalSpots} <= 4`,
@@ -352,10 +371,12 @@ export const conversations = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     type: conversationTypeEnum("type").notNull(),
     roundId: uuid("round_id").references(() => rounds.id, { onDelete: "cascade" }),
+    groupId: uuid("group_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     roundIdIdx: index("conversations_round_id_idx").on(table.roundId),
+    groupIdIdx: index("conversations_group_id_idx").on(table.groupId),
     typeIdx: index("conversations_type_idx").on(table.type),
   }),
 );
@@ -538,6 +559,102 @@ export const pageContentConfig = pgTable("page_content_config", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ── Groups ────────────────────────────────────────────────────────────────
+
+export const groups = pgTable(
+  "groups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    description: text("description"),
+    imageUrl: text("image_url"),
+    joinPolicy: groupJoinPolicyEnum("join_policy").notNull().default("public"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    createdByIdx: index("groups_created_by_idx").on(table.createdBy),
+  }),
+);
+
+export const groupMembers = pgTable(
+  "group_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: groupMemberRoleEnum("role").notNull().default("member"),
+    joinedAt: timestamp("joined_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    groupUserUnique: uniqueIndex("group_members_group_user_unique").on(
+      table.groupId,
+      table.userId,
+    ),
+    groupIdx: index("group_members_group_idx").on(table.groupId),
+    userIdx: index("group_members_user_idx").on(table.userId),
+  }),
+);
+
+export const groupJoinRequests = pgTable(
+  "group_join_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: groupJoinRequestStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    groupUserUnique: uniqueIndex("group_join_requests_group_user_unique").on(
+      table.groupId,
+      table.userId,
+    ),
+    groupIdx: index("group_join_requests_group_idx").on(table.groupId),
+  }),
+);
+
+export const groupAnnouncements = pgTable(
+  "group_announcements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    isPinned: boolean("is_pinned").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    groupIdx: index("group_announcements_group_idx").on(table.groupId),
+    groupCreatedIdx: index("group_announcements_group_created_idx").on(
+      table.groupId,
+      table.createdAt,
+    ),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Round = typeof rounds.$inferSelect;
 export type Spot = typeof spots.$inferSelect;
@@ -558,3 +675,7 @@ export type MessageReaction = typeof messageReactions.$inferSelect;
 export type ConversationReadReceipt = typeof conversationReadReceipts.$inferSelect;
 export type SiteMetaConfigRow = typeof siteMetaConfig.$inferSelect;
 export type PageContentConfigRow = typeof pageContentConfig.$inferSelect;
+export type Group = typeof groups.$inferSelect;
+export type GroupMember = typeof groupMembers.$inferSelect;
+export type GroupJoinRequest = typeof groupJoinRequests.$inferSelect;
+export type GroupAnnouncement = typeof groupAnnouncements.$inferSelect;

@@ -1,19 +1,61 @@
 import { Tabs, Redirect, router } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { AnimatedBottomSheetFrame } from "../../components/animated-bottom-sheet-frame";
 import { NotificationMustardDot } from "../../components/notification-mustard-dot";
 import { ParfadeLogo } from "../../components/parfade-logo";
+import { apiGet } from "../../lib/api";
+import { getCachedMeProfile, setCachedMeProfile, type MeProfile } from "../../lib/me-profile-cache";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
 import { colors } from "../../lib/theme";
 
+function ProfileHeaderIcon({ avatar }: { avatar: string | null }) {
+  return (
+    <Pressable
+      style={styles.profileHeaderBtn}
+      onPress={() => router.push("/(tabs)/profile")}
+      accessibilityLabel="Open profile"
+    >
+      {avatar ? (
+        <Image source={{ uri: avatar }} style={styles.profileHeaderAvatar} />
+      ) : (
+        <Ionicons name="person-circle-outline" size={26} color={colors.fairway} />
+      )}
+    </Pressable>
+  );
+}
+
 export default function TabsLayout() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const { showBadge: showNotificationBadge } = useNotificationBadge();
   const [createSheetOpen, setCreateSheetOpen] = useState(false);
   const showAdvancedCreateTypes = false;
+  const [meAvatar, setMeAvatar] = useState<string | null>(null);
+  const getTokenRef = useRef(getToken);
+
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
+
+  useEffect(() => {
+    const cached = getCachedMeProfile();
+    if (cached?.avatar) {
+      setMeAvatar(cached.avatar);
+      return;
+    }
+    (async () => {
+      try {
+        const token = await getTokenRef.current();
+        const data = await apiGet<{ user: MeProfile }>("/api/users/me", token);
+        setCachedMeProfile(data.user);
+        setMeAvatar(data.user.avatar);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [isSignedIn]);
 
   if (!isLoaded) {
     return (
@@ -95,6 +137,8 @@ export default function TabsLayout() {
                 color={color}
               />
             ),
+            headerRight: () => <ProfileHeaderIcon avatar={meAvatar} />,
+            headerRightContainerStyle: { paddingRight: 12 },
           }}
         />
         <Tabs.Screen
@@ -137,19 +181,29 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, focused }) => (
               <Ionicons name={focused ? "flag" : "flag-outline"} size={22} color={color} />
             ),
+            headerRight: () => <ProfileHeaderIcon avatar={meAvatar} />,
+            headerRightContainerStyle: { paddingRight: 12 },
+          }}
+        />
+        <Tabs.Screen
+          name="groups"
+          options={{
+            title: "Groups",
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={focused ? "people" : "people-outline"}
+                size={22}
+                color={color}
+              />
+            ),
+            headerRight: () => <ProfileHeaderIcon avatar={meAvatar} />,
+            headerRightContainerStyle: { paddingRight: 12 },
           }}
         />
         <Tabs.Screen
           name="profile"
           options={{
-            title: "Profile",
-            tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                name={focused ? "person-circle" : "person-circle-outline"}
-                size={22}
-                color={color}
-              />
-            ),
+            href: null,
           }}
         />
       </Tabs>
@@ -214,6 +268,19 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  profileHeaderBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  profileHeaderAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
   tabIconWrap: {
     position: "relative",
     width: 32,

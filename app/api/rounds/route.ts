@@ -38,6 +38,7 @@ const createRoundSchema = z
       .optional()
       .nullable(),
     inviteeUserIds: z.array(z.string().uuid()).max(30).default([]),
+    groupId: z.string().uuid().optional(),
   })
   .superRefine((payload, ctx) => {
     if (payload.planningMode) {
@@ -167,6 +168,7 @@ export async function POST(req: Request) {
             parsed.customImageUrl && parsed.customImageUrl.trim().length > 0
               ? parsed.customImageUrl.trim()
               : null,
+          groupId: parsed.groupId ?? null,
           status: "forming",
           inviteToken: nanoid(12),
         })

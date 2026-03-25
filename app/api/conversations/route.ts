@@ -6,6 +6,7 @@ import {
   conversations,
   conversationParticipants,
   conversationReadReceipts,
+  groups,
   messages,
   users,
 } from "@/db/schema";
@@ -34,6 +35,7 @@ export async function GET(req: Request) {
         conversationId: conversations.id,
         type: conversations.type,
         roundId: conversations.roundId,
+        groupId: conversations.groupId,
         lastMessageAt: latestMsgSub.lastCreatedAt,
         lastMsgBody: messages.body,
         lastMsgSenderId: messages.userId,
@@ -57,6 +59,20 @@ export async function GET(req: Request) {
     }
 
     const convIds = rows.map((r) => r.conversationId);
+
+    const groupIds = rows.map((r) => r.groupId).filter((id): id is string => Boolean(id));
+    const groupNameMap = new Map<string, string>();
+    const groupImageMap = new Map<string, string | null>();
+    if (groupIds.length > 0) {
+      const groupRows = await db
+        .select({ id: groups.id, name: groups.name, imageUrl: groups.imageUrl })
+        .from(groups)
+        .where(inArray(groups.id, groupIds));
+      for (const g of groupRows) {
+        groupNameMap.set(g.id, g.name);
+        groupImageMap.set(g.id, g.imageUrl);
+      }
+    }
 
     const participantRows = await db
       .select({
@@ -114,6 +130,9 @@ export async function GET(req: Request) {
         const other = otherParticipants[0];
         title = other?.name ?? "Chat";
         imageUrl = other?.avatar ?? null;
+      } else if (r.type === "group" && r.groupId) {
+        title = groupNameMap.get(r.groupId) ?? "Group Chat";
+        imageUrl = groupImageMap.get(r.groupId) ?? null;
       } else {
         title = "Group Chat";
       }
@@ -122,6 +141,7 @@ export async function GET(req: Request) {
         id: r.conversationId,
         type: r.type,
         roundId: r.roundId,
+        groupId: r.groupId,
         title,
         imageUrl,
         participantAvatars: avatars,

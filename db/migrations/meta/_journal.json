@@ -155,6 +155,13 @@
       "when": 1775200000000,
       "tag": "0021_round_messages_parent_id",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1775300000000,
+      "tag": "0022_groups",
+      "breakpoints": true
     }
   ]
 }

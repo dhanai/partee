@@ -238,6 +238,34 @@ export default function RootLayout() {
                 headerBackTitle: "Game",
               }}
             />
+            <Stack.Screen
+              name="create-group"
+              options={{
+                title: "Create Group",
+                headerBackTitle: "Groups",
+              }}
+            />
+            <Stack.Screen
+              name="group/[groupId]/index"
+              options={{
+                title: "Group",
+                headerBackTitle: "Groups",
+              }}
+            />
+            <Stack.Screen
+              name="group/[groupId]/members"
+              options={{
+                title: "Members",
+                headerBackTitle: "Group",
+              }}
+            />
+            <Stack.Screen
+              name="group/[groupId]/settings"
+              options={{
+                title: "Group Settings",
+                headerBackTitle: "Group",
+              }}
+            />
                 </Stack>
               </View>
             </KeyboardProvider>

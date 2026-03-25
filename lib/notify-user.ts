@@ -162,6 +162,41 @@ export async function notifyRoundInvites(input: {
   );
 }
 
+export async function notifyGroupAnnouncement(input: {
+  groupId: string;
+  groupName: string;
+  senderUserId: string;
+  senderName: string;
+  body: string;
+  memberUserIds: string[];
+}): Promise<void> {
+  const recipientIds = input.memberUserIds.filter((id) => id !== input.senderUserId);
+  if (recipientIds.length === 0) return;
+
+  const rows = await db
+    .select({ token: users.expoPushToken })
+    .from(users)
+    .where(inArray(users.id, recipientIds));
+
+  const tokens = rows
+    .map((r) => r.token?.trim())
+    .filter((t): t is string => Boolean(t));
+
+  if (tokens.length === 0) return;
+
+  const preview = input.body.length > 120 ? `${input.body.slice(0, 117)}…` : input.body;
+
+  await sendExpoPushMessages(
+    tokens.map((to) => ({
+      to,
+      sound: "default" as const,
+      title: `${input.groupName} — Announcement`,
+      body: `${input.senderName}: ${preview}`,
+      data: { type: "group_announcement", groupId: input.groupId },
+    })),
+  );
+}
+
 const CHAT_PREVIEW_MAX = 140;
 
 /**
