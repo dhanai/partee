@@ -656,6 +656,31 @@ export const groupAnnouncements = pgTable(
   }),
 );
 
+export const announcementLikes = pgTable(
+  "announcement_likes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    announcementId: uuid("announcement_id")
+      .notNull()
+      .references(() => groupAnnouncements.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    uniqueLike: uniqueIndex("announcement_likes_unique").on(
+      table.announcementId,
+      table.userId,
+    ),
+    announcementIdx: index("announcement_likes_announcement_idx").on(
+      table.announcementId,
+    ),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Round = typeof rounds.$inferSelect;
 export type Spot = typeof spots.$inferSelect;

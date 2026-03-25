@@ -169,6 +169,13 @@
       "when": 1775400000000,
       "tag": "0023_group_hero_image",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1775500000000,
+      "tag": "0024_announcement_likes",
+      "breakpoints": true
     }
   ]
 }

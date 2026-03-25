@@ -65,12 +65,14 @@ export async function POST(req: Request, { params }: Ctx) {
       )
       .limit(1);
 
-    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
-      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    if (!membership) {
+      return NextResponse.json({ error: "Must be a group member." }, { status: 403 });
     }
 
     const body = await req.json();
     const input = createSchema.parse(body);
+
+    const canPin = membership.role === "owner" || membership.role === "admin";
 
     const [announcement] = await db
       .insert(groupAnnouncements)
@@ -78,7 +80,7 @@ export async function POST(req: Request, { params }: Ctx) {
         groupId,
         userId: viewer.id,
         body: input.body,
-        isPinned: input.isPinned,
+        isPinned: canPin && input.isPinned,
       })
       .returning();
 
@@ -125,7 +127,8 @@ export async function POST(req: Request, { params }: Ctx) {
 
 const editSchema = z.object({
   id: z.string().uuid(),
-  body: z.string().min(1).max(2000),
+  body: z.string().min(1).max(2000).optional(),
+  isPinned: z.boolean().optional(),
 });
 
 export async function PATCH(req: Request, { params }: Ctx) {
@@ -141,22 +144,41 @@ export async function PATCH(req: Request, { params }: Ctx) {
       )
       .limit(1);
 
-    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
-      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    if (!membership) {
+      return NextResponse.json({ error: "Must be a group member." }, { status: 403 });
     }
 
     const json = await req.json();
     const input = editSchema.parse(json);
 
-    await db
-      .update(groupAnnouncements)
-      .set({ body: input.body })
-      .where(
-        and(
-          eq(groupAnnouncements.id, input.id),
-          eq(groupAnnouncements.groupId, groupId),
-        ),
-      );
+    const isAdminOrOwner = membership.role === "owner" || membership.role === "admin";
+
+    const [existing] = await db
+      .select({ userId: groupAnnouncements.userId })
+      .from(groupAnnouncements)
+      .where(eq(groupAnnouncements.id, input.id))
+      .limit(1);
+
+    const isAuthor = existing?.userId === viewer.id;
+    if (!isAuthor && !isAdminOrOwner) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (input.body !== undefined) updates.body = input.body;
+    if (input.isPinned !== undefined && isAdminOrOwner) updates.isPinned = input.isPinned;
+
+    if (Object.keys(updates).length > 0) {
+      await db
+        .update(groupAnnouncements)
+        .set(updates)
+        .where(
+          and(
+            eq(groupAnnouncements.id, input.id),
+            eq(groupAnnouncements.groupId, groupId),
+          ),
+        );
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -190,7 +212,21 @@ export async function DELETE(req: Request, { params }: Ctx) {
       )
       .limit(1);
 
-    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+    if (!membership) {
+      return NextResponse.json({ error: "Must be a group member." }, { status: 403 });
+    }
+
+    const isAdminOrOwner = membership.role === "owner" || membership.role === "admin";
+    const [existing] = await db
+      .select({ userId: groupAnnouncements.userId })
+      .from(groupAnnouncements)
+      .where(eq(groupAnnouncements.id, announcementId))
+      .limit(1);
+
+    if (!existing) {
+      return NextResponse.json({ error: "Announcement not found." }, { status: 404 });
+    }
+    if (existing.userId !== viewer.id && !isAdminOrOwner) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
