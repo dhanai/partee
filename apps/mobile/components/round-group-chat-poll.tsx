@@ -7,11 +7,12 @@ import {
   Text,
   View,
 } from "react-native";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiDelete, apiGet, apiPost } from "../lib/api";
 import { GROUP_CHAT_COMPOSER_GAP } from "../lib/group-chat-layout-constants";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
-import { useFullscreenChatKeyboard } from "../lib/use-group-chat-layout";
 import { colors } from "../lib/theme";
 import { ChatBubbleRow } from "./chat-bubble-row";
 import { RoundGroupChatComposer, type ReplyTarget } from "./round-group-chat-composer";
@@ -56,6 +57,8 @@ export function RoundGroupChatPoll({
   variant = "inline",
 }: RoundGroupChatProps) {
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const kbVisible = useKeyboardState((s) => s.isVisible);
   const [expanded, setExpanded] = useState(true);
   const isFullscreen = variant === "fullscreen";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -73,8 +76,6 @@ export function RoundGroupChatPoll({
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const loadGenRef = useRef(0);
   const prevMessageCountRef = useRef(0);
-
-  const { keyboardPadding, composerBottomPadding } = useFullscreenChatKeyboard(insets.bottom);
 
   function resolveMine(m: ChatMessage): boolean {
     if (typeof m.isMine === "boolean") return m.isMine;
@@ -353,10 +354,14 @@ export function RoundGroupChatPoll({
   );
   const keyExtractor = useCallback((m: ChatMessage) => m.id, []);
 
-  // ─── Fullscreen: inverted FlatList, manual keyboard padding ───
+  // ─── Fullscreen: inverted FlatList, keyboard-aware composer ───
   if (isFullscreen) {
     return (
-      <View style={[styles.fullscreenRoot, { paddingBottom: keyboardPadding }]}>
+      <KeyboardAvoidingView
+        style={styles.fullscreenRoot}
+        behavior="padding"
+        keyboardVerticalOffset={headerHeight}
+      >
         <FlatList
           data={invertedMessages}
           renderItem={renderItem}
@@ -364,7 +369,7 @@ export function RoundGroupChatPoll({
           inverted
           contentContainerStyle={styles.invertedListContent}
           keyboardShouldPersistTaps="always"
-          keyboardDismissMode="none"
+          keyboardDismissMode="interactive"
           ListEmptyComponent={
             loading ? null : (
               <View style={styles.emptyInverted}>
@@ -376,8 +381,8 @@ export function RoundGroupChatPoll({
 
         {loadError ? <Text style={styles.errorInline}>{loadError}</Text> : null}
 
-        <View style={{ paddingBottom: composerBottomPadding }}>{composerRow}</View>
-      </View>
+        <View style={{ paddingBottom: kbVisible ? 8 : Math.max(8, insets.bottom) }}>{composerRow}</View>
+      </KeyboardAvoidingView>
     );
   }
 

@@ -10,12 +10,13 @@ import {
   Text,
   View,
 } from "react-native";
+import { useHeaderHeight } from "@react-navigation/elements";
+import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiDelete, apiGet, apiPost } from "../lib/api";
 import { parfadeRoundDetailChannel } from "../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../lib/parfade-ably-messages";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
-import { useFullscreenChatKeyboard } from "../lib/use-group-chat-layout";
 import { colors } from "../lib/theme";
 import { ChatBubbleRow } from "./chat-bubble-row";
 import { RoundGroupChatComposer } from "./round-group-chat-composer";
@@ -65,6 +66,8 @@ export function RoundGroupChatConnected({
   variant = "inline",
 }: RoundGroupChatProps) {
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const kbVisible = useKeyboardState((s) => s.isVisible);
   const [expanded, setExpanded] = useState(true);
   const isFullscreen = variant === "fullscreen";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -86,8 +89,6 @@ export function RoundGroupChatConnected({
   const prevMessageCountRef = useRef(0);
   const realtimePullDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ably = useAbly();
-
-  const { keyboardPadding, composerBottomPadding } = useFullscreenChatKeyboard(insets.bottom);
 
   const { currentStatus } = useChatConnection();
   const ablyConnected = currentStatus === ConnectionStatus.Connected;
@@ -449,10 +450,14 @@ export function RoundGroupChatConnected({
   );
   const keyExtractor = useCallback((m: ChatMessage) => m.id, []);
 
-  // ─── Fullscreen: inverted FlatList, manual keyboard padding ───
+  // ─── Fullscreen: inverted FlatList, keyboard-aware composer ───
   if (isFullscreen) {
     return (
-      <View style={[styles.fullscreenRoot, { paddingBottom: keyboardPadding }]}>
+      <KeyboardAvoidingView
+        style={styles.fullscreenRoot}
+        behavior="padding"
+        keyboardVerticalOffset={headerHeight}
+      >
         <FlatList
           data={invertedMessages}
           renderItem={renderItem}
@@ -460,7 +465,7 @@ export function RoundGroupChatConnected({
           inverted
           contentContainerStyle={styles.invertedListContent}
           keyboardShouldPersistTaps="always"
-          keyboardDismissMode="none"
+          keyboardDismissMode="interactive"
           ListEmptyComponent={
             loading ? null : (
               <View style={styles.emptyInverted}>
@@ -472,8 +477,8 @@ export function RoundGroupChatConnected({
 
         {loadError ? <Text style={styles.errorInline}>{loadError}</Text> : null}
 
-        <View style={{ paddingBottom: composerBottomPadding }}>{composerRow}</View>
-      </View>
+        <View style={{ paddingBottom: kbVisible ? 8 : Math.max(8, insets.bottom) }}>{composerRow}</View>
+      </KeyboardAvoidingView>
     );
   }
 

@@ -20,10 +20,12 @@ let meCacheEntry: MeCacheEntry | null = null;
 const listeners = new Set<(profile: MeProfile) => void>();
 
 export function getCachedMeProfile(): MeProfile | null {
-  if (!meCacheEntry) return null;
-  const isFresh = Date.now() - meCacheEntry.updatedAt < ME_CACHE_TTL_MS;
-  if (!isFresh) return null;
-  return meCacheEntry.data;
+  return meCacheEntry?.data ?? null;
+}
+
+export function isMeProfileStale(): boolean {
+  if (!meCacheEntry) return true;
+  return Date.now() - meCacheEntry.updatedAt >= ME_CACHE_TTL_MS;
 }
 
 export function setCachedMeProfile(data: MeProfile) {

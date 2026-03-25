@@ -8,7 +8,7 @@ import { HeaderProfileIcon } from "../../components/header-profile-icon";
 import { NotificationMustardDot } from "../../components/notification-mustard-dot";
 import { ParfadeLogo } from "../../components/parfade-logo";
 import { apiGet } from "../../lib/api";
-import { getCachedMeProfile, setCachedMeProfile, type MeProfile } from "../../lib/me-profile-cache";
+import { isMeProfileStale, setCachedMeProfile, type MeProfile } from "../../lib/me-profile-cache";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
 import { colors } from "../../lib/theme";
 
@@ -25,8 +25,7 @@ export default function TabsLayout() {
 
   useEffect(() => {
     if (!isSignedIn) return;
-    const cached = getCachedMeProfile();
-    if (cached) return;
+    if (!isMeProfileStale()) return;
     (async () => {
       try {
         const token = await getTokenRef.current();

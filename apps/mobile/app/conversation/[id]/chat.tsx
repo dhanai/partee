@@ -9,13 +9,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  UIManager,
   View,
 } from "react-native";
-
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+import { useHeaderHeight } from "@react-navigation/elements";
+import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatBubbleRow } from "../../../components/chat-bubble-row";
 import { ChatDateSeparator } from "../../../components/chat-date-separator";
@@ -32,7 +29,6 @@ import {
   type CachedMessage,
 } from "../../../lib/message-cache";
 import { colors } from "../../../lib/theme";
-import { useFullscreenChatKeyboard } from "../../../lib/use-group-chat-layout";
 import { useTypingPresence } from "../../../lib/use-typing-presence";
 
 type ConversationMessage = CachedMessage;
@@ -51,6 +47,8 @@ export default function ConversationChatScreen() {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const kbVisible = useKeyboardState((s) => s.isVisible);
   const { markConversationRead } = useChatUnread();
 
   const [msgs, setMsgs] = useState<ConversationMessage[]>([]);
@@ -63,10 +61,6 @@ export default function ConversationChatScreen() {
   const msgsRef = useRef<ConversationMessage[]>([]);
   msgsRef.current = msgs;
   const prevMsgCountRef = useRef(msgs.length);
-
-  const { keyboardPadding, composerBottomPadding } = useFullscreenChatKeyboard(
-    insets.bottom,
-  );
 
   const me = getCachedMeProfile();
   const { typingNames, publishTyping } = useTypingPresence(
@@ -322,7 +316,11 @@ export default function ConversationChatScreen() {
   );
 
   return (
-    <View style={[cStyles.root, { paddingBottom: keyboardPadding }]}>
+    <KeyboardAvoidingView
+      style={cStyles.root}
+      behavior="padding"
+      keyboardVerticalOffset={headerHeight}
+    >
       <FlatList
         data={invertedItems}
         renderItem={renderItem}
@@ -330,7 +328,7 @@ export default function ConversationChatScreen() {
         inverted
         contentContainerStyle={cStyles.listContent}
         keyboardShouldPersistTaps="always"
-        keyboardDismissMode="none"
+        keyboardDismissMode="interactive"
         ListEmptyComponent={
           loading ? null : (
             <View style={cStyles.emptyInverted}>
@@ -342,7 +340,7 @@ export default function ConversationChatScreen() {
 
       {error ? <Text style={cStyles.errorText}>{error}</Text> : null}
 
-      <View style={{ paddingBottom: composerBottomPadding }}>
+      <View style={{ paddingBottom: kbVisible ? 8 : Math.max(8, insets.bottom) }}>
         <TypingIndicator names={typingNames} />
         <RoundGroupChatComposer
           styles={composerStyles}
@@ -353,7 +351,7 @@ export default function ConversationChatScreen() {
           onCancelReply={() => setReplyTo(null)}
         />
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
