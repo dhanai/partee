@@ -19,6 +19,7 @@
     "ably": "^2.21.0",
     "babel-preset-expo": "~55.0.8",
     "expo": "~55.0.8",
+    "expo-apple-authentication": "~55.0.9",
     "expo-calendar": "~55.0.10",
     "expo-constants": "~55.0.9",
     "expo-dev-client": "~55.0.18",

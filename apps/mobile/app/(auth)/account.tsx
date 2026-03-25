@@ -23,6 +23,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppleLogo } from "../../components/apple-logo";
 import { AuthLandingBackground } from "../../components/auth-landing-background";
 import { GoogleLogo } from "../../components/google-logo";
 import { ParfadeLogo } from "../../components/parfade-logo";
@@ -232,10 +233,12 @@ function SignInFields({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [appleSubmitting, setAppleSubmitting] = useState(false);
 
   const canSubmitSignIn =
     identifier.trim().length > 0 && password.length > 0;
   const canSubmitSecondFactor = secondFactorCode.trim().length > 0;
+  const ssoSubmitting = googleSubmitting || appleSubmitting;
 
   function backToCredentials() {
     setSecondFactor(null);
@@ -387,6 +390,31 @@ function SignInFields({
     }
   }
 
+  async function onAppleSignIn() {
+    if (!isLoaded) return;
+    setAppleSubmitting(true);
+    setError(null);
+    try {
+      const redirectUrl = clerkNativeOAuthRedirectUrl();
+      const { createdSessionId, setActive: setActiveFromSSO } = await startSSOFlow({
+        strategy: "oauth_apple",
+        redirectUrl,
+      });
+      if (!createdSessionId || !setActiveFromSSO) {
+        setError("Apple sign-in could not be completed.");
+        return;
+      }
+      await setActiveFromSSO({ session: createdSessionId });
+      router.replace("/(tabs)");
+    } catch (appleError) {
+      setError(
+        appleError instanceof Error ? appleError.message : "Unable to sign in with Apple.",
+      );
+    } finally {
+      setAppleSubmitting(false);
+    }
+  }
+
   const secondFactorSubtitle =
     secondFactor?.strategy === "email_code"
       ? `Enter the code we sent${secondFactor.safeIdentifier ? ` to ${secondFactor.safeIdentifier}` : ""}.`
@@ -471,7 +499,7 @@ function SignInFields({
               (submitting || !canSubmitSignIn) && authFormStyles.buttonDisabled,
             ]}
             onPress={() => void onSignIn()}
-            disabled={submitting || googleSubmitting || !canSubmitSignIn}
+            disabled={submitting || ssoSubmitting || !canSubmitSignIn}
           >
             <Text style={authFormStyles.buttonText}>
               {submitting ? "Signing in..." : "Sign in"}
@@ -482,13 +510,30 @@ function SignInFields({
             <Text style={authFormStyles.dividerText}>or</Text>
             <View style={authFormStyles.dividerLine} />
           </View>
+          {Platform.OS === "ios" ? (
+            <Pressable
+              style={[
+                authFormStyles.buttonApple,
+                appleSubmitting && authFormStyles.buttonDisabled,
+              ]}
+              onPress={() => void onAppleSignIn()}
+              disabled={ssoSubmitting || submitting}
+            >
+              <View style={authFormStyles.buttonSecondaryRow}>
+                <AppleLogo size={20} color="#fff" />
+                <Text style={authFormStyles.buttonAppleText}>
+                  {appleSubmitting ? "Opening Apple..." : "Continue with Apple"}
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
           <Pressable
             style={[
               authFormStyles.buttonSecondary,
               googleSubmitting && authFormStyles.buttonDisabled,
             ]}
             onPress={() => void onGoogleSignIn()}
-            disabled={googleSubmitting || submitting}
+            disabled={ssoSubmitting || submitting}
           >
             <View style={authFormStyles.buttonSecondaryRow}>
               <GoogleLogo size={20} />
@@ -524,9 +569,11 @@ function SignUpFields({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [appleSubmitting, setAppleSubmitting] = useState(false);
 
   const canSubmitCreate = email.trim().length > 0 && password.length > 0;
   const canSubmitVerify = code.trim().length > 0;
+  const ssoSubmitting = googleSubmitting || appleSubmitting;
 
   function handleGoSignIn() {
     setStep("create");
@@ -603,6 +650,29 @@ function SignUpFields({
     }
   }
 
+  async function onAppleSignUp() {
+    if (!isLoaded) return;
+    setAppleSubmitting(true);
+    setError(null);
+    try {
+      const redirectUrl = clerkNativeOAuthRedirectUrl();
+      const { createdSessionId, setActive: setActiveFromSSO } = await startSSOFlow({
+        strategy: "oauth_apple",
+        redirectUrl,
+      });
+      if (!createdSessionId || !setActiveFromSSO) {
+        setError("Apple sign-up could not be completed.");
+        return;
+      }
+      await setActiveFromSSO({ session: createdSessionId });
+      router.replace("/(tabs)");
+    } catch (appleError) {
+      setError(appleError instanceof Error ? appleError.message : "Unable to sign up with Apple.");
+    } finally {
+      setAppleSubmitting(false);
+    }
+  }
+
   return (
     <View style={{ gap: 12, paddingBottom: sheetPadBottom }}>
       <Text style={authFormStyles.title}>
@@ -652,7 +722,7 @@ function SignUpFields({
               (submitting || !canSubmitCreate) && authFormStyles.buttonDisabled,
             ]}
             onPress={() => void onSignUp()}
-            disabled={submitting || googleSubmitting || !canSubmitCreate}
+            disabled={submitting || ssoSubmitting || !canSubmitCreate}
           >
             <Text style={authFormStyles.buttonText}>
               {submitting ? "Creating account..." : "Create account"}
@@ -663,13 +733,30 @@ function SignUpFields({
             <Text style={authFormStyles.dividerText}>or</Text>
             <View style={authFormStyles.dividerLine} />
           </View>
+          {Platform.OS === "ios" ? (
+            <Pressable
+              style={[
+                authFormStyles.buttonApple,
+                appleSubmitting && authFormStyles.buttonDisabled,
+              ]}
+              onPress={() => void onAppleSignUp()}
+              disabled={ssoSubmitting || submitting}
+            >
+              <View style={authFormStyles.buttonSecondaryRow}>
+                <AppleLogo size={20} color="#fff" />
+                <Text style={authFormStyles.buttonAppleText}>
+                  {appleSubmitting ? "Opening Apple..." : "Continue with Apple"}
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
           <Pressable
             style={[
               authFormStyles.buttonSecondary,
               googleSubmitting && authFormStyles.buttonDisabled,
             ]}
             onPress={() => void onGoogleSignUp()}
-            disabled={googleSubmitting || submitting}
+            disabled={ssoSubmitting || submitting}
           >
             <View style={authFormStyles.buttonSecondaryRow}>
               <GoogleLogo size={20} />

@@ -13,6 +13,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.parfade.parfade-mobile",
+      "usesAppleSignIn": true,
       "associatedDomains": [
         "applinks:parfade.com",
         "applinks:www.parfade.com"
@@ -24,7 +25,8 @@
         "NSCalendarsUsageDescription": "Parfade can add rounds you host or join to your calendar when you tap Add to calendar.",
         "NSCalendarsFullAccessUsageDescription": "Parfade can add rounds you host or join to your calendar when you tap Add to calendar.",
         "NSRemindersUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar.",
-        "NSRemindersFullAccessUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar."
+        "NSRemindersFullAccessUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar.",
+        "NSPhotoLibraryUsageDescription": "Parfade uses your photo library to let you upload a profile picture or group cover photo."
       },
       "buildNumber": "36"
     },
@@ -54,6 +56,13 @@
     "plugins": [
       "expo-router",
       "expo-web-browser",
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Parfade uses your photo library to let you upload a profile picture or group cover photo."
+        }
+      ],
       [
         "expo-splash-screen",
         {

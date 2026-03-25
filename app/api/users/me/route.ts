@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
+import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { db } from "@/db";
 import { userFollows, users } from "@/db/schema";
@@ -177,5 +178,27 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     return NextResponse.json({ error: "Unable to update profile." }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const user = await requireDbUser(req);
+    const clerkId = user.clerkId;
+
+    await db.delete(users).where(eq(users.id, user.id));
+
+    try {
+      await clerkClient.users.deleteUser(clerkId);
+    } catch {
+      // Best-effort: Clerk user may already be deleted or unreachable.
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Unable to delete account." }, { status: 500 });
   }
 }

@@ -4,15 +4,17 @@ import { router } from "expo-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from "react-native";
-import { apiGet, apiPatch, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "../lib/api";
 import { colors } from "../lib/theme";
 
 type MeResponse = {
@@ -35,6 +37,9 @@ export default function SettingsScreen() {
   const [savingDiscover, setSavingDiscover] = useState(false);
   const [saveNote, setSaveNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -138,6 +143,41 @@ export default function SettingsScreen() {
     }
   }
 
+  function promptDeleteAccount() {
+    Alert.alert(
+      "Delete Account",
+      "This will permanently delete your account and all associated data including rounds, messages, and group memberships. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => {
+            setShowDeleteConfirm(true);
+            setDeleteConfirmText("");
+          },
+        },
+      ],
+    );
+  }
+
+  async function handleDeleteAccount() {
+    if (deleteConfirmText !== "DELETE") return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const token = await getTokenRef.current();
+      await apiDelete("/api/users/me", token);
+      await signOut();
+      router.dismissAll();
+      router.replace("/(auth)");
+    } catch (deleteErr) {
+      setError(deleteErr instanceof Error ? deleteErr.message : "Unable to delete account.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function handleSignOut() {
     setSigningOut(true);
     setError(null);
@@ -214,6 +254,53 @@ export default function SettingsScreen() {
           >
             <Text style={styles.signOutText}>{signingOut ? "Signing out..." : "Sign out"}</Text>
           </Pressable>
+
+          <View style={styles.dangerCard}>
+            <Text style={styles.dangerTitle}>Danger Zone</Text>
+            {showDeleteConfirm ? (
+              <View style={styles.deleteConfirmWrap}>
+                <Text style={styles.deleteConfirmLabel}>
+                  Type <Text style={styles.deleteKeyword}>DELETE</Text> to confirm
+                </Text>
+                <TextInput
+                  value={deleteConfirmText}
+                  onChangeText={setDeleteConfirmText}
+                  autoCapitalize="characters"
+                  placeholder="DELETE"
+                  placeholderTextColor={colors.muted}
+                  style={styles.deleteInput}
+                />
+                <View style={styles.deleteConfirmRow}>
+                  <Pressable
+                    style={styles.deleteCancelBtn}
+                    onPress={() => setShowDeleteConfirm(false)}
+                  >
+                    <Text style={styles.deleteCancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.deleteConfirmBtn,
+                      (deleteConfirmText !== "DELETE" || deleting) && styles.disabled,
+                    ]}
+                    onPress={() => void handleDeleteAccount()}
+                    disabled={deleteConfirmText !== "DELETE" || deleting}
+                  >
+                    <Text style={styles.deleteConfirmBtnText}>
+                      {deleting ? "Deleting..." : "Delete my account"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                style={styles.deleteButton}
+                onPress={promptDeleteAccount}
+                disabled={deleting}
+              >
+                <Text style={styles.deleteButtonText}>Delete Account</Text>
+              </Pressable>
+            )}
+          </View>
         </>
       )}
     </ScrollView>
@@ -278,4 +365,53 @@ const styles = StyleSheet.create({
   },
   signOutText: { color: colors.text, fontWeight: "700" },
   disabled: { opacity: 0.6 },
+  dangerCard: {
+    borderWidth: 1,
+    borderColor: "rgba(220, 53, 69, 0.3)",
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+    backgroundColor: colors.surface,
+    marginTop: 12,
+  },
+  dangerTitle: { color: colors.danger, fontWeight: "700", fontSize: 16 },
+  deleteButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: colors.danger,
+  },
+  deleteButtonText: { color: "#fff", fontWeight: "700" },
+  deleteConfirmWrap: { gap: 10, marginTop: 4 },
+  deleteConfirmLabel: { color: colors.text, fontSize: 14 },
+  deleteKeyword: { fontWeight: "800" },
+  deleteInput: {
+    backgroundColor: "#f4f2ee",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: "rgba(220, 53, 69, 0.3)",
+  },
+  deleteConfirmRow: { flexDirection: "row", gap: 10 },
+  deleteCancelBtn: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  deleteCancelText: { color: colors.text, fontWeight: "600" },
+  deleteConfirmBtn: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: colors.danger,
+  },
+  deleteConfirmBtnText: { color: "#fff", fontWeight: "700" },
 });

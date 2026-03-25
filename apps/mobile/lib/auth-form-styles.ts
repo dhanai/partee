@@ -96,6 +96,20 @@ export const authFormStyles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
+  buttonApple: {
+    backgroundColor: "#000",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 2,
+    borderWidth: 1.5,
+    borderColor: "#000",
+  },
+  buttonAppleText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
   dividerRow: {
     flexDirection: "row",
     alignItems: "center",
