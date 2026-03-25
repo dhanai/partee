@@ -49,6 +49,7 @@ export async function GET(req: Request, { params }: Ctx) {
 
 const createSchema = z.object({
   body: z.string().min(1).max(2000),
+  imageUrl: z.string().url().optional(),
   isPinned: z.boolean().default(true),
 });
 
@@ -80,6 +81,7 @@ export async function POST(req: Request, { params }: Ctx) {
         groupId,
         userId: viewer.id,
         body: input.body,
+        imageUrl: input.imageUrl ?? null,
         isPinned: canPin && input.isPinned,
       })
       .returning();
@@ -128,6 +130,7 @@ export async function POST(req: Request, { params }: Ctx) {
 const editSchema = z.object({
   id: z.string().uuid(),
   body: z.string().min(1).max(2000).optional(),
+  imageUrl: z.string().url().nullable().optional(),
   isPinned: z.boolean().optional(),
 });
 
@@ -166,6 +169,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     const updates: Record<string, unknown> = {};
     if (input.body !== undefined) updates.body = input.body;
+    if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
     if (input.isPinned !== undefined && isAdminOrOwner) updates.isPinned = input.isPinned;
 
     if (Object.keys(updates).length > 0) {

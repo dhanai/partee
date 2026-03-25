@@ -642,6 +642,7 @@ export const groupAnnouncements = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     body: text("body").notNull(),
+    imageUrl: text("image_url"),
     isPinned: boolean("is_pinned").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

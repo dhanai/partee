@@ -19,8 +19,8 @@ import {
   View,
 } from "react-native";
 import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
-import { SwipeableMineRoundRow } from "../../../components/swipeable-mine-round-row";
 import { apiDelete, apiGet, apiPatch, apiPost, apiBaseUrl } from "../../../lib/api";
+import { getCachedMeProfile } from "../../../lib/me-profile-cache";
 import { compressImageToJpegUriForUpload, compressImageToMaxBytes } from "../../../lib/compress-image-for-upload";
 import { colors } from "../../../lib/theme";
 
@@ -41,7 +41,10 @@ type ActivityItem = {
   type: "announcement" | "round_created" | "member_joined";
   id: string;
   body?: string;
+  imageUrl?: string | null;
   isPinned?: boolean;
+  likeCount?: number;
+  viewerLiked?: boolean;
   createdAt: string;
   joinedAt?: string;
   roundId?: string;
@@ -73,8 +76,12 @@ export default function GroupLandingScreen() {
   // Image upload
   const [uploadingImage, setUploadingImage] = useState<"profile" | "hero" | null>(null);
 
-  // Swipe scroll lock
-  const [scrollEnabled, setScrollEnabled] = useState(true);
+  // Post image attachment
+  const [postImageUri, setPostImageUri] = useState<string | null>(null);
+  const [uploadingPostImage, setUploadingPostImage] = useState(false);
+
+  // Overflow action sheet for announcements
+  const [overflowItem, setOverflowItem] = useState<ActivityItem | null>(null);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -115,16 +122,16 @@ export default function GroupLandingScreen() {
       headerRight: () =>
         isAdmin ? (
           <Pressable
-            style={styles.headerBtn}
             onPress={() =>
               router.push({
                 pathname: "/group/[groupId]/settings",
                 params: { groupId: group.id },
               })
             }
+            hitSlop={8}
             accessibilityLabel="Group settings"
           >
-            <Ionicons name="settings-outline" size={18} color={colors.fairway} />
+            <Ionicons name="settings-outline" size={22} color={colors.fairway} />
           </Pressable>
         ) : null,
       headerRightContainerStyle: { paddingRight: 12 },
@@ -224,13 +231,68 @@ export default function GroupLandingScreen() {
   const openNewAnnouncement = useCallback(() => {
     setEditingAnnouncement(null);
     setAnnounceDraft("");
+    setPostImageUri(null);
     setShowAnnounceSheet(true);
   }, []);
 
+  const rawAnnouncementId = (item: ActivityItem) => item.id.replace(/^ann-/, "");
+
   const openEditAnnouncement = useCallback((item: ActivityItem) => {
-    setEditingAnnouncement({ id: item.id, body: item.body ?? "" });
+    setOverflowItem(null);
+    setEditingAnnouncement({ id: rawAnnouncementId(item), body: item.body ?? "" });
     setAnnounceDraft(item.body ?? "");
+    setPostImageUri(item.imageUrl ?? null);
     setShowAnnounceSheet(true);
+  }, []);
+
+  const pickPostImage = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Photo library access is needed to attach images.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      allowsEditing: true,
+    });
+    if (!result.canceled && result.assets[0]?.uri) {
+      setPostImageUri(result.assets[0].uri);
+    }
+  }, []);
+
+  const uploadPostImage = useCallback(async (localUri: string): Promise<string | null> => {
+    setUploadingPostImage(true);
+    try {
+      const token = await getTokenRef.current();
+      const formData = new FormData();
+
+      if (Platform.OS === "web") {
+        const imageBlob = await compressImageToMaxBytes(localUri, MAX_IMG_BYTES, 0, 0);
+        formData.append("file", imageBlob, "post-image.jpg");
+      } else {
+        const fileUri = await compressImageToJpegUriForUpload(localUri, MAX_IMG_BYTES, 0, 0);
+        formData.append("file", {
+          uri: fileUri,
+          name: "post-image.jpg",
+          type: "image/jpeg",
+        } as unknown as Blob);
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/uploads/event-image`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: formData,
+      });
+      const json = await response.json() as { url?: string; error?: string };
+      if (!response.ok || !json.url) throw new Error(json.error ?? "Upload failed.");
+      return json.url;
+    } catch (e) {
+      Alert.alert("Upload failed", e instanceof Error ? e.message : "Could not upload image.");
+      return null;
+    } finally {
+      setUploadingPostImage(false);
+    }
   }, []);
 
   const handlePostOrEditAnnouncement = useCallback(async () => {
@@ -239,17 +301,33 @@ export default function GroupLandingScreen() {
     setPostingAnnouncement(true);
     try {
       const token = await getTokenRef.current();
+
+      let imageUrl: string | null | undefined;
+      if (postImageUri && postImageUri.startsWith("http")) {
+        imageUrl = postImageUri;
+      } else if (postImageUri) {
+        const uploaded = await uploadPostImage(postImageUri);
+        if (!uploaded) {
+          setPostingAnnouncement(false);
+          return;
+        }
+        imageUrl = uploaded;
+      } else {
+        imageUrl = editingAnnouncement ? null : undefined;
+      }
+
       if (editingAnnouncement) {
         await apiPatch(
           `/api/groups/${groupId}/announcements`,
-          { id: editingAnnouncement.id, body },
+          { id: editingAnnouncement.id, body, imageUrl },
           token,
         );
       } else {
-        await apiPost(`/api/groups/${groupId}/announcements`, { body }, token);
+        await apiPost(`/api/groups/${groupId}/announcements`, { body, imageUrl }, token);
       }
       setAnnounceDraft("");
       setEditingAnnouncement(null);
+      setPostImageUri(null);
       setShowAnnounceSheet(false);
       void load({ silent: true });
     } catch (e) {
@@ -257,11 +335,13 @@ export default function GroupLandingScreen() {
     } finally {
       setPostingAnnouncement(false);
     }
-  }, [announceDraft, editingAnnouncement, groupId, load]);
+  }, [announceDraft, editingAnnouncement, groupId, load, postImageUri, uploadPostImage]);
 
   const handleDeleteAnnouncement = useCallback(
-    (announcementId: string) => {
-      Alert.alert("Delete announcement", "This cannot be undone.", [
+    (item: ActivityItem) => {
+      setOverflowItem(null);
+      const id = rawAnnouncementId(item);
+      Alert.alert("Delete post", "This cannot be undone.", [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
@@ -270,7 +350,7 @@ export default function GroupLandingScreen() {
             try {
               const token = await getTokenRef.current();
               await apiDelete(
-                `/api/groups/${groupId}/announcements?id=${announcementId}`,
+                `/api/groups/${groupId}/announcements?id=${id}`,
                 token,
               );
               void load({ silent: true });
@@ -280,6 +360,66 @@ export default function GroupLandingScreen() {
           },
         },
       ]);
+    },
+    [groupId, load],
+  );
+
+  const handleToggleLike = useCallback(
+    async (item: ActivityItem) => {
+      const id = rawAnnouncementId(item);
+      const wasLiked = item.viewerLiked ?? false;
+      setActivity((prev) =>
+        prev.map((a) =>
+          a.id === item.id
+            ? {
+                ...a,
+                viewerLiked: !wasLiked,
+                likeCount: Math.max(0, (a.likeCount ?? 0) + (wasLiked ? -1 : 1)),
+              }
+            : a,
+        ),
+      );
+      try {
+        const token = await getTokenRef.current();
+        await apiPost(`/api/groups/${groupId}/announcements/like`, { announcementId: id }, token);
+      } catch {
+        setActivity((prev) =>
+          prev.map((a) =>
+            a.id === item.id
+              ? {
+                  ...a,
+                  viewerLiked: wasLiked,
+                  likeCount: Math.max(0, (a.likeCount ?? 0) + (wasLiked ? 1 : -1)),
+                }
+              : a,
+          ),
+        );
+      }
+    },
+    [groupId],
+  );
+
+  const handleTogglePin = useCallback(
+    async (item: ActivityItem) => {
+      const id = rawAnnouncementId(item);
+      const newPinned = !item.isPinned;
+      setOverflowItem(null);
+      setActivity((prev) =>
+        prev.map((a) => (a.id === item.id ? { ...a, isPinned: newPinned } : a)),
+      );
+      try {
+        const token = await getTokenRef.current();
+        await apiPatch(
+          `/api/groups/${groupId}/announcements`,
+          { id, isPinned: newPinned },
+          token,
+        );
+        void load({ silent: true });
+      } catch {
+        setActivity((prev) =>
+          prev.map((a) => (a.id === item.id ? { ...a, isPinned: item.isPinned } : a)),
+        );
+      }
     },
     [groupId, load],
   );
@@ -368,12 +508,12 @@ export default function GroupLandingScreen() {
         <View style={styles.profileInfo}>
           <Text style={styles.profileName}>{group.name}</Text>
           <Text style={styles.profileMeta}>
-            {group.memberCount} member{group.memberCount !== 1 ? "s" : ""} ·{" "}
             {group.joinPolicy === "public"
               ? "Public"
               : group.joinPolicy === "approval"
-                ? "Approval"
-                : "Invite only"}
+                ? "Private"
+                : "Invite only"}{" "}
+            · {group.memberCount} member{group.memberCount !== 1 ? "s" : ""}
           </Text>
         </View>
       </View>
@@ -428,35 +568,26 @@ export default function GroupLandingScreen() {
             <Text style={styles.actionCardLabel}>Members</Text>
           </Pressable>
 
-          {isAdmin ? (
-            <Pressable
-              style={styles.actionCard}
-              onPress={() =>
-                router.push({
-                  pathname: "/create",
-                  params: { mode: "planning", groupId: group.id, session: String(Date.now()) },
-                })
-              }
-            >
-              <View style={styles.actionIconCircle}>
-                <Ionicons name="golf-outline" size={20} color={colors.fairway} />
-              </View>
-              <Text style={styles.actionCardLabel}>Round</Text>
-            </Pressable>
-          ) : null}
-
-          {isAdmin ? (
-            <Pressable
-              style={styles.actionCard}
-              onPress={openNewAnnouncement}
-            >
-              <View style={styles.actionIconCircle}>
-                <Ionicons name="megaphone-outline" size={20} color={colors.fairway} />
-              </View>
-              <Text style={styles.actionCardLabel}>Post</Text>
-            </Pressable>
-          ) : null}
         </View>
+      ) : null}
+
+      {/* Facebook-style post composer */}
+      {isMember ? (
+        <Pressable style={styles.composerRow} onPress={openNewAnnouncement}>
+          {(() => {
+            const me = getCachedMeProfile();
+            return me?.avatar ? (
+              <Image source={{ uri: me.avatar }} style={styles.composerAvatar} />
+            ) : (
+              <View style={[styles.composerAvatar, styles.composerAvatarFallback]}>
+                <Ionicons name="person" size={16} color={colors.muted} />
+              </View>
+            );
+          })()}
+          <View style={styles.composerFakeInput}>
+            <Text style={styles.composerPlaceholder}>What's on your mind?</Text>
+          </View>
+        </Pressable>
       ) : null}
 
       {activity.length > 0 ? (
@@ -473,7 +604,6 @@ export default function GroupLandingScreen() {
         data={activity}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={headerComponent}
-        scrollEnabled={scrollEnabled}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -484,38 +614,62 @@ export default function GroupLandingScreen() {
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
           if (item.type === "announcement") {
-            const card = (
-              <View style={styles.announcementCard}>
-                <View style={styles.announcementHeader}>
-                  <Ionicons name="megaphone" size={14} color={colors.fairway} />
-                  <Text style={styles.announcementBy}>{item.user.name}</Text>
-                  {item.isPinned ? (
-                    <Ionicons name="pin" size={12} color={colors.mustard} />
+            const liked = item.viewerLiked ?? false;
+            const likeCount = item.likeCount ?? 0;
+            return (
+              <View style={styles.postCard}>
+                <View style={styles.postHeader}>
+                  {item.user.avatar ? (
+                    <Image source={{ uri: item.user.avatar }} style={styles.postAvatar} />
+                  ) : (
+                    <View style={[styles.postAvatar, styles.postAvatarFallback]}>
+                      <Ionicons name="person" size={16} color={colors.muted} />
+                    </View>
+                  )}
+                  <View style={styles.postHeaderText}>
+                    <Text style={styles.postAuthor}>{item.user.name}</Text>
+                    <Text style={styles.postDate}>
+                      {formatRelative(item.createdAt)}
+                      {item.isPinned ? "  · Pinned" : ""}
+                    </Text>
+                  </View>
+                  {(isAdmin || item.user.id === getCachedMeProfile()?.id) ? (
+                    <Pressable
+                      style={styles.postOverflow}
+                      onPress={() => setOverflowItem(item)}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
+                    </Pressable>
                   ) : null}
                 </View>
-                <Text style={styles.announcementBody}>{item.body}</Text>
-                <Text style={styles.announcementTime}>{formatRelative(item.createdAt)}</Text>
+                <Text style={styles.postBody}>{item.body}</Text>
+                {item.imageUrl ? (
+                  <Image
+                    source={{ uri: item.imageUrl }}
+                    style={styles.postImage}
+                    resizeMode="cover"
+                  />
+                ) : null}
+                <View style={styles.postFooter}>
+                  <Pressable
+                    style={styles.postLikeBtn}
+                    onPress={() => void handleToggleLike(item)}
+                  >
+                    <Ionicons
+                      name={liked ? "heart" : "heart-outline"}
+                      size={18}
+                      color={liked ? colors.danger : colors.muted}
+                    />
+                    {likeCount > 0 ? (
+                      <Text style={[styles.postLikeCount, liked && styles.postLikeCountActive]}>
+                        {likeCount}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                </View>
               </View>
             );
-
-            if (isAdmin) {
-              return (
-                <SwipeableMineRoundRow
-                  variant="host"
-                  enabled
-                  compact
-                  hostLeftLabel="Edit"
-                  hostLeftIcon="create-outline"
-                  onHostEdit={() => openEditAnnouncement(item)}
-                  onHostDelete={() => handleDeleteAnnouncement(item.id)}
-                  onSwipeActiveChange={(active) => setScrollEnabled(!active)}
-                >
-                  {card}
-                </SwipeableMineRoundRow>
-              );
-            }
-
-            return card;
           }
 
           if (item.type === "round_created") {
@@ -597,6 +751,7 @@ export default function GroupLandingScreen() {
           setShowAnnounceSheet(false);
           setEditingAnnouncement(null);
           setAnnounceDraft("");
+          setPostImageUri(null);
         }}
         sheetStyle={styles.announceSheet}
       >
@@ -605,26 +760,47 @@ export default function GroupLandingScreen() {
           keyboardVerticalOffset={60}
         >
           <Text style={styles.sheetTitle}>
-            {editingAnnouncement ? "Edit Announcement" : "Post Announcement"}
+            {editingAnnouncement ? "Edit post" : "Create a post"}
           </Text>
           <TextInput
             style={styles.sheetInput}
             value={announceDraft}
             onChangeText={setAnnounceDraft}
-            placeholder="Write an announcement..."
+            placeholder="What's on your mind?"
             placeholderTextColor={colors.muted}
             multiline
             numberOfLines={4}
             maxLength={2000}
             autoFocus
           />
+          {postImageUri ? (
+            <View style={styles.sheetImagePreviewWrap}>
+              <Image source={{ uri: postImageUri }} style={styles.sheetImagePreview} />
+              <Pressable
+                style={styles.sheetImageRemove}
+                onPress={() => setPostImageUri(null)}
+                hitSlop={6}
+              >
+                <Ionicons name="close-circle" size={22} color="rgba(0,0,0,0.7)" />
+              </Pressable>
+            </View>
+          ) : null}
           <View style={styles.sheetActions}>
+            <Pressable
+              style={styles.sheetImageBtn}
+              onPress={() => void pickPostImage()}
+              disabled={uploadingPostImage}
+            >
+              <Ionicons name="image-outline" size={22} color={colors.fairway} />
+            </Pressable>
+            <View style={{ flex: 1 }} />
             <Pressable
               style={styles.sheetCancel}
               onPress={() => {
                 setShowAnnounceSheet(false);
                 setEditingAnnouncement(null);
                 setAnnounceDraft("");
+                setPostImageUri(null);
               }}
             >
               <Text style={styles.sheetCancelText}>Cancel</Text>
@@ -647,6 +823,51 @@ export default function GroupLandingScreen() {
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+      </AnimatedBottomSheetFrame>
+
+      {/* Overflow action sheet for post */}
+      <AnimatedBottomSheetFrame
+        visible={!!overflowItem}
+        onClose={() => setOverflowItem(null)}
+        sheetStyle={styles.overflowSheet}
+      >
+        {overflowItem ? (
+          <View style={styles.overflowActions}>
+            {(overflowItem.user.id === getCachedMeProfile()?.id || isAdmin) ? (
+              <Pressable
+                style={styles.overflowRow}
+                onPress={() => openEditAnnouncement(overflowItem)}
+              >
+                <Ionicons name="create-outline" size={20} color={colors.text} />
+                <Text style={styles.overflowRowText}>Edit post</Text>
+              </Pressable>
+            ) : null}
+            {isAdmin ? (
+              <Pressable
+                style={styles.overflowRow}
+                onPress={() => void handleTogglePin(overflowItem)}
+              >
+                <Ionicons
+                  name={overflowItem.isPinned ? "pin-outline" : "pin"}
+                  size={20}
+                  color={colors.text}
+                />
+                <Text style={styles.overflowRowText}>
+                  {overflowItem.isPinned ? "Unpin post" : "Pin to top"}
+                </Text>
+              </Pressable>
+            ) : null}
+            {(overflowItem.user.id === getCachedMeProfile()?.id || isAdmin) ? (
+              <Pressable
+                style={styles.overflowRow}
+                onPress={() => handleDeleteAnnouncement(overflowItem)}
+              >
+                <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                <Text style={[styles.overflowRowText, { color: colors.danger }]}>Delete post</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </AnimatedBottomSheetFrame>
     </View>
   );
@@ -726,16 +947,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    marginTop: -30,
+    marginTop: -36,
     gap: 12,
   },
   profileImageWrap: {
     position: "relative",
   },
   profileImage: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
+    width: 82,
+    height: 82,
+    borderRadius: 22,
     borderWidth: 3,
     borderColor: colors.background,
     backgroundColor: colors.surface,
@@ -746,7 +967,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.fairwaySoft,
   },
   profileUploadOverlay: {
-    borderRadius: 20,
+    borderRadius: 22,
   },
   profileCameraBadge: {
     position: "absolute",
@@ -763,7 +984,7 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     flex: 1,
-    paddingTop: 32,
+    paddingTop: 44,
     gap: 2,
   },
   profileName: {
@@ -829,6 +1050,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
+  // ── Post composer row ──────────────────────────────────────
+  composerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  composerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  composerAvatarFallback: {
+    backgroundColor: colors.fairwaySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  composerFakeInput: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  composerPlaceholder: {
+    color: colors.muted,
+    fontSize: 14,
+  },
+
   // ── Activity ───────────────────────────────────────────────
   sectionTitle: {
     color: colors.text,
@@ -838,36 +1097,84 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 8,
   },
-  announcementCard: {
+  // ── Post card (Facebook-style) ──────────────────────────────
+  postCard: {
     marginHorizontal: 16,
-    marginBottom: 10,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: colors.fairwaySoft,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.fairway + "30",
+    borderColor: colors.border,
   },
-  announcementHeader: {
+  postHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 10,
+  },
+  postAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  postAvatarFallback: {
+    backgroundColor: colors.fairwaySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  postHeaderText: {
+    flex: 1,
+    gap: 1,
+  },
+  postAuthor: {
+    color: colors.text,
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  postDate: {
+    color: colors.muted,
+    fontSize: 12,
+  },
+  postOverflow: {
+    padding: 4,
+    marginTop: -2,
+    marginRight: -4,
+  },
+  postBody: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  postImage: {
+    width: "100%",
+    aspectRatio: 4 / 3,
+    borderRadius: 10,
+    marginTop: 10,
+    backgroundColor: colors.fairwaySoft,
+  },
+  postFooter: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 6,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
-  announcementBy: {
-    color: colors.fairway,
-    fontWeight: "600",
-    fontSize: 13,
-    flex: 1,
+  postLikeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 2,
+    paddingRight: 12,
   },
-  announcementBody: {
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  announcementTime: {
+  postLikeCount: {
     color: colors.muted,
-    fontSize: 11,
-    marginTop: 6,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  postLikeCountActive: {
+    color: colors.danger,
   },
   activityRow: {
     flexDirection: "row",
@@ -886,16 +1193,6 @@ const styles = StyleSheet.create({
   activityText: { color: colors.text, fontSize: 14 },
   activityTime: { color: colors.muted, fontSize: 12 },
   bold: { fontWeight: "600" },
-  headerBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   emptyActivity: {
     alignItems: "center",
     paddingTop: 40,
@@ -929,11 +1226,30 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: "top",
   },
+  sheetImagePreviewWrap: {
+    marginTop: 10,
+    position: "relative",
+    alignSelf: "flex-start",
+  },
+  sheetImagePreview: {
+    width: 120,
+    height: 90,
+    borderRadius: 8,
+    backgroundColor: colors.fairwaySoft,
+  },
+  sheetImageRemove: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+  },
+  sheetImageBtn: {
+    padding: 8,
+  },
   sheetActions: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 12,
-    marginTop: 16,
+    alignItems: "center",
+    gap: 4,
+    marginTop: 12,
   },
   sheetCancel: { paddingVertical: 10, paddingHorizontal: 16 },
   sheetCancelText: { color: colors.muted, fontWeight: "600", fontSize: 15 },
@@ -945,4 +1261,25 @@ const styles = StyleSheet.create({
   },
   sheetPostDisabled: { opacity: 0.5 },
   sheetPostText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+
+  // ── Overflow action sheet ─────────────────────────────────
+  overflowSheet: {
+    paddingHorizontal: 8,
+  },
+  overflowActions: {
+    gap: 2,
+  },
+  overflowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  overflowRowText: {
+    color: colors.text,
+    fontWeight: "600",
+    fontSize: 16,
+  },
 });

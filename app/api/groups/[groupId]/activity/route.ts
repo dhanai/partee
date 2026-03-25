@@ -13,7 +13,7 @@ import { requireDbUser } from "@/lib/auth";
 type Ctx = { params: { groupId: string } };
 
 type ActivityItem =
-  | { type: "announcement"; id: string; body: string; isPinned: boolean; createdAt: string; likeCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
+  | { type: "announcement"; id: string; body: string; imageUrl: string | null; isPinned: boolean; createdAt: string; likeCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
   | { type: "round_created"; id: string; roundId: string; courseName: string | null; targetDate: string; createdAt: string; user: { id: string; name: string; avatar: string | null } }
   | { type: "member_joined"; id: string; joinedAt: string; user: { id: string; name: string; avatar: string | null } };
 
@@ -31,6 +31,7 @@ export async function GET(req: Request, { params }: Ctx) {
       .select({
         id: groupAnnouncements.id,
         body: groupAnnouncements.body,
+        imageUrl: groupAnnouncements.imageUrl,
         isPinned: groupAnnouncements.isPinned,
         createdAt: groupAnnouncements.createdAt,
         userId: groupAnnouncements.userId,
@@ -97,6 +98,7 @@ export async function GET(req: Request, { params }: Ctx) {
         type: "announcement",
         id: `ann-${r.id}`,
         body: r.body,
+        imageUrl: r.imageUrl,
         isPinned: r.isPinned,
         createdAt: r.createdAt.toISOString(),
         likeCount: likeCountMap.get(r.id) ?? 0,

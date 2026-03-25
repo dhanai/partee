@@ -51,6 +51,7 @@ type MeResponse = {
 };
 type LocationResult = { label: string; city: string; state: string };
 type CreateType = "planning" | "scheduled" | "tournament" | "event";
+type MyGroupOption = { id: string; name: string; imageUrl: string | null };
 
 function defaultTopOfHourDate() {
   const d = new Date();
@@ -68,9 +69,10 @@ function useDebounce(value: string, delayMs: number) {
 }
 
 export default function CreateScreen() {
-  const { mode, session: sessionParam } = useLocalSearchParams<{
+  const { mode, session: sessionParam, groupId: groupIdParam } = useLocalSearchParams<{
     mode?: string;
     session?: string;
+    groupId?: string;
   }>();
   const session = useMemo(() => {
     const raw = Array.isArray(sessionParam) ? sessionParam[0] : sessionParam;
@@ -135,6 +137,10 @@ export default function CreateScreen() {
   const debouncedPlanningLocation = useDebounce(planningLocation, 320);
   const inviteFlowKeyRef = useRef(`create-${Math.random().toString(36).slice(2, 10)}`);
   const prevSessionRef = useRef<string | null>(null);
+  const [myGroups, setMyGroups] = useState<MyGroupOption[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
+    typeof groupIdParam === "string" ? groupIdParam : null,
+  );
 
   /**
    * Each pick from the create sheet sends a new `session` id (same or different mode).
@@ -190,7 +196,8 @@ export default function CreateScreen() {
     setEventTimePickerOpen(false);
     setEventDeadlineDatePickerOpen(false);
     setEventDeadlineTimePickerOpen(false);
-  }, [session]);
+    setSelectedGroupId(typeof groupIdParam === "string" ? groupIdParam : null);
+  }, [session, groupIdParam]);
 
   useEffect(() => {
     if (!isScheduledRound) {
@@ -223,6 +230,20 @@ export default function CreateScreen() {
       active = false;
     };
   }, [isPlanningRound]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const token = await getTokenRef.current();
+        const data = await apiGet<{ myGroups: MyGroupOption[] }>("/api/groups", token);
+        if (active) setMyGroups(data.myGroups);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const canSubmit = useMemo(() => {
     if (submitting) return false;
@@ -433,6 +454,7 @@ export default function CreateScreen() {
           visibility,
           joinPolicy,
           inviteeUserIds: selectedFriends.map((friend) => friend.id),
+          groupId: selectedGroupId || undefined,
         },
         token,
       );
@@ -786,10 +808,44 @@ export default function CreateScreen() {
               </Pressable>
             </View>
 
-            <Text style={styles.label}>Invite friends</Text>
+            <Text style={styles.label}>Invite friends or select group</Text>
             <Pressable style={styles.secondaryButton} onPress={openInviteFriends}>
               <Text style={styles.secondaryButtonText}>Select friends</Text>
             </Pressable>
+
+            {myGroups.length > 0 ? (
+              <View style={styles.groupPickerWrap}>
+                <Text style={styles.groupPickerOr}>or post to a group</Text>
+                <View style={styles.groupChipRow}>
+                  {selectedGroupId ? (
+                    <Pressable
+                      style={[styles.groupChip, styles.groupChipActive]}
+                      onPress={() => setSelectedGroupId(null)}
+                    >
+                      <Text style={styles.groupChipTextActive}>
+                        {myGroups.find((g) => g.id === selectedGroupId)?.name ?? "Group"}
+                      </Text>
+                      <Ionicons name="close-circle" size={16} color="#fff" />
+                    </Pressable>
+                  ) : (
+                    myGroups.map((g) => (
+                      <Pressable
+                        key={g.id}
+                        style={styles.groupChip}
+                        onPress={() => setSelectedGroupId(g.id)}
+                      >
+                        {g.imageUrl ? (
+                          <Image source={{ uri: g.imageUrl }} style={styles.groupChipAvatar} />
+                        ) : (
+                          <Ionicons name="people" size={14} color={colors.muted} />
+                        )}
+                        <Text style={styles.groupChipText}>{g.name}</Text>
+                      </Pressable>
+                    ))
+                  )}
+                </View>
+              </View>
+            ) : null}
             {selectedFriends.map((friend) => (
               <View key={friend.id} style={styles.selectedRow}>
                 <View style={styles.selectedInfo}>
@@ -1059,6 +1115,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryButtonText: { color: colors.text, fontWeight: "700" },
+  groupPickerWrap: { marginTop: 8, gap: 6 },
+  groupPickerOr: { color: colors.muted, fontSize: 13, fontWeight: "600", textAlign: "center" },
+  groupChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  groupChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  groupChipActive: {
+    backgroundColor: colors.fairway,
+    borderColor: colors.fairway,
+  },
+  groupChipText: { color: colors.text, fontWeight: "600", fontSize: 13 },
+  groupChipTextActive: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  groupChipAvatar: { width: 18, height: 18, borderRadius: 6 },
   actionWrap: { marginTop: 2, gap: 6 },
   primaryButton: {
     backgroundColor: colors.fairway,
