@@ -8,7 +8,6 @@ import * as SecureStore from "expo-secure-store";
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -18,9 +17,9 @@ import {
 } from "react-native";
 import { DiscoverHouseAdRow } from "../../components/discover-house-ad-row";
 import { DiscoverNativeAdRow } from "../../components/discover-native-ad-row";
+import { HeaderProfileIcon } from "../../components/header-profile-icon";
 import { RoundListCard } from "../../components/round-list-card";
 import { apiGet, apiPost } from "../../lib/api";
-import { getCachedMeProfile } from "../../lib/me-profile-cache";
 import {
   formatPlanningHeaderDate,
   formatPlanningWindow,
@@ -193,8 +192,6 @@ export default function DiscoverScreen() {
       setLocationModalOpen(true);
     };
 
-    const meAvatar = getCachedMeProfile()?.avatar ?? null;
-
     navigation.setOptions({
       headerRightContainerStyle: {
         paddingRight: 12,
@@ -219,17 +216,7 @@ export default function DiscoverScreen() {
           >
             <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
           </Pressable>
-          <Pressable
-            style={styles.profileBtn}
-            onPress={() => router.push("/(tabs)/profile")}
-            accessibilityLabel="Open profile"
-          >
-            {meAvatar ? (
-              <Image source={{ uri: meAvatar }} style={styles.profileAvatar} />
-            ) : (
-              <Ionicons name="person-circle-outline" size={26} color={colors.fairway} />
-            )}
-          </Pressable>
+          <HeaderProfileIcon />
         </View>
       ),
     });
@@ -942,19 +929,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-  },
-  profileBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  profileAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
   },
   useCurrentBtn: {
     flexDirection: "row",

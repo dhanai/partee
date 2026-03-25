@@ -17,6 +17,7 @@ type MeCacheEntry = {
 
 const ME_CACHE_TTL_MS = 1000 * 60 * 3;
 let meCacheEntry: MeCacheEntry | null = null;
+const listeners = new Set<(profile: MeProfile) => void>();
 
 export function getCachedMeProfile(): MeProfile | null {
   if (!meCacheEntry) return null;
@@ -30,8 +31,14 @@ export function setCachedMeProfile(data: MeProfile) {
     data,
     updatedAt: Date.now(),
   };
+  listeners.forEach((fn) => fn(data));
 }
 
 export function clearCachedMeProfile() {
   meCacheEntry = null;
+}
+
+export function subscribeMeProfile(fn: (profile: MeProfile) => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
 }

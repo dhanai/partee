@@ -123,6 +123,54 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 }
 
+const editSchema = z.object({
+  id: z.string().uuid(),
+  body: z.string().min(1).max(2000),
+});
+
+export async function PATCH(req: Request, { params }: Ctx) {
+  try {
+    const viewer = await requireDbUser(req);
+    const { groupId } = params;
+
+    const [membership] = await db
+      .select({ role: groupMembers.role })
+      .from(groupMembers)
+      .where(
+        and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, viewer.id)),
+      )
+      .limit(1);
+
+    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    const json = await req.json();
+    const input = editSchema.parse(json);
+
+    await db
+      .update(groupAnnouncements)
+      .set({ body: input.body })
+      .where(
+        and(
+          eq(groupAnnouncements.id, input.id),
+          eq(groupAnnouncements.groupId, groupId),
+        ),
+      );
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: "Invalid input." }, { status: 400 });
+    }
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.error("[PATCH /api/groups/[groupId]/announcements]", error);
+    return NextResponse.json({ error: "Unable to edit announcement." }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: Request, { params }: Ctx) {
   try {
     const viewer = await requireDbUser(req);

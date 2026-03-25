@@ -162,6 +162,13 @@
       "when": 1775300000000,
       "tag": "0022_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1775400000000,
+      "tag": "0023_group_hero_image",
+      "breakpoints": true
     }
   ]
 }

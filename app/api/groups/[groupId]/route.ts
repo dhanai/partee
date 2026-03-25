@@ -53,6 +53,7 @@ export async function GET(req: Request, { params }: Ctx) {
         name: group.name,
         description: group.description,
         imageUrl: group.imageUrl,
+        heroImageUrl: group.heroImageUrl,
         joinPolicy: group.joinPolicy,
         createdBy: group.createdBy,
         createdAt: group.createdAt.toISOString(),
@@ -74,6 +75,7 @@ const updateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
   imageUrl: z.string().url().nullable().optional(),
+  heroImageUrl: z.string().url().nullable().optional(),
   joinPolicy: z.enum(["public", "approval", "invite_only"]).optional(),
 });
 
@@ -101,6 +103,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (input.name !== undefined) updates.name = input.name;
     if (input.description !== undefined) updates.description = input.description;
     if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
+    if (input.heroImageUrl !== undefined) updates.heroImageUrl = input.heroImageUrl;
     if (input.joinPolicy !== undefined) updates.joinPolicy = input.joinPolicy;
 
     if (Object.keys(updates).length > 0) {

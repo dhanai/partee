@@ -8,18 +8,17 @@ import {
   Alert,
   Animated,
   FlatList,
-  Image,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { HeaderProfileIcon } from "../../components/header-profile-icon";
 import { NotificationMustardDot } from "../../components/notification-mustard-dot";
 import { RoundListCard } from "../../components/round-list-card";
 import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
 import { apiDelete, apiGet, apiPost } from "../../lib/api";
-import { getCachedMeProfile } from "../../lib/me-profile-cache";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
 import { buildRoundListHint, prefetchRoundOpen } from "../../lib/round-details-cache";
 import {
@@ -245,8 +244,6 @@ export default function MyRoundsScreen() {
     }, [params.refresh, params.tab]),
   );
 
-  const meAvatarUrl = getCachedMeProfile()?.avatar ?? null;
-
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRightContainerStyle: {
@@ -278,21 +275,11 @@ export default function MyRoundsScreen() {
               <NotificationMustardDot style={styles.headerIconDot} />
             ) : null}
           </Pressable>
-          <Pressable
-            style={styles.profileBtn}
-            onPress={() => router.push("/(tabs)/profile")}
-            accessibilityLabel="Open profile"
-          >
-            {meAvatarUrl ? (
-              <Image source={{ uri: meAvatarUrl }} style={styles.profileAvatar} />
-            ) : (
-              <Ionicons name="person-circle-outline" size={26} color={colors.fairway} />
-            )}
-          </Pressable>
+          <HeaderProfileIcon />
         </View>
       ),
     });
-  }, [navigation, router, showNotificationBadge, hasAnyUnreadChat, meAvatarUrl]);
+  }, [navigation, router, showNotificationBadge, hasAnyUnreadChat]);
 
   const loadTabRounds = useCallback(
     async (tab: MineTab, options?: { reset?: boolean }) => {
@@ -865,19 +852,6 @@ const styles = StyleSheet.create({
   headerIconDot: {
     top: 3,
     right: 3,
-  },
-  profileBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  profileAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
   },
   badgeMutedSub: {
     backgroundColor: "#f1efea",

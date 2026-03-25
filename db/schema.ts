@@ -568,6 +568,7 @@ export const groups = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     imageUrl: text("image_url"),
+    heroImageUrl: text("hero_image_url"),
     joinPolicy: groupJoinPolicyEnum("join_policy").notNull().default("public"),
     createdBy: uuid("created_by")
       .notNull()
