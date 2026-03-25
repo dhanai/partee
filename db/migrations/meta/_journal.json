@@ -183,6 +183,13 @@
       "when": 1775600000000,
       "tag": "0025_announcement_image",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1775700000000,
+      "tag": "0026_announcement_comments",
+      "breakpoints": true
     }
   ]
 }

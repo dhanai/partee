@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, count, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  announcementComments,
   announcementLikes,
   groupAnnouncements,
   groupMembers,
@@ -13,7 +14,7 @@ import { requireDbUser } from "@/lib/auth";
 type Ctx = { params: { groupId: string } };
 
 type ActivityItem =
-  | { type: "announcement"; id: string; body: string; imageUrl: string | null; isPinned: boolean; createdAt: string; likeCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
+  | { type: "announcement"; id: string; body: string; imageUrl: string | null; isPinned: boolean; createdAt: string; likeCount: number; commentCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
   | { type: "round_created"; id: string; roundId: string; courseName: string | null; targetDate: string; createdAt: string; user: { id: string; name: string; avatar: string | null } }
   | { type: "member_joined"; id: string; joinedAt: string; user: { id: string; name: string; avatar: string | null } };
 
@@ -93,6 +94,20 @@ export async function GET(req: Request, { params }: Ctx) {
       viewerLikes.filter((r) => r.liked).map((r) => r.announcementId),
     );
 
+    const commentCountsAll = annIds.length > 0
+      ? await Promise.all(
+          annIds.map(async (aid) => {
+            const [row] = await db
+              .select({ count: count() })
+              .from(announcementComments)
+              .where(eq(announcementComments.announcementId, aid));
+            return { announcementId: aid, count: Number(row?.count ?? 0) };
+          }),
+        )
+      : [];
+
+    const commentCountMap = new Map(commentCountsAll.map((r) => [r.announcementId, r.count]));
+
     for (const r of announcementRows) {
       items.push({
         type: "announcement",
@@ -102,6 +117,7 @@ export async function GET(req: Request, { params }: Ctx) {
         isPinned: r.isPinned,
         createdAt: r.createdAt.toISOString(),
         likeCount: likeCountMap.get(r.id) ?? 0,
+        commentCount: commentCountMap.get(r.id) ?? 0,
         viewerLiked: viewerLikeSet.has(r.id),
         user: { id: r.userId, name: r.userName, avatar: r.userAvatar },
       });
