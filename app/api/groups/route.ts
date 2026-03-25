@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -7,7 +7,6 @@ import {
   conversationParticipants,
   groupMembers,
   groups,
-  users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 
