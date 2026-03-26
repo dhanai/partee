@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
 import {
   announcementComments,
@@ -24,9 +24,15 @@ export async function GET(req: Request, { params }: Ctx) {
     const { groupId } = params;
 
     const url = new URL(req.url);
-    const limit = Math.min(50, Number(url.searchParams.get("limit") ?? "30"));
+    const pageSize = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") ?? "20")));
+    const cursor = url.searchParams.get("cursor"); // ISO date string
 
-    const items: ActivityItem[] = [];
+    const cursorDate = cursor ? new Date(cursor) : null;
+
+    // ── Announcements ───────────────────────────────────────────
+    const annWhere = cursorDate
+      ? and(eq(groupAnnouncements.groupId, groupId), lt(groupAnnouncements.createdAt, cursorDate))
+      : eq(groupAnnouncements.groupId, groupId);
 
     const announcementRows = await db
       .select({
@@ -41,72 +47,54 @@ export async function GET(req: Request, { params }: Ctx) {
       })
       .from(groupAnnouncements)
       .innerJoin(users, eq(users.id, groupAnnouncements.userId))
-      .where(eq(groupAnnouncements.groupId, groupId))
+      .where(annWhere)
       .orderBy(desc(groupAnnouncements.createdAt))
-      .limit(limit);
+      .limit(pageSize);
 
     const annIds = announcementRows.map((r) => r.id);
 
-    const likeCounts = annIds.length > 0
-      ? await db
+    // Batch like counts, comment counts, and viewer likes in 3 queries instead of N per metric
+    let likeCountMap = new Map<string, number>();
+    let commentCountMap = new Map<string, number>();
+    let viewerLikeSet = new Set<string>();
+
+    if (annIds.length > 0) {
+      const [likeCounts, commentCounts, viewerLikes] = await Promise.all([
+        db
           .select({
             announcementId: announcementLikes.announcementId,
             count: count(),
           })
           .from(announcementLikes)
-          .where(eq(announcementLikes.announcementId, annIds[0]!))
-          .groupBy(announcementLikes.announcementId)
-      : [];
+          .where(inArray(announcementLikes.announcementId, annIds))
+          .groupBy(announcementLikes.announcementId),
 
-    const likeCountsAll = annIds.length > 1
-      ? await Promise.all(
-          annIds.map(async (aid) => {
-            const [row] = await db
-              .select({ count: count() })
-              .from(announcementLikes)
-              .where(eq(announcementLikes.announcementId, aid));
-            return { announcementId: aid, count: Number(row?.count ?? 0) };
-          }),
-        )
-      : likeCounts.map((r) => ({ announcementId: r.announcementId, count: Number(r.count) }));
+        db
+          .select({
+            announcementId: announcementComments.announcementId,
+            count: count(),
+          })
+          .from(announcementComments)
+          .where(inArray(announcementComments.announcementId, annIds))
+          .groupBy(announcementComments.announcementId),
 
-    const likeCountMap = new Map(likeCountsAll.map((r) => [r.announcementId, r.count]));
+        db
+          .select({ announcementId: announcementLikes.announcementId })
+          .from(announcementLikes)
+          .where(
+            and(
+              inArray(announcementLikes.announcementId, annIds),
+              eq(announcementLikes.userId, viewer.id),
+            ),
+          ),
+      ]);
 
-    const viewerLikes = annIds.length > 0
-      ? await Promise.all(
-          annIds.map(async (aid) => {
-            const [row] = await db
-              .select({ id: announcementLikes.id })
-              .from(announcementLikes)
-              .where(
-                and(
-                  eq(announcementLikes.announcementId, aid),
-                  eq(announcementLikes.userId, viewer.id),
-                ),
-              )
-              .limit(1);
-            return { announcementId: aid, liked: !!row };
-          }),
-        )
-      : [];
+      likeCountMap = new Map(likeCounts.map((r) => [r.announcementId, Number(r.count)]));
+      commentCountMap = new Map(commentCounts.map((r) => [r.announcementId, Number(r.count)]));
+      viewerLikeSet = new Set(viewerLikes.map((r) => r.announcementId));
+    }
 
-    const viewerLikeSet = new Set(
-      viewerLikes.filter((r) => r.liked).map((r) => r.announcementId),
-    );
-
-    const commentCountsAll = annIds.length > 0
-      ? await Promise.all(
-          annIds.map(async (aid) => {
-            const [row] = await db
-              .select({ count: count() })
-              .from(announcementComments)
-              .where(eq(announcementComments.announcementId, aid));
-            return { announcementId: aid, count: Number(row?.count ?? 0) };
-          }),
-        )
-      : [];
-
-    const commentCountMap = new Map(commentCountsAll.map((r) => [r.announcementId, r.count]));
+    const items: ActivityItem[] = [];
 
     for (const r of announcementRows) {
       items.push({
@@ -123,6 +111,11 @@ export async function GET(req: Request, { params }: Ctx) {
       });
     }
 
+    // ── Rounds ───────────────────────────────────────────────────
+    const roundWhere = cursorDate
+      ? and(eq(rounds.groupId, groupId), lt(rounds.createdAt, cursorDate))
+      : eq(rounds.groupId, groupId);
+
     const roundRows = await db
       .select({
         id: rounds.id,
@@ -136,9 +129,9 @@ export async function GET(req: Request, { params }: Ctx) {
       })
       .from(rounds)
       .innerJoin(users, eq(users.id, rounds.hostId))
-      .where(eq(rounds.groupId, groupId))
+      .where(roundWhere)
       .orderBy(desc(rounds.createdAt))
-      .limit(limit);
+      .limit(pageSize);
 
     for (const r of roundRows) {
       items.push({
@@ -152,6 +145,11 @@ export async function GET(req: Request, { params }: Ctx) {
       });
     }
 
+    // ── Members ─────────────────────────────────────────────────
+    const memberWhere = cursorDate
+      ? and(eq(groupMembers.groupId, groupId), lt(groupMembers.joinedAt, cursorDate))
+      : eq(groupMembers.groupId, groupId);
+
     const memberRows = await db
       .select({
         id: groupMembers.id,
@@ -162,9 +160,9 @@ export async function GET(req: Request, { params }: Ctx) {
       })
       .from(groupMembers)
       .innerJoin(users, eq(users.id, groupMembers.userId))
-      .where(eq(groupMembers.groupId, groupId))
+      .where(memberWhere)
       .orderBy(desc(groupMembers.joinedAt))
-      .limit(limit);
+      .limit(pageSize);
 
     for (const r of memberRows) {
       items.push({
@@ -175,6 +173,7 @@ export async function GET(req: Request, { params }: Ctx) {
       });
     }
 
+    // ── Sort & paginate ─────────────────────────────────────────
     items.sort((a, b) => {
       const pinA = a.type === "announcement" && a.isPinned ? 1 : 0;
       const pinB = b.type === "announcement" && b.isPinned ? 1 : 0;
@@ -185,7 +184,21 @@ export async function GET(req: Request, { params }: Ctx) {
       return new Date(dateB).getTime() - new Date(dateA).getTime();
     });
 
-    return NextResponse.json({ activity: items.slice(0, limit) });
+    const page = items.slice(0, pageSize);
+
+    const oldestDate = page.length > 0
+      ? (() => {
+          const last = page[page.length - 1]!;
+          return last.type === "member_joined" ? last.joinedAt : last.createdAt;
+        })()
+      : null;
+
+    const hasMore = items.length > pageSize || (page.length === pageSize && page.length > 0);
+
+    return NextResponse.json({
+      activity: page,
+      nextCursor: hasMore ? oldestDate : null,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -19,6 +19,7 @@ export async function GET(req: Request) {
         id: groups.id,
         name: groups.name,
         imageUrl: groups.imageUrl,
+        heroImageUrl: groups.heroImageUrl,
         myRole: groupMembers.role,
       })
       .from(groupMembers)
@@ -45,6 +46,7 @@ export async function GET(req: Request) {
       id: g.id,
       name: g.name,
       imageUrl: g.imageUrl,
+      heroImageUrl: g.heroImageUrl,
       memberCount: countMap.get(g.id) ?? 1,
       myRole: g.myRole,
     }));
@@ -54,6 +56,7 @@ export async function GET(req: Request) {
         id: groups.id,
         name: groups.name,
         imageUrl: groups.imageUrl,
+        heroImageUrl: groups.heroImageUrl,
       })
       .from(groups)
       .where(
@@ -84,6 +87,7 @@ export async function GET(req: Request) {
       id: g.id,
       name: g.name,
       imageUrl: g.imageUrl,
+      heroImageUrl: g.heroImageUrl,
       memberCount: discoverCountMap.get(g.id) ?? 0,
       myRole: null,
     }));
