@@ -6,6 +6,7 @@ import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { useEffect } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { BuildConfigMissingScreen } from "../components/build-config-missing-screen";
 import { ParfadeAppRealtimeGate } from "../components/parfade-app-realtime";
@@ -88,6 +89,7 @@ export default function RootLayout() {
         <InAppToastProvider>
           <AblyChatProviders>
             <GestureHandlerRootView style={{ flex: 1 }}>
+            <BottomSheetModalProvider>
             <KeyboardProvider>
               <ParfadeAppRealtimeGate />
               <NotificationDeepLinkEffects />
@@ -269,6 +271,7 @@ export default function RootLayout() {
                 </Stack>
               </View>
             </KeyboardProvider>
+            </BottomSheetModalProvider>
             </GestureHandlerRootView>
           </AblyChatProviders>
         </InAppToastProvider>

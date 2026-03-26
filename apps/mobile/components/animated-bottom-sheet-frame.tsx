@@ -1,211 +1,147 @@
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, Modal, PanResponder, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import {
-  BOTTOM_SHEET_BACKDROP_COLOR,
-  bottomSheetCloseAnimation,
-  bottomSheetOpenAnimation,
-  bottomSheetSlideDistance,
-} from "../lib/bottom-sheet-presets";
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetView,
+  type BottomSheetBackdropProps,
+} from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../lib/theme";
+
+export {
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet";
 
 export type AnimatedBottomSheetFrameProps = {
   visible: boolean;
   onClose: () => void;
   children: ReactNode;
-  /** Applied to the sliding surface (radii, padding, etc.). Safe-area bottom padding is always applied last. */
+  /** Applied to the inner BottomSheetView content wrapper. */
   sheetStyle?: StyleProp<ViewStyle>;
+  /** Override the sheet background (radius, color, border). */
+  backgroundStyle?: StyleProp<ViewStyle>;
   backdropAccessibilityLabel?: string;
-  /** Show a drag handle at the top of the sheet. Default true. */
+  /** Show a drag indicator at the top of the sheet. Default true. */
   dragHandle?: boolean;
+  /** Fixed snap points (e.g. ['50%', '90%']). When omitted, sheet sizes dynamically to content. */
+  snapPoints?: readonly (string | number)[];
+  /** Cap for dynamic sizing (pixels). Only used when snapPoints is omitted. */
+  maxDynamicContentSize?: number;
+  /** How the sheet reacts to the keyboard. Only effective with snapPoints. */
+  keyboardBehavior?: "interactive" | "extend" | "fillParent";
+  /** What happens when the keyboard is dismissed. Only effective with snapPoints. */
+  keyboardBlurBehavior?: "none" | "restore";
+  /** Allow dragging the sheet closed from the content area. Default true. Set false for scrollable sheets. */
+  enableContentPanningGesture?: boolean;
 };
 
 /**
- * Standard app bottom sheet: dimmed backdrop fade + sheet slide from bottom.
- * Use this shell for new sheets; timing/colors live in `lib/bottom-sheet-presets.ts`.
+ * Standard app bottom sheet backed by @gorhom/bottom-sheet.
+ *
+ * For **content-sized** sheets (menus, small forms) omit `snapPoints` —
+ * the sheet measures its children automatically.
+ *
+ * For **fixed-height** or **keyboard-interactive** sheets pass `snapPoints`
+ * and use `BottomSheetScrollView` / `BottomSheetTextInput` as children.
  */
-const DRAG_DISMISS_THRESHOLD = 80;
-const DRAG_VELOCITY_DISMISS = 0.5;
-
 export function AnimatedBottomSheetFrame({
   visible,
   onClose,
   children,
   sheetStyle,
-  backdropAccessibilityLabel = "Dismiss",
+  backgroundStyle: bgOverride,
+  backdropAccessibilityLabel: _label,
   dragHandle = true,
+  snapPoints,
+  maxDynamicContentSize,
+  keyboardBehavior,
+  keyboardBlurBehavior,
+  enableContentPanningGesture = true,
 }: AnimatedBottomSheetFrameProps) {
+  const ref = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 16);
-
-  const [internalVisible, setInternalVisible] = useState(false);
-  const backdropOp = useRef(new Animated.Value(0)).current;
-  const sheetY = useRef(new Animated.Value(bottomSheetSlideDistance())).current;
-  const draggingRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
-        onPanResponderGrant: () => {
-          draggingRef.current = true;
-          sheetY.stopAnimation();
-        },
-        onPanResponderMove: (_, g) => {
-          const dy = Math.max(0, g.dy);
-          sheetY.setValue(dy);
-          const dist = bottomSheetSlideDistance();
-          backdropOp.setValue(Math.max(0, 1 - dy / dist));
-        },
-        onPanResponderRelease: (_, g) => {
-          draggingRef.current = false;
-          if (g.dy > DRAG_DISMISS_THRESHOLD || g.vy > DRAG_VELOCITY_DISMISS) {
-            const dist = bottomSheetSlideDistance();
-            Animated.parallel([
-              Animated.timing(sheetY, {
-                toValue: dist,
-                duration: 200,
-                useNativeDriver: true,
-                easing: Easing.out(Easing.cubic),
-              }),
-              Animated.timing(backdropOp, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-                easing: Easing.out(Easing.cubic),
-              }),
-            ]).start(() => {
-              setInternalVisible(false);
-              onCloseRef.current();
-            });
-          } else {
-            Animated.parallel([
-              Animated.timing(sheetY, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-                easing: Easing.out(Easing.cubic),
-              }),
-              Animated.timing(backdropOp, {
-                toValue: 1,
-                duration: 200,
-                useNativeDriver: true,
-                easing: Easing.out(Easing.cubic),
-              }),
-            ]).start();
-          }
-        },
-      }),
-    [sheetY, backdropOp],
-  );
+  const programmaticRef = useRef(false);
 
   useEffect(() => {
-    if (!visible) return;
-    const dist = bottomSheetSlideDistance();
-    backdropOp.stopAnimation();
-    sheetY.stopAnimation();
-    sheetY.setValue(dist);
-    backdropOp.setValue(0);
-    setInternalVisible(true);
-    const id = requestAnimationFrame(() => {
-      Animated.parallel([
-        Animated.timing(backdropOp, {
-          toValue: 1,
-          duration: bottomSheetOpenAnimation.backdrop.duration,
-          useNativeDriver: true,
-          easing: bottomSheetOpenAnimation.backdrop.easing,
-        }),
-        Animated.timing(sheetY, {
-          toValue: 0,
-          duration: bottomSheetOpenAnimation.sheet.duration,
-          useNativeDriver: true,
-          easing: bottomSheetOpenAnimation.sheet.easing,
-        }),
-      ]).start();
-    });
-    return () => cancelAnimationFrame(id);
+    if (visible) {
+      programmaticRef.current = false;
+      ref.current?.present();
+    } else {
+      programmaticRef.current = true;
+      ref.current?.dismiss();
+    }
   }, [visible]);
 
-  useEffect(() => {
-    if (visible || !internalVisible) return;
-    if (draggingRef.current) return;
-    const dist = bottomSheetSlideDistance();
-    backdropOp.stopAnimation();
-    sheetY.stopAnimation();
-    Animated.parallel([
-      Animated.timing(backdropOp, {
-        toValue: 0,
-        duration: bottomSheetCloseAnimation.backdrop.duration,
-        useNativeDriver: true,
-        easing: bottomSheetCloseAnimation.backdrop.easing,
-      }),
-      Animated.timing(sheetY, {
-        toValue: dist,
-        duration: bottomSheetCloseAnimation.sheet.duration,
-        useNativeDriver: true,
-        easing: bottomSheetCloseAnimation.sheet.easing,
-      }),
-    ]).start(({ finished }) => {
-      if (finished) setInternalVisible(false);
-    });
-  }, [visible, internalVisible]);
+  useEffect(
+    () => () => {
+      ref.current?.dismiss();
+    },
+    [],
+  );
+
+  const handleDismiss = useCallback(() => {
+    if (!programmaticRef.current) {
+      onCloseRef.current();
+    }
+    programmaticRef.current = false;
+  }, []);
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        opacity={0.42}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
+
+  const useDynamic = !snapPoints || snapPoints.length === 0;
 
   return (
-    <Modal
-      visible={internalVisible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-      statusBarTranslucent
+    <BottomSheetModal
+      ref={ref}
+      index={0}
+      snapPoints={useDynamic ? undefined : [...snapPoints!]}
+      enableDynamicSizing={useDynamic}
+      maxDynamicContentSize={maxDynamicContentSize}
+      enablePanDownToClose
+      enableContentPanningGesture={enableContentPanningGesture}
+      stackBehavior="push"
+      backdropComponent={renderBackdrop}
+      onDismiss={handleDismiss}
+      handleComponent={dragHandle ? undefined : null}
+      handleIndicatorStyle={dragHandle ? styles.indicator : undefined}
+      backgroundStyle={[styles.background, bgOverride]}
+      keyboardBehavior={keyboardBehavior}
+      keyboardBlurBehavior={keyboardBlurBehavior}
     >
-      <View style={styles.root}>
-        <Pressable
-          style={styles.backdropPress}
-          onPress={onClose}
-          accessibilityLabel={backdropAccessibilityLabel}
+      {useDynamic ? (
+        <BottomSheetView
+          style={[{ paddingBottom: bottomPad }, sheetStyle]}
         >
-          <Animated.View
-            style={[styles.backdropDim, { opacity: backdropOp }]}
-            pointerEvents="none"
-          />
-        </Pressable>
-        <Animated.View
-          style={[
-            styles.sheet,
-            { paddingBottom: bottomPad },
-            sheetStyle,
-            { transform: [{ translateY: sheetY }] },
-          ]}
-        >
-          {dragHandle ? (
-            <View style={styles.dragHandleArea} {...panResponder.panHandlers}>
-              <View style={styles.dragHandle} />
-            </View>
-          ) : null}
           {children}
-        </Animated.View>
-      </View>
-    </Modal>
+        </BottomSheetView>
+      ) : (
+        <View style={[{ flex: 1, paddingBottom: bottomPad }, sheetStyle]}>
+          {children}
+        </View>
+      )}
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  backdropPress: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  backdropDim: {
-    flex: 1,
-    backgroundColor: BOTTOM_SHEET_BACKDROP_COLOR,
-  },
-  sheet: {
+  background: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
@@ -213,15 +149,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
     borderColor: colors.border,
   },
-  dragHandleArea: {
-    alignItems: "center",
-    paddingTop: 10,
-    paddingBottom: 6,
-  },
-  dragHandle: {
+  indicator: {
+    backgroundColor: colors.border,
     width: 36,
     height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
   },
 });

@@ -3,7 +3,6 @@ import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -24,7 +23,7 @@ import {
   type BadgeSheetCategory,
 } from "./achievement-badge-detail-sheet";
 import { AchievementBadge } from "./achievement-badge";
-import { AnimatedBottomSheetFrame } from "./animated-bottom-sheet-frame";
+import { AnimatedBottomSheetFrame, BottomSheetScrollView } from "./animated-bottom-sheet-frame";
 import { ProfileStatHeroCard } from "./profile-stat-hero-card";
 
 type Props = {
@@ -34,6 +33,7 @@ type Props = {
 };
 
 const CATEGORY_IDS: ProfileStatCategoryId[] = ["wolf", "skins", "social"];
+const STAT_SNAP_POINTS = ["86%"] as const;
 
 const TITLES: Record<string, string> = {
   wolf: "Wolf",
@@ -150,10 +150,12 @@ export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
       <AnimatedBottomSheetFrame
         visible={sheetVisible}
         onClose={closeSheet}
-        sheetStyle={dStyles.sheet}
+        snapPoints={STAT_SNAP_POINTS}
+        sheetStyle={dStyles.sheetContent}
+        backgroundStyle={dStyles.sheetBackground}
       >
         {block && theme && displayedCat ? (
-          <ScrollView
+          <BottomSheetScrollView
             style={dStyles.scroll}
             contentContainerStyle={dStyles.scrollContent}
             showsVerticalScrollIndicator={false}
@@ -230,7 +232,7 @@ export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
                 ) : null}
               </View>
             </View>
-          </ScrollView>
+          </BottomSheetScrollView>
         ) : null}
       </AnimatedBottomSheetFrame>
 
@@ -277,14 +279,15 @@ const styles = StyleSheet.create({
 });
 
 const dStyles = StyleSheet.create({
-  sheet: {
-    height: "86%",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  sheetContent: {
     paddingTop: 0,
     paddingBottom: 0,
   },
-  scroll: {},
+  sheetBackground: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  scroll: { flex: 1 },
   scrollContent: {
     paddingBottom: 40,
     paddingTop: 20,

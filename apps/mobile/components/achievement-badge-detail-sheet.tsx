@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { AnimatedBottomSheetFrame } from "./animated-bottom-sheet-frame";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AnimatedBottomSheetFrame, BottomSheetScrollView } from "./animated-bottom-sheet-frame";
 import {
   BADGE_LOCKED_PALETTE,
   BADGE_TINTS,
@@ -86,16 +87,21 @@ function HeroBadgeHex({
   );
 }
 
+const BADGE_SNAP_POINTS = ["88%"] as const;
+
 export function AchievementBadgeDetailSheet({ visible, onClose, badge, unlocked }: Props) {
   const cat = badge?.category ?? "social";
   const catStyle = CATEGORY_STYLES[cat];
+  const insets = useSafeAreaInsets();
 
   return (
     <AnimatedBottomSheetFrame
       visible={visible}
       onClose={onClose}
       backdropAccessibilityLabel="Dismiss achievement details"
-      sheetStyle={styles.sheetShell}
+      snapPoints={BADGE_SNAP_POINTS}
+      sheetStyle={styles.sheetContent}
+      backgroundStyle={styles.sheetBackground}
     >
       {badge ? (
         <>
@@ -125,7 +131,7 @@ export function AchievementBadgeDetailSheet({ visible, onClose, badge, unlocked 
             </View>
           </View>
 
-          <ScrollView
+          <BottomSheetScrollView
             style={styles.bodyScroll}
             contentContainerStyle={styles.bodyScrollContent}
             showsVerticalScrollIndicator={false}
@@ -151,9 +157,9 @@ export function AchievementBadgeDetailSheet({ visible, onClose, badge, unlocked 
                 ? "Keep playing side games to collect more badges."
                 : "Complete games and meet the criteria above — we’ll light this one up when you do."}
             </Text>
-          </ScrollView>
+          </BottomSheetScrollView>
 
-          <View style={styles.footerActions}>
+          <View style={[styles.footerActions, { paddingBottom: Math.max(insets.bottom, 6) }]}>
             <Pressable
               onPress={onClose}
               style={({ pressed }) => [styles.doneBtn, pressed && styles.doneBtnPressed]}
@@ -170,14 +176,15 @@ export function AchievementBadgeDetailSheet({ visible, onClose, badge, unlocked 
 }
 
 const styles = StyleSheet.create({
-  sheetShell: {
+  sheetContent: {
     paddingHorizontal: 0,
     paddingTop: 0,
+    overflow: "hidden",
+  },
+  sheetBackground: {
     backgroundColor: colors.background,
-    maxHeight: "88%",
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
-    overflow: "hidden",
   },
   hero: {
     backgroundColor: colors.fairway,
@@ -284,7 +291,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   bodyScroll: {
-    maxHeight: 280,
+    flex: 1,
   },
   bodyScrollContent: {
     paddingHorizontal: HERO_EDGE_INSET,

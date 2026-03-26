@@ -7,21 +7,18 @@ import * as ImagePicker from "expo-image-picker";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   FlatList,
   Image,
   Keyboard,
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { KeyboardStickyView } from "react-native-keyboard-controller";
-import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
+import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput } from "../../../components/animated-bottom-sheet-frame";
 import { apiDelete, apiGet, apiPatch, apiPost, apiBaseUrl } from "../../../lib/api";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
 import { compressImageToJpegUriForUpload, compressImageToMaxBytes } from "../../../lib/compress-image-for-upload";
@@ -65,6 +62,7 @@ type CommentItem = {
 };
 
 const MAX_IMG_BYTES = 3 * 1024 * 1024;
+const COMMENT_SNAP_POINTS = ["55%"] as const;
 
 export default function GroupLandingScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
@@ -100,8 +98,7 @@ export default function GroupLandingScreen() {
   const [commentDraft, setCommentDraft] = useState("");
   const [loadingComments, setLoadingComments] = useState(false);
   const [postingComment, setPostingComment] = useState(false);
-  const commentInputRef = useRef<TextInput>(null);
-  const commentScrollRef = useRef<ScrollView>(null);
+  const commentInputRef = useRef<TextInput>(null) as React.RefObject<any>;
 
   // Reactive profile for composer + permission checks
   const [meAvatar, setMeAvatar] = useState<string | null>(getCachedMeProfile()?.avatar ?? null);
@@ -883,77 +880,72 @@ export default function GroupLandingScreen() {
           setAnnounceDraft("");
           setPostImageUri(null);
         }}
-        sheetStyle={styles.announceSheet}
+        sheetStyle={styles.announceSheetContent}
       >
-        <View style={styles.announceSheetFill} />
-        <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-          <View style={styles.announceSheetContent}>
-            <Text style={styles.sheetTitle}>
-              {editingAnnouncement ? "Edit post" : "Create a post"}
-            </Text>
-            <TextInput
-              style={styles.sheetInput}
-              value={announceDraft}
-              onChangeText={setAnnounceDraft}
-              placeholder="What's on your mind?"
-              placeholderTextColor={colors.muted}
-              multiline
-              numberOfLines={4}
-              maxLength={2000}
-              autoFocus
-            />
-            {postImageUri ? (
-              <View style={styles.sheetImagePreviewWrap}>
-                <Image source={{ uri: postImageUri }} style={styles.sheetImagePreview} />
-                <Pressable
-                  style={styles.sheetImageRemove}
-                  onPress={() => setPostImageUri(null)}
-                  hitSlop={6}
-                >
-                  <Ionicons name="close-circle" size={22} color="rgba(0,0,0,0.7)" />
-                </Pressable>
-              </View>
-            ) : null}
-            <View style={styles.sheetActions}>
-              <Pressable
-                style={styles.sheetImageBtn}
-                onPress={() => void pickPostImage()}
-                disabled={uploadingPostImage}
-              >
-                <Ionicons name="image-outline" size={22} color={colors.fairway} />
-              </Pressable>
-              <View style={{ flex: 1 }} />
-              <Pressable
-                style={styles.sheetCancel}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setShowAnnounceSheet(false);
-                  setEditingAnnouncement(null);
-                  setAnnounceDraft("");
-                  setPostImageUri(null);
-                }}
-              >
-                <Text style={styles.sheetCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.sheetPost,
-                  (!announceDraft.trim() || postingAnnouncement) && styles.sheetPostDisabled,
-                ]}
-                onPress={handlePostOrEditAnnouncement}
-                disabled={!announceDraft.trim() || postingAnnouncement}
-              >
-                {postingAnnouncement ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.sheetPostText}>
-                    {editingAnnouncement ? "Save" : "Post"}
-                  </Text>
-                )}
-              </Pressable>
-            </View>
+        <Text style={styles.sheetTitle}>
+          {editingAnnouncement ? "Edit post" : "Create a post"}
+        </Text>
+        <BottomSheetTextInput
+          style={styles.sheetInput}
+          value={announceDraft}
+          onChangeText={setAnnounceDraft}
+          placeholder="What's on your mind?"
+          placeholderTextColor={colors.muted}
+          multiline
+          numberOfLines={4}
+          maxLength={2000}
+          autoFocus
+        />
+        {postImageUri ? (
+          <View style={styles.sheetImagePreviewWrap}>
+            <Image source={{ uri: postImageUri }} style={styles.sheetImagePreview} />
+            <Pressable
+              style={styles.sheetImageRemove}
+              onPress={() => setPostImageUri(null)}
+              hitSlop={6}
+            >
+              <Ionicons name="close-circle" size={22} color="rgba(0,0,0,0.7)" />
+            </Pressable>
           </View>
-        </KeyboardStickyView>
+        ) : null}
+        <View style={styles.sheetActions}>
+          <Pressable
+            style={styles.sheetImageBtn}
+            onPress={() => void pickPostImage()}
+            disabled={uploadingPostImage}
+          >
+            <Ionicons name="image-outline" size={22} color={colors.fairway} />
+          </Pressable>
+          <View style={{ flex: 1 }} />
+          <Pressable
+            style={styles.sheetCancel}
+            onPress={() => {
+              Keyboard.dismiss();
+              setShowAnnounceSheet(false);
+              setEditingAnnouncement(null);
+              setAnnounceDraft("");
+              setPostImageUri(null);
+            }}
+          >
+            <Text style={styles.sheetCancelText}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.sheetPost,
+              (!announceDraft.trim() || postingAnnouncement) && styles.sheetPostDisabled,
+            ]}
+            onPress={handlePostOrEditAnnouncement}
+            disabled={!announceDraft.trim() || postingAnnouncement}
+          >
+            {postingAnnouncement ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.sheetPostText}>
+                {editingAnnouncement ? "Save" : "Post"}
+              </Text>
+            )}
+          </Pressable>
+        </View>
       </AnimatedBottomSheetFrame>
 
       {/* Overflow action sheet for post */}
@@ -1010,95 +1002,93 @@ export default function GroupLandingScreen() {
           setComments([]);
           setCommentDraft("");
         }}
-        sheetStyle={styles.commentSheet}
+        snapPoints={COMMENT_SNAP_POINTS}
+        sheetStyle={styles.commentSheetContent}
+        keyboardBlurBehavior="restore"
+        enableContentPanningGesture={false}
         dragHandle
       >
-        <View style={styles.commentSheetInner}>
-          <Text style={styles.commentSheetTitle}>Comments</Text>
-          <ScrollView
-            ref={commentScrollRef}
-            style={styles.commentScroll}
-            contentContainerStyle={styles.commentScrollContent}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-          >
-            {loadingComments ? (
-              <ActivityIndicator
-                color={colors.fairway}
-                size="small"
-                style={{ marginVertical: 24 }}
-              />
-            ) : comments.length === 0 ? (
-              <Text style={styles.commentEmpty}>No comments yet. Be the first!</Text>
-            ) : (
-              comments.map((comment) => (
-                <View key={comment.id} style={styles.commentRow}>
-                  {comment.user.avatar ? (
-                    <Image source={{ uri: comment.user.avatar }} style={styles.commentAvatar} />
-                  ) : (
-                    <View style={[styles.commentAvatar, styles.commentAvatarFallback]}>
-                      <Ionicons name="person" size={12} color={colors.muted} />
-                    </View>
-                  )}
-                  <View style={styles.commentContent}>
-                    <View style={styles.commentBubble}>
-                      <Text style={styles.commentAuthor}>{comment.user.name}</Text>
-                      <Text style={styles.commentBody}>{comment.body}</Text>
-                    </View>
-                    <View style={styles.commentMetaRow}>
-                      <Text style={styles.commentTime}>{formatRelative(comment.createdAt)}</Text>
-                      {(comment.user.id === meId || isAdmin) ? (
-                        <Pressable
-                          onPress={() => handleDeleteComment(comment)}
-                          hitSlop={8}
-                        >
-                          <Text style={styles.commentDeleteText}>Delete</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
+        <Text style={styles.commentSheetTitle}>Comments</Text>
+        <BottomSheetScrollView
+          style={styles.commentScroll}
+          contentContainerStyle={styles.commentScrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
+          {loadingComments ? (
+            <ActivityIndicator
+              color={colors.fairway}
+              size="small"
+              style={{ marginVertical: 24 }}
+            />
+          ) : comments.length === 0 ? (
+            <Text style={styles.commentEmpty}>No comments yet. Be the first!</Text>
+          ) : (
+            comments.map((comment) => (
+              <View key={comment.id} style={styles.commentRow}>
+                {comment.user.avatar ? (
+                  <Image source={{ uri: comment.user.avatar }} style={styles.commentAvatar} />
+                ) : (
+                  <View style={[styles.commentAvatar, styles.commentAvatarFallback]}>
+                    <Ionicons name="person" size={12} color={colors.muted} />
+                  </View>
+                )}
+                <View style={styles.commentContent}>
+                  <View style={styles.commentBubble}>
+                    <Text style={styles.commentAuthor}>{comment.user.name}</Text>
+                    <Text style={styles.commentBody}>{comment.body}</Text>
+                  </View>
+                  <View style={styles.commentMetaRow}>
+                    <Text style={styles.commentTime}>{formatRelative(comment.createdAt)}</Text>
+                    {(comment.user.id === meId || isAdmin) ? (
+                      <Pressable
+                        onPress={() => handleDeleteComment(comment)}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.commentDeleteText}>Delete</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 </View>
-              ))
-            )}
-          </ScrollView>
-        </View>
-        <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-          <View style={styles.commentInputRow}>
-            {meAvatar ? (
-              <Image source={{ uri: meAvatar }} style={styles.commentInputAvatar} />
-            ) : (
-              <View style={[styles.commentInputAvatar, styles.commentAvatarFallback]}>
-                <Ionicons name="person" size={12} color={colors.muted} />
               </View>
+            ))
+          )}
+        </BottomSheetScrollView>
+        <View style={styles.commentInputRow}>
+          {meAvatar ? (
+            <Image source={{ uri: meAvatar }} style={styles.commentInputAvatar} />
+          ) : (
+            <View style={[styles.commentInputAvatar, styles.commentAvatarFallback]}>
+              <Ionicons name="person" size={12} color={colors.muted} />
+            </View>
+          )}
+          <BottomSheetTextInput
+            ref={commentInputRef}
+            style={styles.commentInput}
+            value={commentDraft}
+            onChangeText={setCommentDraft}
+            placeholder="Add a comment..."
+            placeholderTextColor={colors.muted}
+            maxLength={2000}
+            returnKeyType="send"
+            onSubmitEditing={() => void handlePostComment()}
+          />
+          <Pressable
+            onPress={() => void handlePostComment()}
+            disabled={!commentDraft.trim() || postingComment}
+            hitSlop={6}
+          >
+            {postingComment ? (
+              <ActivityIndicator color={colors.fairway} size="small" />
+            ) : (
+              <Ionicons
+                name="send"
+                size={20}
+                color={commentDraft.trim() ? colors.fairway : colors.muted}
+              />
             )}
-            <TextInput
-              ref={commentInputRef}
-              style={styles.commentInput}
-              value={commentDraft}
-              onChangeText={setCommentDraft}
-              placeholder="Add a comment..."
-              placeholderTextColor={colors.muted}
-              maxLength={2000}
-              returnKeyType="send"
-              onSubmitEditing={() => void handlePostComment()}
-            />
-            <Pressable
-              onPress={() => void handlePostComment()}
-              disabled={!commentDraft.trim() || postingComment}
-              hitSlop={6}
-            >
-              {postingComment ? (
-                <ActivityIndicator color={colors.fairway} size="small" />
-              ) : (
-                <Ionicons
-                  name="send"
-                  size={20}
-                  color={commentDraft.trim() ? colors.fairway : colors.muted}
-                />
-              )}
-            </Pressable>
-          </View>
-        </KeyboardStickyView>
+          </Pressable>
+        </View>
       </AnimatedBottomSheetFrame>
     </View>
   );
@@ -1421,13 +1411,9 @@ const styles = StyleSheet.create({
   },
 
   // ── Comments bottom sheet ─────────────────────────────────
-  commentSheet: {
-    height: Dimensions.get("window").height * 0.7,
+  commentSheetContent: {
     paddingHorizontal: 0,
-    paddingBottom: 0,
-  },
-  commentSheetInner: {
-    flex: 1,
+    paddingBottom: 4,
   },
   commentSheetTitle: {
     color: colors.text,
@@ -1559,24 +1545,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Announce bottom sheet ──────────────────────────────────
-  announceSheet: {
-    paddingHorizontal: 0,
-    paddingTop: 0,
-    paddingBottom: 0,
-    overflow: "visible",
-  },
-  announceSheetFill: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 400,
-    backgroundColor: colors.surface,
-  },
   announceSheetContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 8,

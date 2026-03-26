@@ -8,13 +8,13 @@ import * as SecureStore from "expo-secure-store";
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { AnimatedBottomSheetFrame } from "../../components/animated-bottom-sheet-frame";
 import { DiscoverHouseAdRow } from "../../components/discover-house-ad-row";
 import { DiscoverNativeAdRow } from "../../components/discover-native-ad-row";
 import { HeaderProfileIcon } from "../../components/header-profile-icon";
@@ -630,206 +630,200 @@ export default function DiscoverScreen() {
         }
       />
 
-      <Modal visible={rangeModalOpen} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={cancelRangeModal}>
-          <Pressable
-            style={styles.modalCard}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>Date range</Text>
-            <View style={styles.monthNavRow}>
-              <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(-1)}>
-                <Ionicons name="chevron-back" size={16} color={colors.fairway} />
-              </Pressable>
-              <Text style={styles.monthLabel}>{monthLabel}</Text>
-              <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(1)}>
-                <Ionicons name="chevron-forward" size={16} color={colors.fairway} />
-              </Pressable>
-            </View>
-            <View style={styles.weekHeader}>
-              {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
-                <Text key={`${d}-${idx}`} style={styles.weekHeaderText}>
-                  {d}
-                </Text>
-              ))}
-            </View>
-            <View style={styles.calendarGrid}>
-              {dayCells.map((dayNum, idx) => {
-                if (dayNum === null) {
-                  return <View key={`empty-${idx}`} style={styles.dayCell} />;
-                }
-                const dayDate = new Date(
-                  calendarMonth.getFullYear(),
-                  calendarMonth.getMonth(),
-                  dayNum,
-                );
-                const isPast =
-                  startOfDay(dayDate).getTime() < startOfDay(new Date()).getTime();
-                const isStart = draftStartDate ? isSameDay(dayDate, draftStartDate) : false;
-                const isEnd = draftEndDate ? isSameDay(dayDate, draftEndDate) : false;
-                const inRange = !isPast && isInSelectedRange(dayDate);
-                return (
-                  <Pressable
-                    key={`day-${calendarMonth.getFullYear()}-${calendarMonth.getMonth()}-${dayNum}-${idx}`}
-                    style={[
-                      styles.dayCell,
-                      inRange && styles.dayInRange,
-                      isPast && styles.dayDisabled,
-                    ]}
-                    onPress={() => {
-                      if (isPast) return;
-                      onSelectDay(dayDate);
-                    }}
-                    disabled={isPast}
-                  >
-                    <View style={[styles.dayPill, (isStart || isEnd) && styles.dayPillSelected]}>
-                      <Text
-                        style={[
-                          styles.dayText,
-                          (isStart || isEnd) && styles.dayTextSelected,
-                          isPast && styles.dayTextDisabled,
-                        ]}
-                      >
-                        {dayNum}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Pressable
-              style={[styles.modalDoneBtn, !draftStartDate && styles.modalDoneDisabled]}
-              onPress={applyDraftRange}
-              disabled={!draftStartDate}
-            >
-              <Text style={styles.modalDoneText}>Apply</Text>
-            </Pressable>
+      <AnimatedBottomSheetFrame
+        visible={rangeModalOpen}
+        onClose={cancelRangeModal}
+        sheetStyle={styles.sheetContent}
+      >
+        <Text style={styles.modalTitle}>Date range</Text>
+        <View style={styles.monthNavRow}>
+          <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(-1)}>
+            <Ionicons name="chevron-back" size={16} color={colors.fairway} />
           </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal visible={locationModalOpen} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setLocationModalOpen(false)}>
-          <Pressable
-            style={styles.modalCard}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>Location & radius</Text>
-            <Pressable
-              style={styles.useCurrentBtn}
-              onPress={async () => {
-                try {
-                  hasManualLocationRef.current = false;
-                  await clearManualLocationOverride();
-                  await resolveCurrentLocation();
-                  setLocationModalOpen(false);
-                  void loadRoundsRef.current?.({ reset: true });
-                } catch {
-                  setLocationStatus("unavailable");
-                }
-              }}
-            >
-              <Ionicons name="locate-outline" size={16} color={colors.fairway} />
-              <Text style={styles.useCurrentText}>Use current location</Text>
-            </Pressable>
-
-            <View style={styles.locationInputRow}>
-              <TextInput
-                value={locationQuery}
-                onChangeText={setLocationQuery}
-                onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
-                placeholder="Search City, State"
-                placeholderTextColor={colors.muted}
-                style={[styles.locationInput, styles.locationInputWithAccessory]}
-              />
-              {locationSearchLoading && locationQuery.trim().length >= 2 ? (
-                <View style={styles.locationInputAccessory} accessibilityLabel="Searching locations">
-                  <ActivityIndicator size="small" color={colors.muted} />
-                </View>
-              ) : locationQuery.trim().length > 0 ? (
-                <Pressable
-                  style={styles.locationInputClearBtn}
-                  onPress={() => {
-                    setLocationQuery("");
-                    setLocationResults([]);
-                    setShowLocationResults(false);
-                  }}
-                  accessibilityLabel="Clear location search"
-                >
-                  <Ionicons name="close" size={14} color={colors.muted} />
-                </Pressable>
-              ) : null}
-            </View>
-            {showLocationResults &&
-              locationResults.map((item) => (
-                <Pressable
-                  key={item.label}
-                  style={styles.listRow}
-                  onPress={async () => {
-                    hasManualLocationRef.current = true;
-                    const newCoords = { lat: item.lat, lng: item.lng };
-                    setCoords(newCoords);
-                    setLocationStatus("ready");
-                    setLocationLabel(item.label);
-                    setLocationQuery(item.label);
-                    setLocationResults([]);
-                    setShowLocationResults(false);
-                    setLocationModalOpen(false);
-                    void loadRoundsRef.current?.({ reset: true, overrideCoords: newCoords });
-                    await saveManualLocationOverride({
-                      label: item.label,
-                      lat: item.lat,
-                      lng: item.lng,
-                    });
-                  }}
-                >
-                  <Text style={styles.listTitle}>{item.label}</Text>
-                </Pressable>
-              ))}
-
-            <Text style={styles.labelText}>Radius</Text>
-            <View style={styles.radiusRow}>
-              {[10, 25, 50, 100].map((miles) => (
-                <Pressable
-                  key={miles}
-                  style={[styles.radiusPill, radiusMiles === miles && styles.radiusPillActive]}
-                  onPress={() => {
-                    setRadiusMiles(miles);
-                    setLocationModalOpen(false);
-                    void loadRoundsRef.current?.({ reset: true, distanceMiles: miles });
-                  }}
-                >
+          <Text style={styles.monthLabel}>{monthLabel}</Text>
+          <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(1)}>
+            <Ionicons name="chevron-forward" size={16} color={colors.fairway} />
+          </Pressable>
+        </View>
+        <View style={styles.weekHeader}>
+          {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
+            <Text key={`${d}-${idx}`} style={styles.weekHeaderText}>
+              {d}
+            </Text>
+          ))}
+        </View>
+        <View style={styles.calendarGrid}>
+          {dayCells.map((dayNum, idx) => {
+            if (dayNum === null) {
+              return <View key={`empty-${idx}`} style={styles.dayCell} />;
+            }
+            const dayDate = new Date(
+              calendarMonth.getFullYear(),
+              calendarMonth.getMonth(),
+              dayNum,
+            );
+            const isPast =
+              startOfDay(dayDate).getTime() < startOfDay(new Date()).getTime();
+            const isStart = draftStartDate ? isSameDay(dayDate, draftStartDate) : false;
+            const isEnd = draftEndDate ? isSameDay(dayDate, draftEndDate) : false;
+            const inRange = !isPast && isInSelectedRange(dayDate);
+            return (
+              <Pressable
+                key={`day-${calendarMonth.getFullYear()}-${calendarMonth.getMonth()}-${dayNum}-${idx}`}
+                style={[
+                  styles.dayCell,
+                  inRange && styles.dayInRange,
+                  isPast && styles.dayDisabled,
+                ]}
+                onPress={() => {
+                  if (isPast) return;
+                  onSelectDay(dayDate);
+                }}
+                disabled={isPast}
+              >
+                <View style={[styles.dayPill, (isStart || isEnd) && styles.dayPillSelected]}>
                   <Text
                     style={[
-                      styles.radiusPillText,
-                      radiusMiles === miles && styles.radiusPillTextActive,
+                      styles.dayText,
+                      (isStart || isEnd) && styles.dayTextSelected,
+                      isPast && styles.dayTextDisabled,
                     ]}
                   >
-                    {miles} mi
+                    {dayNum}
                   </Text>
-                </Pressable>
-              ))}
-              <Pressable
-                style={[styles.radiusPill, radiusMiles >= 9999 && styles.radiusPillActive]}
-                onPress={() => {
-                  setRadiusMiles(9999);
-                  setLocationModalOpen(false);
-                  void loadRoundsRef.current?.({ reset: true, distanceMiles: 9999 });
-                }}
-              >
-                <Text
-                  style={[
-                    styles.radiusPillText,
-                    radiusMiles >= 9999 && styles.radiusPillTextActive,
-                  ]}
-                >
-                  Any
-                </Text>
+                </View>
               </Pressable>
-            </View>
-          </Pressable>
+            );
+          })}
+        </View>
+        <Pressable
+          style={[styles.modalDoneBtn, !draftStartDate && styles.modalDoneDisabled]}
+          onPress={applyDraftRange}
+          disabled={!draftStartDate}
+        >
+          <Text style={styles.modalDoneText}>Apply</Text>
         </Pressable>
-      </Modal>
+      </AnimatedBottomSheetFrame>
+
+      <AnimatedBottomSheetFrame
+        visible={locationModalOpen}
+        onClose={() => setLocationModalOpen(false)}
+        sheetStyle={styles.sheetContent}
+      >
+        <Text style={styles.modalTitle}>Location & radius</Text>
+        <Pressable
+          style={styles.useCurrentBtn}
+          onPress={async () => {
+            try {
+              hasManualLocationRef.current = false;
+              await clearManualLocationOverride();
+              await resolveCurrentLocation();
+              setLocationModalOpen(false);
+              void loadRoundsRef.current?.({ reset: true });
+            } catch {
+              setLocationStatus("unavailable");
+            }
+          }}
+        >
+          <Ionicons name="locate-outline" size={16} color={colors.fairway} />
+          <Text style={styles.useCurrentText}>Use current location</Text>
+        </Pressable>
+
+        <View style={styles.locationInputRow}>
+          <TextInput
+            value={locationQuery}
+            onChangeText={setLocationQuery}
+            onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}
+            placeholder="Search City, State"
+            placeholderTextColor={colors.muted}
+            style={[styles.locationInput, styles.locationInputWithAccessory]}
+          />
+          {locationSearchLoading && locationQuery.trim().length >= 2 ? (
+            <View style={styles.locationInputAccessory} accessibilityLabel="Searching locations">
+              <ActivityIndicator size="small" color={colors.muted} />
+            </View>
+          ) : locationQuery.trim().length > 0 ? (
+            <Pressable
+              style={styles.locationInputClearBtn}
+              onPress={() => {
+                setLocationQuery("");
+                setLocationResults([]);
+                setShowLocationResults(false);
+              }}
+              accessibilityLabel="Clear location search"
+            >
+              <Ionicons name="close" size={14} color={colors.muted} />
+            </Pressable>
+          ) : null}
+        </View>
+        {showLocationResults &&
+          locationResults.map((item) => (
+            <Pressable
+              key={item.label}
+              style={styles.listRow}
+              onPress={async () => {
+                hasManualLocationRef.current = true;
+                const newCoords = { lat: item.lat, lng: item.lng };
+                setCoords(newCoords);
+                setLocationStatus("ready");
+                setLocationLabel(item.label);
+                setLocationQuery(item.label);
+                setLocationResults([]);
+                setShowLocationResults(false);
+                setLocationModalOpen(false);
+                void loadRoundsRef.current?.({ reset: true, overrideCoords: newCoords });
+                await saveManualLocationOverride({
+                  label: item.label,
+                  lat: item.lat,
+                  lng: item.lng,
+                });
+              }}
+            >
+              <Text style={styles.listTitle}>{item.label}</Text>
+            </Pressable>
+          ))}
+
+        <Text style={styles.labelText}>Radius</Text>
+        <View style={styles.radiusRow}>
+          {[10, 25, 50, 100].map((miles) => (
+            <Pressable
+              key={miles}
+              style={[styles.radiusPill, radiusMiles === miles && styles.radiusPillActive]}
+              onPress={() => {
+                setRadiusMiles(miles);
+                setLocationModalOpen(false);
+                void loadRoundsRef.current?.({ reset: true, distanceMiles: miles });
+              }}
+            >
+              <Text
+                style={[
+                  styles.radiusPillText,
+                  radiusMiles === miles && styles.radiusPillTextActive,
+                ]}
+              >
+                {miles} mi
+              </Text>
+            </Pressable>
+          ))}
+          <Pressable
+            style={[styles.radiusPill, radiusMiles >= 9999 && styles.radiusPillActive]}
+            onPress={() => {
+              setRadiusMiles(9999);
+              setLocationModalOpen(false);
+              void loadRoundsRef.current?.({ reset: true, distanceMiles: 9999 });
+            }}
+          >
+            <Text
+              style={[
+                styles.radiusPillText,
+                radiusMiles >= 9999 && styles.radiusPillTextActive,
+              ]}
+            >
+              Any
+            </Text>
+          </Pressable>
+        </View>
+      </AnimatedBottomSheetFrame>
     </View>
   );
 }
@@ -994,16 +988,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   listTitle: { color: colors.text, fontWeight: "600" },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
+  sheetContent: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
     gap: 8,
   },
   modalTitle: {

@@ -61,9 +61,7 @@ function normalizeRouteParam(p: string | string[] | undefined): string | undefin
   return Array.isArray(p) ? p[0] : p;
 }
 
-const HOLE_EDITOR_SHEET_HEIGHT_RATIO = 0.94;
-/** Title row + spacing inside sheet (below `AnimatedBottomSheetFrame` top padding). */
-const HOLE_EDITOR_SCROLL_INSET = 64;
+const HOLE_EDITOR_MAX_HEIGHT_RATIO = 0.9;
 
 const SCROLL_PAD = 16;
 const HOLE_GRID_GAP = 10;
@@ -77,8 +75,7 @@ function chunkBy<T>(arr: T[], size: number): T[][] {
 
 export default function GameSessionScreen() {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
-  const holeEditorSheetMax = windowHeight * HOLE_EDITOR_SHEET_HEIGHT_RATIO;
-  const holeEditorScrollMax = Math.max(holeEditorSheetMax - HOLE_EDITOR_SCROLL_INSET, 280);
+  const holeEditorMaxHeight = Math.round(windowHeight * HOLE_EDITOR_MAX_HEIGHT_RATIO);
   const router = useRouter();
   /** Root stack (same bar as title “Game” / back to Games). Leaf `useNavigation()` targets an inner navigator for this route depth. */
   const rootNavigation = useNavigation("/");
@@ -671,16 +668,18 @@ export default function GameSessionScreen() {
             if (!saving) setEditorHole(null);
           }}
           backdropAccessibilityLabel="Dismiss hole editor"
-          sheetStyle={[styles.holeEditorSheet, { maxHeight: holeEditorSheetMax }]}
+          maxDynamicContentSize={holeEditorMaxHeight}
+          sheetStyle={styles.holeEditorSheet}
+          backgroundStyle={styles.holeEditorBackground}
         >
           {session.gameType !== "wolf" && session.gameType !== "skins" ? (
             <Text style={styles.holeEditorTitle}>Hole {editorHole}</Text>
           ) : null}
           <ScrollView
-            style={[styles.holeEditorScroll, { maxHeight: holeEditorScrollMax }]}
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
             showsVerticalScrollIndicator
+            bounces={false}
           >
             {saving ? (
               <ActivityIndicator color={colors.fairway} style={{ marginVertical: 20 }} />
@@ -944,8 +943,9 @@ const styles = StyleSheet.create({
   holeEditorSheet: {
     paddingHorizontal: 20,
     paddingTop: 16,
+  },
+  holeEditorBackground: {
     backgroundColor: colors.background,
   },
   holeEditorTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 12 },
-  holeEditorScroll: { flexGrow: 0 },
 });
