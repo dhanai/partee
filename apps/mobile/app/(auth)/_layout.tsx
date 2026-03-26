@@ -1,7 +1,6 @@
 import { Platform, StyleSheet, View } from "react-native";
 import { Stack } from "expo-router";
 
-/** Expo / Metro web dev strip can sit over the top; push auth UI below it. */
 const WEB_DEV_TOP_INSET =
   Platform.OS === "web" &&
   typeof __DEV__ !== "undefined" &&
@@ -15,8 +14,26 @@ export default function AuthLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="account" />
-        <Stack.Screen name="sign-in" />
-        <Stack.Screen name="sign-up" />
+        <Stack.Screen
+          name="sign-in"
+          options={{
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.7, 1.0],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 16,
+            sheetExpandsWhenScrolledToEdge: true,
+          }}
+        />
+        <Stack.Screen
+          name="sign-up"
+          options={{
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.88, 1.0],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 16,
+            sheetExpandsWhenScrolledToEdge: true,
+          }}
+        />
       </Stack>
     </View>
   );

@@ -5,35 +5,6 @@ import { colors } from "./theme";
 export const AUTH_LOGO_EXTRA_TOP = 20;
 
 export const authFormStyles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.authLandingBackground,
-  },
-  logoHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 6,
-    paddingBottom: 10,
-    alignItems: "flex-start",
-  },
-  keyboardFill: {
-    flex: 1,
-  },
-  sheetScrollContent: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  /** Bottom sheet: aligned with `AnimatedBottomSheetFrame` (radius, border, no grabber). */
-  bottomSheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingTop: 12,
-    paddingHorizontal: 16,
-    gap: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: 0,
-    borderColor: colors.border,
-  },
   title: {
     fontSize: 26,
     fontWeight: "700",
@@ -62,15 +33,12 @@ export const authFormStyles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  /** Inverted: light surface + fairway label (was green fill + white text) */
   button: {
-    backgroundColor: "#eef4ef",
+    backgroundColor: colors.fairway,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 2,
-    borderWidth: 1,
-    borderColor: "rgba(26, 60, 42, 0.2)",
   },
   buttonDisabled: {
     opacity: 0.55,
@@ -127,7 +95,7 @@ export const authFormStyles = StyleSheet.create({
     fontWeight: "600",
   },
   buttonText: {
-    color: colors.fairway,
+    color: "#fff",
     fontWeight: "700",
     fontSize: 16,
   },
@@ -135,11 +103,6 @@ export const authFormStyles = StyleSheet.create({
     paddingTop: 8,
     alignItems: "center",
     paddingBottom: 4,
-  },
-  switchText: {
-    color: colors.authLandingBackground,
-    fontWeight: "600",
-    fontSize: 15,
   },
   captchaSlot: {
     minHeight: 78,

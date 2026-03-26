@@ -1,15 +1,18 @@
-import { Redirect, router } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-import { useAuth } from "@clerk/clerk-expo";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { Redirect, router } from "expo-router";
+import { useAuth } from "@clerk/clerk-expo";
+import * as WebBrowser from "expo-web-browser";
+import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AuthLandingBackground } from "../../components/auth-landing-background";
 import { ParfadeLogo } from "../../components/parfade-logo";
 import { AUTH_LOGO_EXTRA_TOP } from "../../lib/auth-form-styles";
 
+WebBrowser.maybeCompleteAuthSession();
+
 export default function AuthWelcomeScreen() {
-  const { isLoaded, isSignedIn } = useAuth();
   const insets = useSafeAreaInsets();
+  const { isLoaded, isSignedIn } = useAuth();
 
   if (!isLoaded) {
     return (
@@ -47,9 +50,16 @@ export default function AuthWelcomeScreen() {
           <View style={styles.actions}>
             <Pressable
               style={({ pressed }) => [styles.primaryBtn, pressed && styles.primaryBtnPressed]}
-              onPress={() => router.push({ pathname: "/(auth)/account", params: { mode: "signUp" } })}
+              onPress={() => router.push("/(auth)/sign-up")}
             >
               <Text style={styles.primaryBtnText}>Get started</Text>
+            </Pressable>
+            <Pressable
+              style={styles.signInRow}
+              onPress={() => router.push("/(auth)/sign-in")}
+            >
+              <Text style={styles.signInText}>Already have an account? </Text>
+              <Text style={styles.signInLink}>Sign in</Text>
             </Pressable>
           </View>
         </View>
@@ -59,18 +69,9 @@ export default function AuthWelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
-  splash: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  screen: {
-    flex: 1,
-    paddingHorizontal: 22,
-  },
+  gradient: { flex: 1 },
+  splash: { flex: 1, alignItems: "center", justifyContent: "center" },
+  screen: { flex: 1, paddingHorizontal: 22 },
   bottomStack: {
     flex: 1,
     justifyContent: "flex-end",
@@ -96,9 +97,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 10,
   },
-  actions: {
-    width: "100%",
-  },
+  actions: { width: "100%", gap: 14 },
   primaryBtn: {
     backgroundColor: "#f4f1ea",
     borderRadius: 16,
@@ -110,14 +109,19 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
-  primaryBtnPressed: {
-    opacity: 0.92,
-    transform: [{ scale: 0.99 }],
-  },
+  primaryBtnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
   primaryBtnText: {
     color: "#0f2418",
     fontWeight: "700",
     fontSize: 17,
     letterSpacing: -0.2,
   },
+  signInRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  signInText: { color: "rgba(244,241,234,0.7)", fontSize: 15, fontWeight: "500" },
+  signInLink: { color: "#f4f1ea", fontSize: 15, fontWeight: "700" },
 });
