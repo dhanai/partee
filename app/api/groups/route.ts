@@ -10,6 +10,16 @@ import {
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 
+type GroupRole = "owner" | "admin" | "member";
+type GroupListItem = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  heroImageUrl: string | null;
+  memberCount: number;
+  myRole: GroupRole | null;
+};
+
 export async function GET(req: Request) {
   try {
     const viewer = await requireDbUser(req);
@@ -44,13 +54,13 @@ export async function GET(req: Request) {
 
     const countMap = new Map(memberCounts.map((r) => [r.groupId, Number(r.count)]));
 
-    const myGroups = myGroupRows.map((g) => ({
+    const myGroups: GroupListItem[] = myGroupRows.map((g) => ({
       id: g.id,
       name: g.name,
       imageUrl: g.imageUrl,
       heroImageUrl: g.heroImageUrl,
       memberCount: countMap.get(g.id) ?? 1,
-      myRole: g.myRole,
+      myRole: g.myRole as GroupRole,
     }));
 
     const discoverRows = await db
@@ -85,7 +95,7 @@ export async function GET(req: Request) {
       : [];
     const discoverCountMap = new Map(discoverCounts.map((r) => [r.groupId, Number(r.count)]));
 
-    const discoverGroups = discoverRows.map((g) => ({
+    const discoverGroups: GroupListItem[] = discoverRows.map((g) => ({
       id: g.id,
       name: g.name,
       imageUrl: g.imageUrl,
@@ -94,7 +104,7 @@ export async function GET(req: Request) {
       myRole: null,
     }));
 
-    let searchGroups: typeof discoverGroups = [];
+    let searchGroups: GroupListItem[] = [];
     if (searchQuery.length >= 2) {
       const searchRows = await db
         .select({
