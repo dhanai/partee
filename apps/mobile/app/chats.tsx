@@ -225,27 +225,15 @@ export default function ChatsScreen() {
               headerAvatars = [item.imageUrl];
             }
             const avatarsJson = JSON.stringify(headerAvatars.slice(0, 4));
-            if (item.roundInviteToken) {
-              router.push({
-                pathname: "/round/[token]/chat",
-                params: {
-                  token: item.roundInviteToken,
-                  chatTitle: item.title,
-                  chatAvatars: avatarsJson,
-                  chatType: item.type,
-                },
-              });
-            } else {
-              router.push({
-                pathname: "/conversation/[id]/chat",
-                params: {
-                  id: item.id,
-                  chatTitle: item.title,
-                  chatAvatars: avatarsJson,
-                  chatType: item.type,
-                },
-              });
-            }
+            router.push({
+              pathname: "/conversation/[id]/chat",
+              params: {
+                id: item.id,
+                chatTitle: item.title,
+                chatAvatars: avatarsJson,
+                chatType: item.type,
+              },
+            });
           }}
         >
           <ChatAvatar item={item} />

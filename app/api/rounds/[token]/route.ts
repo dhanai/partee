@@ -238,7 +238,7 @@ export async function GET(req: Request, { params }: RouteContext) {
         customImageUrl: round.customImageUrl,
         courseMetadata: round.courseMetadata,
       }),
-      ...(chatAllowed ? { lastChatMessage } : {}),
+      ...(chatAllowed ? { lastChatMessage, conversationId: conv?.id ?? null } : {}),
     },
   });
 }

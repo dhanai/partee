@@ -776,7 +776,7 @@ export default function RoundDetailsScreen() {
         </RoundDetailSection>
       ) : null}
 
-      {canUseGroupChat && token ? (
+      {canUseGroupChat && token && round.conversationId ? (
         <Pressable
           style={({ pressed }) => [
             styles.chatPreviewRow,
@@ -801,9 +801,9 @@ export default function RoundDetailsScreen() {
                 ? `${round.courseName} · ${datePart}`
                 : datePart || "Group chat";
             router.push({
-              pathname: "/round/[token]/chat",
+              pathname: "/conversation/[id]/chat",
               params: {
-                token,
+                id: round.conversationId!,
                 chatTitle,
                 chatAvatars: JSON.stringify(headerAvatars.slice(0, 4)),
                 chatType: "round",

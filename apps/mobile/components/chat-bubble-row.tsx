@@ -8,6 +8,7 @@ import {
   Alert,
   Dimensions,
   Image,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -27,7 +28,7 @@ import { toAbsoluteUrl } from "../lib/api";
 import { getImageUrls } from "../lib/attachment-types";
 import type { GroupStyle } from "../lib/chat-group-styles";
 import { colors } from "../lib/theme";
-import { type ChatMessage, roundGroupChatStyles as legacyStyles } from "./round-group-chat-poll";
+import { type ChatMessage, chatBubbleStyles as legacyStyles } from "../lib/chat-styles";
 
 const MOSAIC_MAX_W = 240;
 const MOSAIC_GAP = 2;
@@ -182,6 +183,7 @@ type Props = {
   onDelete?: (messageId: string) => void;
   onAvatarPress?: (user: { id: string; name: string; avatar: string | null }) => void;
   onGoToMessage?: (messageId: string) => void;
+  onContextMenuClose?: () => void;
 };
 
 function emojiDisplay(key: string): string {
@@ -299,6 +301,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onDelete,
   onAvatarPress,
   onGoToMessage,
+  onContextMenuClose,
 }: Props) {
   const showAvatar = groupStyle === "single" || groupStyle === "bottom";
   const showName = !isMine && (groupStyle === "single" || groupStyle === "top");
@@ -343,11 +346,17 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   const showPicker = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    Keyboard.dismiss();
     bubbleRef.current?.measureInWindow((x, y, width, height) => {
       setBubbleLayout({ x, y, width, height });
       setPickerVisible(true);
     });
   }, []);
+
+  const closePicker = useCallback(() => {
+    setPickerVisible(false);
+    onContextMenuClose?.();
+  }, [onContextMenuClose]);
 
   const triggerReply = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -357,11 +366,11 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const handleCopy = useCallback(() => {
     void Clipboard.setStringAsync(m.body ?? "");
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setPickerVisible(false);
-  }, [m.body]);
+    closePicker();
+  }, [m.body, closePicker]);
 
   const handleDeletePress = useCallback(() => {
-    setPickerVisible(false);
+    closePicker();
     Alert.alert("Delete Message", "Are you sure you want to delete this message?", [
       { text: "Cancel", style: "cancel" },
       {
@@ -441,7 +450,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   const handlePickReaction = useCallback(
     (emoji: string) => {
-      setPickerVisible(false);
+      closePicker();
       if (!onReaction) return;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (myCurrentEmoji === emoji) {
@@ -636,10 +645,10 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
         visible={pickerVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setPickerVisible(false)}
+        onRequestClose={closePicker}
         statusBarTranslucent
       >
-        <Pressable style={styles.overlay} onPress={() => setPickerVisible(false)}>
+        <Pressable style={styles.overlay} onPress={closePicker}>
           <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
           {bubbleLayout ? (() => {
             const screen = Dimensions.get("window");
@@ -705,7 +714,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
                   <Pressable
                     style={styles.contextAction}
                     onPress={() => {
-                      setPickerVisible(false);
+                      closePicker();
                       triggerReply();
                     }}
                   >
@@ -752,9 +761,7 @@ const styles = StyleSheet.create({
   replyIconRight: {
     right: 4,
   },
-  groupedRow: {
-    marginTop: -6,
-  },
+  groupedRow: {},
   avatarSpacer: {
     width: 28,
   },
@@ -772,7 +779,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 4,
-    marginTop: -8,
+    marginTop: -6,
     paddingHorizontal: 4,
     zIndex: 1,
   },

@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   ActivityIndicator,
   LayoutAnimation,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -38,25 +40,42 @@ type Props = {
   styles: GroupChatComposerStyles;
   sendBusy: boolean;
   onSend: (text: string) => Promise<boolean>;
-  onAttachImages?: (assets: PickedImageAsset[]) => void;
+  onSendWithAttachments?: (text: string, assets: PickedImageAsset[]) => Promise<boolean>;
   onComposerFocus?: () => void;
   onTyping?: () => void;
   replyTo?: ReplyTarget | null;
   onCancelReply?: () => void;
 };
 
-export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
-  styles: s,
-  sendBusy,
-  onSend,
-  onAttachImages,
-  onComposerFocus,
-  onTyping,
-  replyTo,
-  onCancelReply,
-}: Props) {
+export type ComposerHandle = { focus: () => void };
+
+const MAX_STAGED = 5;
+
+export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
+  function RoundGroupChatComposer({
+    styles: s,
+    sendBusy,
+    onSend,
+    onSendWithAttachments,
+    onComposerFocus,
+    onTyping,
+    replyTo,
+    onCancelReply,
+  }: Props, ref) {
   const [draft, setDraft] = useState("");
+  const [stagedImages, setStagedImages] = useState<PickedImageAsset[]>([]);
   const inputRef = useRef<TextInput>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+  }));
+
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const stagedRef = useRef(stagedImages);
+  stagedRef.current = stagedImages;
+  const busyRef = useRef(sendBusy);
+  busyRef.current = sendBusy;
 
   useEffect(() => {
     if (replyTo) inputRef.current?.focus();
@@ -70,14 +89,32 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
     [onTyping],
   );
 
+  const hasText = draft.trim().length > 0;
+  const hasImages = stagedImages.length > 0;
+  const canSend = !sendBusy && (hasText || hasImages);
+
   const submit = useCallback(async () => {
-    const text = draft.trim();
-    if (!text || sendBusy) return;
-    inputRef.current?.clear();
-    setDraft("");
-    const ok = await onSend(text);
-    if (!ok) setDraft(text);
-  }, [draft, sendBusy, onSend]);
+    const text = draftRef.current.trim();
+    const images = [...stagedRef.current];
+    if (busyRef.current) return;
+    if (!text && images.length === 0) return;
+
+    if (images.length > 0 && onSendWithAttachments) {
+      inputRef.current?.clear();
+      setDraft("");
+      setStagedImages([]);
+      const ok = await onSendWithAttachments(text, images);
+      if (!ok) {
+        setDraft(text);
+        setStagedImages(images);
+      }
+    } else if (text) {
+      inputRef.current?.clear();
+      setDraft("");
+      const ok = await onSend(text);
+      if (!ok) setDraft(text);
+    }
+  }, [onSend, onSendWithAttachments]);
 
   const handleContentSizeChange = useCallback(() => {
     LayoutAnimation.configureNext({
@@ -90,19 +127,28 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") return;
+    const remaining = MAX_STAGED - stagedRef.current.length;
+    if (remaining <= 0) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
       allowsMultipleSelection: true,
-      selectionLimit: 5,
+      selectionLimit: remaining,
       allowsEditing: false,
     });
     if (!result.canceled && result.assets.length > 0) {
-      onAttachImages?.(
-        result.assets.map((a) => ({ uri: a.uri, width: a.width, height: a.height })),
-      );
+      const newAssets = result.assets
+        .slice(0, remaining)
+        .map((a) => ({ uri: a.uri, width: a.width, height: a.height }));
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setStagedImages((prev) => [...prev, ...newAssets]);
     }
-  }, [onAttachImages]);
+  }, []);
+
+  const removeStaged = useCallback((index: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setStagedImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
   return (
     <View>
@@ -122,8 +168,37 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
           </Pressable>
         </View>
       ) : null}
+
+      {hasImages ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={thumbStyles.strip}
+          contentContainerStyle={thumbStyles.stripContent}
+          keyboardShouldPersistTaps="always"
+        >
+          {stagedImages.map((img, i) => (
+            <View key={img.uri + i} style={thumbStyles.thumbWrap}>
+              <Image
+                source={img.uri}
+                style={thumbStyles.thumb}
+                contentFit="cover"
+                transition={150}
+              />
+              <Pressable
+                style={thumbStyles.removeBtn}
+                onPress={() => removeStaged(i)}
+                hitSlop={4}
+              >
+                <Ionicons name="close-circle" size={18} color="#fff" />
+              </Pressable>
+            </View>
+          ))}
+        </ScrollView>
+      ) : null}
+
       <View style={s.composerRow}>
-        {onAttachImages ? (
+        {onSendWithAttachments ? (
           <Pressable
             style={composerBtnStyles.plusBtn}
             onPress={() => void handlePickImage()}
@@ -147,9 +222,10 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
           maxLength={2000}
         />
         <Pressable
-          style={[s.sendBtn, (sendBusy || !draft.trim()) && s.sendBtnDisabled]}
+          style={[s.sendBtn, !canSend && s.sendBtnDisabled]}
           onPress={() => void submit()}
-          disabled={sendBusy || !draft.trim()}
+          disabled={!canSend}
+          hitSlop={8}
           accessibilityLabel="Send message"
         >
           {sendBusy ? (
@@ -161,13 +237,46 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
       </View>
     </View>
   );
-});
+}));
 
 const composerBtnStyles = StyleSheet.create({
   plusBtn: {
     justifyContent: "center",
     alignItems: "center",
     paddingBottom: 2,
+  },
+});
+
+const thumbStyles = StyleSheet.create({
+  strip: {
+    maxHeight: 72,
+    marginBottom: 4,
+  },
+  stripContent: {
+    paddingHorizontal: 8,
+    gap: 8,
+  },
+  thumbWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  thumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+  },
+  removeBtn: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 9,
+    width: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
 

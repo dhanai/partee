@@ -12,10 +12,11 @@ import {
   StyleSheet,
   Text,
   View,
+  type ScrollViewProps,
 } from "react-native";
-import { useHeaderHeight } from "@react-navigation/elements";
-import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import ChatScrollView from "../../../components/chat-scroll-view";
 import { ChatBubbleRow } from "../../../components/chat-bubble-row";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { ChatDateSeparator } from "../../../components/chat-date-separator";
@@ -23,7 +24,7 @@ import { ChatHeaderAvatars, ChatHeaderInfoButton } from "../../../components/cha
 import { ChatScrollToBottom } from "../../../components/chat-scroll-to-bottom";
 import { ChatTimestamp } from "../../../components/chat-timestamp";
 import { buildChatItems, chatItemKey, type ChatListItem } from "../../../lib/build-chat-items";
-import { RoundGroupChatComposer, type PickedImageAsset } from "../../../components/round-group-chat-composer";
+import { RoundGroupChatComposer, type ComposerHandle, type PickedImageAsset } from "../../../components/round-group-chat-composer";
 import { TypingIndicator } from "../../../components/typing-indicator";
 import { apiGet, apiPost, apiDelete } from "../../../lib/api";
 import { imageAttachments } from "../../../lib/attachment-types";
@@ -49,6 +50,7 @@ type MessagesResponse = {
 };
 
 const POLL_MS = 5000;
+const COMPOSER_AREA_HEIGHT = 60;
 
 type ConversationMetaResponse = {
   type: string;
@@ -82,8 +84,6 @@ export default function ConversationChatScreen() {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
-  const kbVisible = useKeyboardState((s) => s.isVisible);
   const { markConversationRead } = useChatUnread();
 
   const paramAvatars = useMemo<string[]>(() => {
@@ -163,6 +163,7 @@ export default function ConversationChatScreen() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const composerRef = useRef<ComposerHandle>(null);
   const msgsRef = useRef<ConversationMessage[]>([]);
   msgsRef.current = msgs;
   const prevMsgCountRef = useRef(msgs.length);
@@ -318,16 +319,17 @@ export default function ConversationChatScreen() {
     [conversationId, replyTo],
   );
 
-  const handleAttachImages = useCallback(
-    async (assets: PickedImageAsset[]) => {
-      if (!conversationId || assets.length === 0) return;
+  const handleSendWithAttachments = useCallback(
+    async (text: string, assets: PickedImageAsset[]): Promise<boolean> => {
+      if (!conversationId || assets.length === 0) return false;
 
       const me = getCachedMeProfile();
       const tempId = `optimistic-img-${Date.now()}`;
+      const body = text || null;
 
       const optimistic: ConversationMessage = {
         id: tempId,
-        body: null,
+        body,
         attachments: assets.map((a) => ({ type: "image" as const, url: a.uri })),
         createdAt: new Date().toISOString(),
         isMine: true,
@@ -354,7 +356,10 @@ export default function ConversationChatScreen() {
         const authToken = await getTokenRef.current();
         const data = await apiPost<{ message: ConversationMessage }>(
           `/api/conversations/${conversationId}/messages`,
-          { attachments: imageAttachments(uploadedUrls) },
+          {
+            ...(body ? { body } : {}),
+            attachments: imageAttachments(uploadedUrls),
+          },
           authToken,
         );
         setMsgs((prev) => {
@@ -364,9 +369,11 @@ export default function ConversationChatScreen() {
           void setCachedMessages(conversationId, merged);
           return merged;
         });
+        return true;
       } catch {
         setMsgs((prev) => prev.filter((m) => m.id !== tempId));
         setError("Could not send image.");
+        return false;
       }
     },
     [conversationId],
@@ -485,6 +492,10 @@ export default function ConversationChatScreen() {
     }
   }, [invertedItems]);
 
+  const handleContextMenuClose = useCallback(() => {
+    composerRef.current?.focus();
+  }, []);
+
   const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
     setShowScrollBtn(e.nativeEvent.contentOffset.y > 300);
   }, []);
@@ -512,10 +523,11 @@ export default function ConversationChatScreen() {
           onReply={handleReply}
           onAvatarPress={handleAvatarPress}
           onGoToMessage={handleGoToMessage}
+          onContextMenuClose={handleContextMenuClose}
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage],
+    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuClose],
   );
   const keyExtractor = useCallback(
     (item: ListItem) => chatItemKey(item),
@@ -542,13 +554,23 @@ export default function ConversationChatScreen() {
     [],
   );
 
+  const stickyOffset = useMemo(
+    () => ({ opened: insets.bottom }),
+    [insets.bottom],
+  );
+
+  const renderChatScroll = useCallback(
+    (props: ScrollViewProps) => (
+      <ChatScrollView {...props} inverted />
+    ),
+    [],
+  );
+
+  const ItemSeparator = useCallback(() => <View style={cStyles.separator} />, []);
+
   return (
     <>
-    <KeyboardAvoidingView
-      style={cStyles.root}
-      behavior="padding"
-      keyboardVerticalOffset={headerHeight}
-    >
+    <View style={cStyles.root}>
       <View style={cStyles.listWrap}>
         <FlatList
           ref={flatListRef}
@@ -556,9 +578,10 @@ export default function ConversationChatScreen() {
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           inverted
+          renderScrollComponent={renderChatScroll}
           contentContainerStyle={cStyles.listContent}
+          ItemSeparatorComponent={ItemSeparator}
           keyboardShouldPersistTaps="always"
-          keyboardDismissMode="interactive"
           onScroll={handleScroll}
           scrollEventThrottle={100}
           onEndReached={hasMore ? fetchOlderMessages : undefined}
@@ -588,19 +611,22 @@ export default function ConversationChatScreen() {
 
       {error ? <Text style={cStyles.errorText}>{error}</Text> : null}
 
-      <View style={{ paddingBottom: kbVisible ? 8 : Math.max(8, insets.bottom) }}>
-        <TypingIndicator names={typingNames} />
-        <RoundGroupChatComposer
-          styles={composerStyles}
-          sendBusy={false}
-          onSend={handleSend}
-          onAttachImages={handleAttachImages}
-          onTyping={publishTyping}
-          replyTo={replyTo}
-          onCancelReply={() => setReplyTo(null)}
-        />
-      </View>
-    </KeyboardAvoidingView>
+      <KeyboardStickyView offset={stickyOffset}>
+        <View style={[cStyles.composerWrap, { paddingBottom: insets.bottom + 8 }]}>
+          <TypingIndicator names={typingNames} />
+          <RoundGroupChatComposer
+            ref={composerRef}
+            styles={composerStyles}
+            sendBusy={false}
+            onSend={handleSend}
+            onSendWithAttachments={handleSendWithAttachments}
+            onTyping={publishTyping}
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+          />
+        </View>
+      </KeyboardStickyView>
+    </View>
     <FullscreenImageViewer
       images={viewerImages}
       initialIndex={viewerIndex}
@@ -615,7 +641,7 @@ const cStyles = StyleSheet.create({
   root: {
     flex: 1,
     minHeight: 0,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
   },
   emptyInverted: {
     transform: [{ scaleY: -1 }],
@@ -630,8 +656,10 @@ const cStyles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    gap: 10,
-    paddingTop: GROUP_CHAT_COMPOSER_GAP,
+    paddingTop: COMPOSER_AREA_HEIGHT,
+  },
+  separator: {
+    height: 6,
   },
   paginationLoader: {
     paddingVertical: 12,
@@ -640,6 +668,9 @@ const cStyles = StyleSheet.create({
   errorText: {
     color: colors.danger,
     fontSize: 12,
+  },
+  composerWrap: {
+    backgroundColor: "#fff",
   },
   composerRow: {
     flexDirection: "row",
@@ -670,35 +701,5 @@ const cStyles = StyleSheet.create({
   },
   sendBtnDisabled: {
     opacity: 0.5,
-  },
-  replyBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    backgroundColor: colors.fairwaySoft,
-    borderRadius: 8,
-    marginBottom: 4,
-  },
-  replyBannerBar: {
-    width: 3,
-    height: "100%",
-    minHeight: 24,
-    backgroundColor: colors.fairway,
-    borderRadius: 1.5,
-  },
-  replyBannerText: {
-    flex: 1,
-    gap: 1,
-  },
-  replyBannerName: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.fairway,
-  },
-  replyBannerBody: {
-    fontSize: 12,
-    color: colors.muted,
   },
 });

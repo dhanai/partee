@@ -62,6 +62,7 @@ export type RoundDetails = {
     senderName: string;
     createdAt: string;
   } | null;
+  conversationId?: string | null;
 };
 
 export type MineRound = {
