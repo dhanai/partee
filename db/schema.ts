@@ -708,6 +708,57 @@ export const announcementComments = pgTable(
   }),
 );
 
+// ── Report & Block ────────────────────────────────────────────────────────
+
+export const userBlocks = pgTable(
+  "user_blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    blockerId: uuid("blocker_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    blockedId: uuid("blocked_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    pairUnique: uniqueIndex("user_blocks_pair_idx").on(
+      table.blockerId,
+      table.blockedId,
+    ),
+    blockedIdx: index("user_blocks_blocked_idx").on(table.blockedId),
+  }),
+);
+
+export const contentReports = pgTable(
+  "content_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(),
+    contentType: text("content_type").notNull(),
+    contentId: text("content_id").notNull(),
+    targetUserId: uuid("target_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    contentIdx: index("content_reports_content_idx").on(
+      table.contentType,
+      table.contentId,
+    ),
+    reporterIdx: index("content_reports_reporter_idx").on(table.reporterId),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type Round = typeof rounds.$inferSelect;
 export type Spot = typeof spots.$inferSelect;
@@ -732,3 +783,5 @@ export type Group = typeof groups.$inferSelect;
 export type GroupMember = typeof groupMembers.$inferSelect;
 export type GroupJoinRequest = typeof groupJoinRequests.$inferSelect;
 export type GroupAnnouncement = typeof groupAnnouncements.$inferSelect;
+export type UserBlock = typeof userBlocks.$inferSelect;
+export type ContentReport = typeof contentReports.$inferSelect;

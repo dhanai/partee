@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -13,6 +13,8 @@ import { requireDbUser } from "@/lib/auth";
 export async function GET(req: Request) {
   try {
     const viewer = await requireDbUser(req);
+    const url = new URL(req.url);
+    const searchQuery = url.searchParams.get("q")?.trim() ?? "";
 
     const myGroupRows = await db
       .select({
@@ -92,7 +94,46 @@ export async function GET(req: Request) {
       myRole: null,
     }));
 
-    return NextResponse.json({ myGroups, discoverGroups });
+    let searchGroups: typeof discoverGroups = [];
+    if (searchQuery.length >= 2) {
+      const searchRows = await db
+        .select({
+          id: groups.id,
+          name: groups.name,
+          imageUrl: groups.imageUrl,
+          heroImageUrl: groups.heroImageUrl,
+        })
+        .from(groups)
+        .where(ilike(groups.name, `%${searchQuery}%`))
+        .orderBy(desc(groups.createdAt))
+        .limit(20);
+
+      const searchIds = searchRows.map((g) => g.id);
+      const searchCounts = searchIds.length > 0
+        ? await db
+            .select({
+              groupId: groupMembers.groupId,
+              count: count().as("count"),
+            })
+            .from(groupMembers)
+            .where(sql`${groupMembers.groupId} IN (${sql.join(searchIds.map((id) => sql`${id}`), sql`, `)})`)
+            .groupBy(groupMembers.groupId)
+        : [];
+      const searchCountMap = new Map(searchCounts.map((r) => [r.groupId, Number(r.count)]));
+
+      searchGroups = searchRows.map((g) => ({
+        id: g.id,
+        name: g.name,
+        imageUrl: g.imageUrl,
+        heroImageUrl: g.heroImageUrl,
+        memberCount: searchCountMap.get(g.id) ?? 0,
+        myRole: myGroupIds.includes(g.id)
+          ? (myGroupRows.find((mg) => mg.id === g.id)?.myRole ?? null)
+          : null,
+      }));
+    }
+
+    return NextResponse.json({ myGroups, discoverGroups, searchGroups });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
