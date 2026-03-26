@@ -41,6 +41,11 @@ function isFresh(entry: CacheEntry | undefined) {
   return Date.now() - entry.updatedAt < CACHE_TTL_MS;
 }
 
+export function clearPublicProfileCache() {
+  profileCache.clear();
+  inflightPrefetch.clear();
+}
+
 export function getCachedPublicProfile(userId: string): PublicProfile | null {
   const entry = profileCache.get(userId);
   if (!entry) return null;

@@ -16,6 +16,7 @@ type ChatUnreadContextValue = {
   unreadConversationIds: Set<string>;
   markConversationRead: (conversationId: string) => void;
   reportConversations: (convos: Array<{ id: string; isUnread: boolean }>) => void;
+  resetUnread: () => void;
 };
 
 const ChatUnreadContext = createContext<ChatUnreadContextValue | null>(null);
@@ -89,6 +90,11 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const resetUnread = useCallback(() => {
+    setUnreadTokens(new Set());
+    setUnreadConvIds(new Set());
+  }, []);
+
   const value = useMemo(
     () => ({
       hasAnyUnreadChat: unreadTokens.size > 0 || unreadConvIds.size > 0,
@@ -99,8 +105,9 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
       unreadConversationIds: unreadConvIds,
       markConversationRead,
       reportConversations,
+      resetUnread,
     }),
-    [unreadTokens, unreadConvIds, isRoundChatUnread, markChatRead, markRoundChatUnread, reportRounds, markConversationRead, reportConversations],
+    [unreadTokens, unreadConvIds, isRoundChatUnread, markChatRead, markRoundChatUnread, reportRounds, markConversationRead, reportConversations, resetUnread],
   );
 
   return (

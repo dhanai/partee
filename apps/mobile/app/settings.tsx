@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin } from "../lib/api";
+import { clearAllCaches } from "../lib/clear-all-caches";
 import { colors } from "../lib/theme";
 
 type MeResponse = {
@@ -164,6 +165,7 @@ export default function SettingsScreen() {
     try {
       const token = await getTokenRef.current();
       await apiDelete("/api/users/me", token);
+      await clearAllCaches();
       await signOut();
       router.dismissAll();
       router.replace("/(auth)");
@@ -186,8 +188,8 @@ export default function SettingsScreen() {
           // Best-effort: still sign out if the session or network fails.
         }
       }
+      await clearAllCaches();
       await signOut();
-      // Settings sits on the root stack above (tabs); tabs' Redirect does not unmount this screen.
       router.dismissAll();
       router.replace("/(auth)");
     } catch (signOutErr) {

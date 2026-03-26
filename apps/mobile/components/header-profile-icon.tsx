@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
 
 import { apiPost } from "../lib/api";
+import { clearAllCaches } from "../lib/clear-all-caches";
 import { getCachedMeProfile, subscribeMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
 import { OverflowMenuSheet, type OverflowMenuItem } from "./overflow-menu-sheet";
@@ -41,6 +42,7 @@ export function HeaderProfileIcon() {
           // best-effort
         }
       }
+      await clearAllCaches();
       await signOut();
       router.replace("/(auth)");
     } catch (err) {

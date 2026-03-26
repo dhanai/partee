@@ -16,7 +16,7 @@ import { ChatUnreadProvider } from "../lib/chat-unread-context";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
 import { setApiSessionInvalidHandler } from "../lib/api-session-invalid";
-import { clearCachedMeProfile } from "../lib/me-profile-cache";
+import { clearAllCaches } from "../lib/clear-all-caches";
 import { initializeParfadeMobileAds } from "../lib/parfade-admob";
 import { colors } from "../lib/theme";
 
@@ -54,7 +54,7 @@ function ApiSessionInvalidBridge() {
   const { signOut } = useClerk();
   useEffect(() => {
     setApiSessionInvalidHandler(async () => {
-      clearCachedMeProfile();
+      await clearAllCaches();
       await signOut();
     });
     return () => setApiSessionInvalidHandler(null);

@@ -43,6 +43,18 @@ export async function setCachedMessages(
   }
 }
 
+export async function clearMessageCache(): Promise<void> {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const msgKeys = allKeys.filter((k) => k.startsWith(KEY_PREFIX));
+    if (msgKeys.length > 0) {
+      await AsyncStorage.multiRemove(msgKeys);
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
 export function mergeMessages(
   cached: CachedMessage[],
   fresh: CachedMessage[],

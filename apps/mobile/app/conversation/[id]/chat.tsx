@@ -536,6 +536,7 @@ export default function ConversationChatScreen() {
           highlighted={item.data.id === highlightedId}
           onImagePress={handleImagePress}
           userAvatarMap={userAvatarMap}
+          userInfoMap={userInfoMap}
           conversationId={conversationId}
           viewerId={viewerId}
           onReaction={handleReaction}
@@ -547,22 +548,30 @@ export default function ConversationChatScreen() {
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuOpen, handleContextMenuClose],
+    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuOpen, handleContextMenuClose, userAvatarMap, userInfoMap],
   );
   const keyExtractor = useCallback(
     (item: ListItem) => chatItemKey(item),
     [],
   );
 
-  const userAvatarMap = useMemo(() => {
-    const map: Record<string, string | null> = {};
+  const userInfoMap = useMemo(() => {
+    const map: Record<string, { name: string; avatar: string | null }> = {};
     for (const m of msgs) {
       if (m.user?.id && !(m.user.id in map)) {
-        map[m.user.id] = m.user.avatar;
+        map[m.user.id] = { name: m.user.name, avatar: m.user.avatar };
       }
     }
     return map;
   }, [msgs]);
+
+  const userAvatarMap = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const [id, info] of Object.entries(userInfoMap)) {
+      map[id] = info.avatar;
+    }
+    return map;
+  }, [userInfoMap]);
 
   const composerStyles = useMemo(
     () => ({

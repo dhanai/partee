@@ -28,6 +28,7 @@ import { getImageUrls } from "../lib/attachment-types";
 import type { GroupStyle } from "../lib/chat-group-styles";
 import { colors } from "../lib/theme";
 import { type ChatMessage, chatBubbleStyles as legacyStyles } from "../lib/chat-styles";
+import { AnimatedBottomSheetFrame } from "./animated-bottom-sheet-frame";
 
 const MOSAIC_MAX_W = 240;
 const MOSAIC_GAP = 2;
@@ -175,6 +176,7 @@ type Props = {
   highlighted?: boolean;
   onImagePress?: (images: string[], index: number) => void;
   userAvatarMap?: Record<string, string | null>;
+  userInfoMap?: Record<string, { name: string; avatar: string | null }>;
   conversationId?: string;
   viewerId?: string | null;
   onReaction?: (messageId: string, emoji: string, action: "add" | "remove") => void;
@@ -294,6 +296,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   highlighted,
   onImagePress,
   userAvatarMap,
+  userInfoMap,
   conversationId,
   viewerId,
   onReaction,
@@ -305,6 +308,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onContextMenuClose,
 }: Props) {
   const showAvatar = groupStyle === "single" || groupStyle === "bottom";
+  const [reactionSheetVisible, setReactionSheetVisible] = useState(false);
   const showName = !isMine && (groupStyle === "single" || groupStyle === "top");
   const [pickerVisible, setPickerVisible] = useState(false);
   const [bubbleLayout, setBubbleLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -506,15 +510,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
             count={data.count}
             isOwn={isOwn}
             userAvatars={avatars}
-            onPress={() => {
-              if (!onReaction) return;
-              if (isOwn) {
-                onReaction(m.id, emoji, "remove");
-              } else {
-                if (myCurrentEmoji) onReaction(m.id, myCurrentEmoji, "remove");
-                onReaction(m.id, emoji, "add");
-              }
-            }}
+            onPress={() => setReactionSheetVisible(true)}
           />
         );
       })}
@@ -762,6 +758,48 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
           })() : null}
         </Pressable>
       </Modal>
+
+      <AnimatedBottomSheetFrame
+        visible={reactionSheetVisible}
+        onClose={() => setReactionSheetVisible(false)}
+      >
+        <View style={sheetStyles.container}>
+          <Text style={sheetStyles.title}>Reactions</Text>
+          {Object.entries(reactions).map(([emoji, data]) => (
+            <View key={emoji} style={sheetStyles.emojiSection}>
+              <Text style={sheetStyles.emojiHeader}>
+                {emojiDisplay(emoji)} {data.count}
+              </Text>
+              {data.userIds.map((uid) => {
+                const info = userInfoMap?.[uid];
+                const avatarUri = info?.avatar ?? userAvatarMap?.[uid];
+                return (
+                  <View key={uid} style={sheetStyles.userRow}>
+                    {avatarUri ? (
+                      <Image
+                        source={{ uri: toAbsoluteUrl(avatarUri) }}
+                        style={sheetStyles.userAvatar}
+                      />
+                    ) : (
+                      <View style={[sheetStyles.userAvatar, sheetStyles.userAvatarFallback]}>
+                        <Text style={sheetStyles.userInitial}>
+                          {(info?.name ?? "?").charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={sheetStyles.userName}>
+                      {info?.name ?? "Unknown"}
+                    </Text>
+                    {uid === viewerId ? (
+                      <Text style={sheetStyles.youLabel}>You</Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      </AnimatedBottomSheetFrame>
     </View>
   );
 }, areBubblePropsEqual);
@@ -973,6 +1011,55 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 11,
+    color: colors.muted,
+  },
+});
+
+const sheetStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    gap: 16,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  emojiSection: {
+    gap: 10,
+  },
+  emojiHeader: {
+    fontSize: 20,
+  },
+  userRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 2,
+  },
+  userAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  userAvatarFallback: {
+    backgroundColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  userInitial: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  userName: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+  },
+  youLabel: {
+    fontSize: 13,
     color: colors.muted,
   },
 });

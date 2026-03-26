@@ -34,6 +34,11 @@ function isFresh(entry: { updatedAt: number } | undefined) {
   return Date.now() - entry.updatedAt < CACHE_TTL_MS;
 }
 
+export function clearRoundDetailsCache() {
+  cache.clear();
+  inflightPrefetch.clear();
+}
+
 export function getCachedRoundDetails(inviteToken: string): RoundDetails | null {
   const entry = cache.get(inviteToken);
   if (!entry) return null;

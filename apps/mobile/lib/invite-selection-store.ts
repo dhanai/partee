@@ -17,3 +17,7 @@ export function setInviteSelection(flowKey: string, users: InviteSelectionUser[]
 export function clearInviteSelection(flowKey: string) {
   inviteSelections.delete(flowKey);
 }
+
+export function clearAllInviteSelections() {
+  inviteSelections.clear();
+}
