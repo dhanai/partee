@@ -66,6 +66,7 @@ export default function ConversationChatScreen() {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const msgsRef = useRef<ConversationMessage[]>([]);
   msgsRef.current = msgs;
@@ -314,6 +315,20 @@ export default function ConversationChatScreen() {
     router.push({ pathname: "/profile/[userId]", params: { userId: user.id, userName: user.name, userAvatar: user.avatar ?? "" } });
   }, [router]);
 
+  const handleGoToMessage = useCallback((messageId: string) => {
+    const items = invertedItems;
+    const idx = items.findIndex(
+      (i) => i.type === "message" && i.data.id === messageId,
+    );
+    if (idx >= 0 && flatListRef.current) {
+      flatListRef.current.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+      setTimeout(() => {
+        setHighlightedId(messageId);
+        setTimeout(() => setHighlightedId(null), 1500);
+      }, 400);
+    }
+  }, [invertedItems]);
+
   const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
     setShowScrollBtn(e.nativeEvent.contentOffset.y > 300);
   }, []);
@@ -332,15 +347,17 @@ export default function ConversationChatScreen() {
           isMine={resolveMine(item.data)}
           groupStyle={item.groupStyle}
           showStatus={item.data.id === lastOwnMessageId}
+          highlighted={item.data.id === highlightedId}
           conversationId={conversationId}
           viewerId={viewerId}
           onReaction={handleReaction}
           onReply={handleReply}
           onAvatarPress={handleAvatarPress}
+          onGoToMessage={handleGoToMessage}
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, lastOwnMessageId],
+    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, lastOwnMessageId, highlightedId, handleGoToMessage],
   );
   const keyExtractor = useCallback(
     (item: ListItem) => chatItemKey(item),
@@ -377,6 +394,7 @@ export default function ConversationChatScreen() {
           scrollEventThrottle={100}
           onEndReached={hasMore ? fetchOlderMessages : undefined}
           onEndReachedThreshold={0.3}
+          onScrollToIndexFailed={() => {}}
           ListFooterComponent={
             loadingOlder ? (
               <View style={cStyles.paginationLoader}>

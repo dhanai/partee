@@ -4,6 +4,7 @@ import * as ImagePicker from "expo-image-picker";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  LayoutAnimation,
   Pressable,
   StyleSheet,
   Text,
@@ -72,6 +73,13 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
     if (!ok) setDraft(text);
   }, [draft, sendBusy, onSend]);
 
+  const handleContentSizeChange = useCallback(() => {
+    LayoutAnimation.configureNext({
+      duration: 100,
+      update: { type: LayoutAnimation.Types.easeInEaseOut },
+    });
+  }, []);
+
   const handlePickImage = useCallback(async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -119,6 +127,7 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
           ref={inputRef}
           value={draft}
           onChangeText={handleChangeText}
+          onContentSizeChange={handleContentSizeChange}
           onFocus={() => onComposerFocus?.()}
           placeholder="Message…"
           placeholderTextColor={colors.muted}

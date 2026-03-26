@@ -83,6 +83,7 @@ export function RoundGroupChatPoll({
   const [viewerId, setViewerId] = useState<string | null>(() => getCachedMeProfile()?.id ?? null);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const loadGenRef = useRef(0);
   const prevMessageCountRef = useRef(0);
@@ -354,16 +355,30 @@ export function RoundGroupChatPoll({
 
   type ListItem = ChatListItem<ChatMessage>;
   const invertedItems = useMemo(() => buildChatItems(messages), [messages]);
+
+  const handleGoToMessage = useCallback((messageId: string) => {
+    const idx = invertedItems.findIndex(
+      (i) => i.type === "message" && i.data.id === messageId,
+    );
+    if (idx >= 0 && flatListRef.current) {
+      flatListRef.current.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+      setTimeout(() => {
+        setHighlightedId(messageId);
+        setTimeout(() => setHighlightedId(null), 1500);
+      }, 400);
+    }
+  }, [invertedItems]);
+
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.type === "date") return <ChatDateSeparator date={item.date} />;
       if (item.type === "timestamp") return <ChatTimestamp date={item.date} />;
       return (
-        <ChatBubbleRow message={item.data} isMine={resolveMine(item.data)} groupStyle={item.groupStyle} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
+        <ChatBubbleRow message={item.data} isMine={resolveMine(item.data)} groupStyle={item.groupStyle} highlighted={item.data.id === highlightedId} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} onGoToMessage={handleGoToMessage} />
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewerId, handleReaction, handleReply, handleAvatarPress],
+    [viewerId, handleReaction, handleReply, handleAvatarPress, highlightedId, handleGoToMessage],
   );
   const renderBubbleInline = useCallback(
     (m: ChatMessage, index: number, arr: ChatMessage[]) => {
@@ -371,11 +386,11 @@ export function RoundGroupChatPoll({
       const next = arr[index + 1];
       const gs = getGroupStyle(m, prev, next);
       return (
-        <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} groupStyle={gs} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
+        <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} groupStyle={gs} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} onGoToMessage={handleGoToMessage} />
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewerId, handleReaction, handleReply, handleAvatarPress],
+    [viewerId, handleReaction, handleReply, handleAvatarPress, handleGoToMessage],
   );
   const keyExtractor = useCallback((item: ListItem) => chatItemKey(item), []);
 
@@ -406,6 +421,7 @@ export function RoundGroupChatPoll({
             keyboardDismissMode="interactive"
             onScroll={handleScroll}
             scrollEventThrottle={100}
+            onScrollToIndexFailed={() => {}}
             ListEmptyComponent={
               loading ? null : (
                 <View style={styles.emptyInverted}>

@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -47,24 +47,68 @@ type Props = {
   isMine: boolean;
   groupStyle?: GroupStyle;
   showStatus?: boolean;
+  highlighted?: boolean;
   conversationId?: string;
   viewerId?: string | null;
   onReaction?: (messageId: string, emoji: string, action: "add" | "remove") => void;
   onReply?: (message: EnhancedMessage) => void;
   onDelete?: (messageId: string) => void;
   onAvatarPress?: (user: { id: string; name: string; avatar: string | null }) => void;
+  onGoToMessage?: (messageId: string) => void;
 };
 
 function emojiDisplay(key: string): string {
   return REACTION_EMOJIS.find((e) => e.key === key)?.display ?? key;
 }
 
+const EMOJI_RE = /^(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F){1,3}$/u;
+function isEmojiOnly(text: string): boolean {
+  return EMOJI_RE.test(text.trim());
+}
+
 const SWIPE_THRESHOLD = 50;
+
+function AnimatedReactionChip({
+  emoji,
+  count,
+  isOwn,
+  onPress,
+}: {
+  emoji: string;
+  count: number;
+  isOwn: boolean;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const chipStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePress = useCallback(() => {
+    scale.value = withSpring(1.3, { damping: 8, stiffness: 400 }, () => {
+      scale.value = withSpring(1, { damping: 12, stiffness: 300 });
+    });
+    onPress();
+  }, [onPress, scale]);
+
+  return (
+    <Animated.View style={chipStyle}>
+      <Pressable
+        style={[styles.reactionChip, isOwn && styles.reactionChipOwn]}
+        onPress={handlePress}
+      >
+        <Text style={styles.reactionEmoji}>{emojiDisplay(emoji)}</Text>
+        {count > 1 && <Text style={styles.reactionCount}>{count}</Text>}
+      </Pressable>
+    </Animated.View>
+  );
+}
 
 function areBubblePropsEqual(prev: Props, next: Props): boolean {
   if (prev.isMine !== next.isMine) return false;
   if (prev.groupStyle !== next.groupStyle) return false;
   if (prev.showStatus !== next.showStatus) return false;
+  if (prev.highlighted !== next.highlighted) return false;
   if (prev.viewerId !== next.viewerId) return false;
   if (prev.conversationId !== next.conversationId) return false;
 
@@ -99,12 +143,14 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   isMine,
   groupStyle = "single",
   showStatus,
+  highlighted,
   conversationId,
   viewerId,
   onReaction,
   onReply,
   onDelete,
   onAvatarPress,
+  onGoToMessage,
 }: Props) {
   const showAvatar = groupStyle === "single" || groupStyle === "bottom";
   const showName = !isMine && (groupStyle === "single" || groupStyle === "top");
@@ -112,6 +158,20 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const [bubbleLayout, setBubbleLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const bubbleRef = useRef<View>(null);
   const translateX = useSharedValue(0);
+  const highlightOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (highlighted) {
+      highlightOpacity.value = withSpring(1, { damping: 15, stiffness: 300 }, () => {
+        highlightOpacity.value = withSpring(0, { damping: 15, stiffness: 120 });
+      });
+    }
+  }, [highlighted, highlightOpacity]);
+
+  const highlightStyle = useAnimatedStyle(() => ({
+    opacity: highlightOpacity.value,
+  }));
+
 
   const myCurrentEmoji = (() => {
     const vid = viewerId ?? "";
@@ -273,9 +333,11 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       {Object.entries(reactions).map(([emoji, data]) => {
         const isOwn = data.userIds?.includes(viewerId ?? "");
         return (
-          <Pressable
+          <AnimatedReactionChip
             key={emoji}
-            style={[styles.reactionChip, isOwn && styles.reactionChipOwn]}
+            emoji={emoji}
+            count={data.count}
+            isOwn={isOwn}
             onPress={() => {
               if (!onReaction) return;
               if (isOwn) {
@@ -285,19 +347,18 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
                 onReaction(m.id, emoji, "add");
               }
             }}
-          >
-            <Text style={styles.reactionEmoji}>{emojiDisplay(emoji)}</Text>
-            {data.count > 1 && (
-              <Text style={styles.reactionCount}>{data.count}</Text>
-            )}
-          </Pressable>
+          />
         );
       })}
     </View>
   ) : null;
 
   const replyPreview = m.parentPreview ? (
-    <View style={[styles.replyPreview, isMine ? styles.replyPreviewMine : styles.replyPreviewTheirs]}>
+    <Pressable
+      style={[styles.replyPreview, isMine ? styles.replyPreviewMine : styles.replyPreviewTheirs]}
+      onPress={() => m.parentId && onGoToMessage?.(m.parentId)}
+      disabled={!m.parentId || !onGoToMessage}
+    >
       <View style={[styles.replyBar, isMine ? styles.replyBarMine : null]} />
       <View style={styles.replyTextCol}>
         <Text style={[styles.replySender, isMine ? styles.replySenderMine : null]} numberOfLines={1}>
@@ -307,10 +368,12 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
           {m.parentPreview.body}
         </Text>
       </View>
-    </View>
+    </Pressable>
   ) : null;
 
   const avatarSpacer = <View style={styles.avatarSpacer} />;
+
+  const emojiOnly = !m.parentPreview && isEmojiOnly(m.body);
 
   const RADIUS = 18;
   const GROUPED_RADIUS = 4;
@@ -324,21 +387,39 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     borderBottomRightRadius: isMine ? (hasTail ? TAIL_RADIUS : GROUPED_RADIUS) : RADIUS,
   };
 
+  const messageBody = emojiOnly ? (
+    <Text style={styles.emojiOnlyText}>{m.body.trim()}</Text>
+  ) : isMine ? (
+    <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, bubbleRadii]}>
+      <Autolink
+        text={m.body}
+        style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}
+        linkStyle={styles.linkMine}
+        url
+        email
+        phone
+      />
+    </View>
+  ) : (
+    <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, bubbleRadii]}>
+      {showName ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
+      <Autolink
+        text={m.body}
+        style={legacyStyles.bubbleBody}
+        linkStyle={styles.linkTheirs}
+        url
+        email
+        phone
+      />
+    </View>
+  );
+
   const bubbleContent = isMine ? (
     <>
       <View style={legacyStyles.bubbleRowFlex} />
       <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColMine]}>
         {replyPreview}
-        <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, bubbleRadii]}>
-          <Autolink
-            text={m.body}
-            style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}
-            linkStyle={styles.linkMine}
-            url
-            email
-            phone
-          />
-        </View>
+        {messageBody}
         {reactionChips}
       </View>
       {showAvatar ? avatarEl : avatarSpacer}
@@ -348,17 +429,8 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       {showAvatar ? avatarEl : avatarSpacer}
       <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColTheirs]}>
         {replyPreview}
-        <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, bubbleRadii]}>
-          {showName ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
-          <Autolink
-            text={m.body}
-            style={legacyStyles.bubbleBody}
-            linkStyle={styles.linkTheirs}
-            url
-            email
-            phone
-          />
-        </View>
+        {emojiOnly && showName ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
+        {messageBody}
         {reactionChips}
       </View>
     </>
@@ -366,6 +438,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   return (
     <View style={styles.swipeContainer}>
+      <Animated.View style={[styles.highlightOverlay, highlightStyle]} pointerEvents="none" />
       {swiping ? (
         <Animated.View style={[styles.replyIconWrap, isMine ? styles.replyIconRight : styles.replyIconLeft, replyIconStyle]}>
           <Ionicons name="arrow-undo" size={18} color={colors.muted} />
@@ -484,6 +557,11 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 const styles = StyleSheet.create({
   swipeContainer: {
     width: "100%",
+  },
+  highlightOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(26, 60, 42, 0.12)",
+    borderRadius: 12,
   },
   replyIconWrap: {
     position: "absolute",
@@ -673,6 +751,10 @@ const styles = StyleSheet.create({
   contextActionText: {
     fontSize: 16,
     color: colors.text,
+  },
+  emojiOnlyText: {
+    fontSize: 48,
+    lineHeight: 56,
   },
   linkTheirs: {
     color: colors.fairway,
