@@ -564,8 +564,10 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const imageBodyBubble = hasImages && bodyText ? (
     isMine ? (
       <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, {
-        borderRadius: RADIUS,
-        borderBottomRightRadius: TAIL_RADIUS,
+        borderTopLeftRadius: RADIUS,
+        borderTopRightRadius: GROUPED_RADIUS,
+        borderBottomLeftRadius: RADIUS,
+        borderBottomRightRadius: RADIUS,
         marginTop: 4,
       }]}>
         <Autolink
@@ -577,8 +579,10 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       </View>
     ) : (
       <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, {
-        borderRadius: RADIUS,
-        borderBottomLeftRadius: TAIL_RADIUS,
+        borderTopLeftRadius: GROUPED_RADIUS,
+        borderTopRightRadius: RADIUS,
+        borderBottomLeftRadius: RADIUS,
+        borderBottomRightRadius: RADIUS,
         marginTop: 4,
       }]}>
         <Autolink
