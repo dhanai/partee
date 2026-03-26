@@ -156,7 +156,7 @@ export async function GET(req: Request) {
         }),
       }))
       .sort((a, b) => b._score - a._score)
-      .map(({ _score: _, ...rest }) => rest);
+      .map(({ _score: _s, ...rest }) => rest);
 
     let searchGroups: GroupListItem[] = [];
     if (searchQuery.length >= 2) {

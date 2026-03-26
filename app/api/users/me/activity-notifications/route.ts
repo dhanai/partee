@@ -30,7 +30,7 @@ export async function GET(req: Request) {
       .map((r) => (r.data as { actorUserId?: string }).actorUserId)
       .filter((id): id is string => Boolean(id));
 
-    let actorProfileMap = new Map<string, { name: string; avatar: string | null }>();
+    const actorProfileMap = new Map<string, { name: string; avatar: string | null }>();
     if (actorIdsForGroupJoins.length > 0) {
       const actorRows = await db
         .select({ id: users.id, name: users.name, avatar: users.avatar })
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
       .map((r) => (r.data as { groupId?: string }).groupId)
       .filter((id): id is string => Boolean(id));
 
-    let pendingRequestMap = new Map<string, { pending: boolean; requestId: string | null }>();
+    const pendingRequestMap = new Map<string, { pending: boolean; requestId: string | null }>();
     if (groupIds.length > 0 && actorIdsForGroupJoins.length > 0) {
       const pendingRows = await db
         .select({
