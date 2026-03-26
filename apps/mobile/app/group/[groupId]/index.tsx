@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput } from "../../../components/animated-bottom-sheet-frame";
+import { InitialAvatar } from "../../../components/initial-avatar";
 import { OverflowMenuSheet, type OverflowMenuItem } from "../../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../../components/report-sheet";
 import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin } from "../../../lib/api";
@@ -660,9 +661,10 @@ export default function GroupLandingScreen() {
           <Image source={group.heroImageUrl} style={styles.heroBannerImage} contentFit="cover" transition={0} />
         ) : (
           <View style={styles.heroBannerFallback}>
+            <Ionicons name="golf-outline" size={48} color="rgba(26, 60, 42, 0.12)" />
             {isAdmin ? (
               <View style={styles.heroBannerPrompt}>
-                <Ionicons name="image-outline" size={24} color={colors.muted} />
+                <Ionicons name="camera-outline" size={18} color={colors.muted} />
                 <Text style={styles.heroBannerPromptText}>Add cover photo</Text>
               </View>
             ) : null}
@@ -690,9 +692,7 @@ export default function GroupLandingScreen() {
           {group.imageUrl ? (
             <Image source={group.imageUrl} style={styles.profileImage} contentFit="cover" transition={0} />
           ) : (
-            <View style={[styles.profileImage, styles.profileImageFallback]}>
-              <Ionicons name="people" size={28} color={colors.muted} />
-            </View>
+            <InitialAvatar name={group.name ?? "G"} size={82} borderRadius={22} />
           )}
           {uploadingImage === "profile" ? (
             <View style={[styles.uploadOverlay, styles.profileUploadOverlay]}>
@@ -1286,6 +1286,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#dfe6df",
+    gap: 8,
   },
   heroBannerPrompt: {
     alignItems: "center",

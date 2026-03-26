@@ -3,7 +3,7 @@ import { Image } from "expo-image";
 import * as MediaLibrary from "expo-media-library";
 import * as FileSystem from "expo-file-system";
 import * as Haptics from "expo-haptics";
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -127,6 +127,15 @@ export const FullscreenImageViewer = memo(function FullscreenImageViewer({
   const flatListRef = useRef<FlatList>(null);
 
   const bgOpacity = useSharedValue(1);
+  const dismissY = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      bgOpacity.value = 1;
+      dismissY.value = 0;
+      setCurrentIndex(initialIndex);
+    }
+  }, [visible, initialIndex, bgOpacity, dismissY]);
 
   const dismiss = useCallback(() => {
     onClose();
@@ -137,20 +146,28 @@ export const FullscreenImageViewer = memo(function FullscreenImageViewer({
     .activeOffsetY([-20, 20])
     .failOffsetX([-20, 20])
     .onUpdate((e) => {
+      dismissY.value = e.translationY;
       const progress = Math.min(1, Math.abs(e.translationY) / 300);
-      bgOpacity.value = 1 - progress * 0.5;
+      bgOpacity.value = 1 - progress * 0.6;
     })
     .onEnd((e) => {
       if (Math.abs(e.translationY) > 120) {
-        bgOpacity.value = withTiming(0, { duration: 150 });
+        const exitY = e.translationY > 0 ? SCREEN_H : -SCREEN_H;
+        dismissY.value = withTiming(exitY, { duration: 200 });
+        bgOpacity.value = withTiming(0, { duration: 200 });
         runOnJS(dismiss)();
       } else {
-        bgOpacity.value = withTiming(1);
+        dismissY.value = withTiming(0, { duration: 200 });
+        bgOpacity.value = withTiming(1, { duration: 200 });
       }
     });
 
   const bgStyle = useAnimatedStyle(() => ({
     backgroundColor: `rgba(0,0,0,${bgOpacity.value})`,
+  }));
+
+  const galleryTranslateStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: dismissY.value }],
   }));
 
   const handleViewableChange = useCallback(
@@ -190,60 +207,57 @@ export const FullscreenImageViewer = memo(function FullscreenImageViewer({
 
   const renderItem = useCallback(
     ({ item }: { item: string }) => (
-      <GestureDetector gesture={swipeToDismiss}>
-        <Animated.View>
-          <ZoomableImage uri={item} />
-        </Animated.View>
-      </GestureDetector>
+      <ZoomableImage uri={item} />
     ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
-      <GestureDetector gesture={Gesture.Tap()}>
-        <Animated.View style={[viewerStyles.root, bgStyle]}>
-          {/* Header */}
-          <View style={[viewerStyles.header, { paddingTop: insets.top + 8 }]}>
-            <Pressable onPress={onClose} hitSlop={12} style={viewerStyles.headerBtn}>
-              <Ionicons name="close" size={24} color="#fff" />
-            </Pressable>
-            <View style={viewerStyles.headerSpacer} />
-            <Pressable onPress={handleShare} hitSlop={12} style={viewerStyles.headerBtn}>
-              <Ionicons name="share-outline" size={22} color="#fff" />
-            </Pressable>
-          </View>
+      <Animated.View style={[viewerStyles.root, bgStyle]}>
+        {/* Header */}
+        <View style={[viewerStyles.header, { paddingTop: insets.top + 8 }]}>
+          <Pressable onPress={onClose} hitSlop={12} style={viewerStyles.headerBtn}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </Pressable>
+          <View style={viewerStyles.headerSpacer} />
+          <Pressable onPress={handleShare} hitSlop={12} style={viewerStyles.headerBtn}>
+            <Ionicons name="share-outline" size={22} color="#fff" />
+          </Pressable>
+        </View>
 
-          {/* Gallery */}
-          <FlatList
-            ref={flatListRef}
-            data={images}
-            renderItem={renderItem}
-            keyExtractor={(_, i) => String(i)}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            initialScrollIndex={initialIndex}
-            getItemLayout={(_, index) => ({ length: SCREEN_W, offset: SCREEN_W * index, index })}
-            onViewableItemsChanged={handleViewableChange}
-            viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
-          />
+        {/* Gallery — wrapped in swipe-to-dismiss gesture + animated translateY */}
+        <GestureDetector gesture={swipeToDismiss}>
+          <Animated.View style={[viewerStyles.gallery, galleryTranslateStyle]}>
+            <FlatList
+              ref={flatListRef}
+              data={images}
+              renderItem={renderItem}
+              keyExtractor={(_, i) => String(i)}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              initialScrollIndex={initialIndex}
+              getItemLayout={(_, index) => ({ length: SCREEN_W, offset: SCREEN_W * index, index })}
+              onViewableItemsChanged={handleViewableChange}
+              viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
+            />
+          </Animated.View>
+        </GestureDetector>
 
-          {/* Footer */}
-          <View style={[viewerStyles.footer, { paddingBottom: insets.bottom + 12 }]}>
-            {images.length > 1 ? (
-              <Text style={viewerStyles.pageText}>
-                {currentIndex + 1} / {images.length}
-              </Text>
-            ) : null}
-            <Pressable onPress={handleSave} hitSlop={12} style={viewerStyles.saveBtn}>
-              <Ionicons name="download-outline" size={22} color="#fff" />
-              <Text style={viewerStyles.saveBtnText}>Save</Text>
-            </Pressable>
-          </View>
-        </Animated.View>
-      </GestureDetector>
+        {/* Footer */}
+        <View style={[viewerStyles.footer, { paddingBottom: insets.bottom + 12 }]}>
+          {images.length > 1 ? (
+            <Text style={viewerStyles.pageText}>
+              {currentIndex + 1} / {images.length}
+            </Text>
+          ) : null}
+          <Pressable onPress={handleSave} hitSlop={12} style={viewerStyles.saveBtn}>
+            <Ionicons name="download-outline" size={22} color="#fff" />
+            <Text style={viewerStyles.saveBtnText}>Save</Text>
+          </Pressable>
+        </View>
+      </Animated.View>
     </Modal>
   );
 });
@@ -252,6 +266,9 @@ const viewerStyles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,1)",
+  },
+  gallery: {
+    flex: 1,
   },
   header: {
     position: "absolute",

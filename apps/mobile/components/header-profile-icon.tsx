@@ -6,6 +6,7 @@ import { useAuth, useClerk } from "@clerk/clerk-expo";
 
 import { apiPost } from "../lib/api";
 import { clearAllCaches } from "../lib/clear-all-caches";
+import { InitialAvatar } from "./initial-avatar";
 import { getCachedMeProfile, subscribeMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
 import { OverflowMenuSheet, type OverflowMenuItem } from "./overflow-menu-sheet";
@@ -81,7 +82,7 @@ export function HeaderProfileIcon() {
         {avatar ? (
           <Image source={{ uri: avatar }} style={styles.avatar} />
         ) : (
-          <Ionicons name="person-circle-outline" size={26} color={colors.fairway} />
+          <InitialAvatar name={getCachedMeProfile()?.name ?? "?"} size={26} />
         )}
       </Pressable>
       <OverflowMenuSheet

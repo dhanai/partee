@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
+import { InitialAvatar } from "../components/initial-avatar";
 import { NotificationMustardDot } from "../components/notification-mustard-dot";
 import { apiGet, toAbsoluteUrl } from "../lib/api";
 import { useChatUnread } from "../lib/chat-unread-context";
@@ -123,15 +124,7 @@ function ChatAvatar({ item }: { item: ConversationRow }) {
   const avatars = item.participantAvatars;
 
   if (avatars.length === 0) {
-    return (
-      <View style={[styles.avatar, styles.avatarPlaceholder]}>
-        <Ionicons
-          name={item.type === "dm" ? "person-outline" : "people-outline"}
-          size={22}
-          color={colors.muted}
-        />
-      </View>
-    );
+    return <InitialAvatar name={item.title || "?"} size={50} />;
   }
 
   if (avatars.length === 1) {

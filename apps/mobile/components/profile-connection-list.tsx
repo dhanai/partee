@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { Image, ImagePrefetch } from "expo-image";
 import { apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
+import { InitialAvatar } from "./initial-avatar";
 import { prefetchPublicProfile } from "../lib/public-profile-cache";
 import { colors } from "../lib/theme";
 
@@ -219,11 +220,7 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
                     {u.avatar ? (
                       <Image source={toAbsoluteUrl(u.avatar)} style={styles.avatar} />
                     ) : (
-                      <View style={[styles.avatar, styles.avatarFallback]}>
-                        <Text style={styles.avatarInitial}>
-                          {u.name.trim().charAt(0).toUpperCase() || "?"}
-                        </Text>
-                      </View>
+                      <InitialAvatar name={u.name} size={44} />
                     )}
                     <View style={styles.meta}>
                       <Text style={styles.name} numberOfLines={1}>

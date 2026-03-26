@@ -3,6 +3,7 @@ import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { toAbsoluteUrl } from "../lib/api";
 import { colors } from "../lib/theme";
+import { InitialAvatar } from "./initial-avatar";
 
 type Props = {
   type: "dm" | "round" | "group" | string;
@@ -58,16 +59,8 @@ function OverlappedCluster({ avatars }: { avatars: string[] }) {
   );
 }
 
-function Placeholder({ type }: { type: string }) {
-  return (
-    <View style={styles.placeholder}>
-      <Ionicons
-        name={type === "dm" ? "person-outline" : "people-outline"}
-        size={18}
-        color={colors.muted}
-      />
-    </View>
-  );
+function Placeholder({ type, title }: { type: string; title: string }) {
+  return <InitialAvatar name={title || (type === "dm" ? "?" : "G")} size={32} />;
 }
 
 export function ChatHeaderAvatars({ type, title, avatars }: Props) {
@@ -75,7 +68,7 @@ export function ChatHeaderAvatars({ type, title, avatars }: Props) {
 
   const avatarElement =
     avatars.length === 0 ? (
-      <Placeholder type={type} />
+      <Placeholder type={type} title={title} />
     ) : avatars.length === 1 ? (
       <SingleAvatar uri={avatars[0]} />
     ) : (

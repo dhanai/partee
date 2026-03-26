@@ -561,6 +561,36 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     [imageUrls, onImagePress],
   );
 
+  const imageBodyBubble = hasImages && bodyText ? (
+    isMine ? (
+      <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, {
+        borderRadius: RADIUS,
+        borderBottomRightRadius: TAIL_RADIUS,
+        marginTop: 4,
+      }]}>
+        <Autolink
+          text={bodyText}
+          style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}
+          linkStyle={styles.linkMine}
+          url email phone
+        />
+      </View>
+    ) : (
+      <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, {
+        borderRadius: RADIUS,
+        borderBottomLeftRadius: TAIL_RADIUS,
+        marginTop: 4,
+      }]}>
+        <Autolink
+          text={bodyText}
+          style={legacyStyles.bubbleBody}
+          linkStyle={styles.linkTheirs}
+          url email phone
+        />
+      </View>
+    )
+  ) : null;
+
   const messageBody = hasImages ? (
     <View>
       {showName && !isMine ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
@@ -598,6 +628,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       {replyPreview}
       {emojiOnly && showName && !isMine ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
       {messageBody}
+      {imageBodyBubble}
       {reactionChips}
     </>
   );

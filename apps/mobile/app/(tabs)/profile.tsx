@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { InitialAvatar } from "../../components/initial-avatar";
 import { ProfileStatCategoryCards } from "../../components/profile-stat-category-cards";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { apiGet, publicWebOrigin, toAbsoluteUrl } from "../../lib/api";
@@ -144,17 +145,6 @@ export default function ProfileScreen() {
     }, []),
   );
 
-  const initials = useMemo(() => {
-    if (!name.trim()) return "P";
-    return name
-      .trim()
-      .split(" ")
-      .map((p) => p[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-  }, [name]);
-
   const handicapDisplay = handicap.trim();
   const locationDisplay = location.trim();
 
@@ -190,11 +180,7 @@ export default function ProfileScreen() {
                   accessibilityLabel="Profile photo"
                 />
               ) : (
-                <View style={[styles.avatarPlaceholder, { width: avatarSize, height: avatarSize }]}>
-                  <Text style={[styles.avatarInitials, { fontSize: Math.round(avatarSize * 0.22) }]}>
-                    {initials}
-                  </Text>
-                </View>
+                <InitialAvatar name={name} size={avatarSize} maxInitials={2} />
               )}
             </View>
           </View>

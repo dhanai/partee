@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { HeaderProfileIcon } from "../../components/header-profile-icon";
+import { InitialAvatar } from "../../components/initial-avatar";
 import { PressableOpacity } from "../../components/pressable-opacity";
 import { apiGet } from "../../lib/api";
 import { colors } from "../../lib/theme";
@@ -164,9 +165,7 @@ export default function GroupsScreen() {
         {g.imageUrl ? (
           <Image source={{ uri: g.imageUrl }} style={styles.groupAvatar} />
         ) : (
-          <View style={[styles.groupAvatar, styles.groupAvatarFallback]}>
-            <Ionicons name="people" size={20} color={colors.muted} />
-          </View>
+          <InitialAvatar name={g.name} size={48} borderRadius={14} />
         )}
         <View style={styles.groupInfo}>
           <Text style={styles.groupName} numberOfLines={1}>

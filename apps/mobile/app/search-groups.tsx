@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { InitialAvatar } from "../components/initial-avatar";
 import { PressableOpacity } from "../components/pressable-opacity";
 import { apiGet } from "../lib/api";
 import { colors } from "../lib/theme";
@@ -151,9 +152,7 @@ export default function SearchGroupsScreen() {
               {g.imageUrl ? (
                 <Image source={{ uri: g.imageUrl }} style={styles.avatar} />
               ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Ionicons name="people" size={18} color={colors.muted} />
-                </View>
+                <InitialAvatar name={g.name} size={44} borderRadius={12} />
               )}
               <View style={styles.meta}>
                 <Text style={styles.name} numberOfLines={1}>

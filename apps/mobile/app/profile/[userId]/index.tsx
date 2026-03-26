@@ -17,6 +17,7 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
+import { InitialAvatar } from "../../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { ParfadeProfileLiveRefresh } from "../../../components/parfade-profile-live-refresh";
 import { ProfileStatCategoryCards } from "../../../components/profile-stat-category-cards";
@@ -223,17 +224,6 @@ export default function PublicProfileScreen() {
     });
   }, [navigation, loading, profile?.user.relationship, profile?.user.name]);
 
-  const initials = useMemo(() => {
-    const name = profile?.user.name ?? "";
-    if (!name.trim()) return "P";
-    return name
-      .trim()
-      .split(" ")
-      .map((p) => p[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-  }, [profile?.user.name]);
   const handicapDisplay = profile?.user.handicap?.trim() || "";
   const locationDisplay = profile?.user.location?.trim() || "";
 
@@ -373,11 +363,7 @@ export default function PublicProfileScreen() {
               accessibilityLabel="Profile photo"
             />
           ) : (
-            <View style={[styles.avatarPlaceholder, { width: avatarSize, height: avatarSize }]}>
-              <Text style={[styles.avatarInitials, { fontSize: Math.round(avatarSize * 0.22) }]}>
-                {initials}
-              </Text>
-            </View>
+            <InitialAvatar name={profile?.user.name ?? ""} size={avatarSize} maxInitials={2} />
           )}
         </View>
       </Pressable>
