@@ -180,9 +180,9 @@ export default function ChatInfoScreen() {
       ) : null}
 
       <Text style={styles.sectionHeader}>
-        {data.type === "dm"
-          ? "Participants"
-          : `${data.participants.length} Members`}
+        {data.type === "group"
+          ? `${data.participants.length} Members`
+          : `${data.participants.length} Participants`}
       </Text>
 
       <FlatList
