@@ -202,7 +202,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       .limit(1);
     if (lastRow) {
       lastChatMessage = {
-        body: lastRow.body,
+        body: lastRow.body ?? "",
         senderName: lastRow.senderName,
         createdAt: lastRow.createdAt.toISOString(),
       };
