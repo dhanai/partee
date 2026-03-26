@@ -103,7 +103,11 @@ export default function GroupSettingsScreen() {
             try {
               const token = await getTokenRef.current();
               await apiDelete(`/api/groups/${groupId}`, token);
-              router.replace("/(tabs)/groups");
+              if (router.canGoBack()) {
+                router.dismissAll();
+              } else {
+                router.replace("/(tabs)/groups");
+              }
             } catch (e) {
               Alert.alert("Error", e instanceof Error ? e.message : "Could not delete.");
             }
@@ -122,8 +126,12 @@ export default function GroupSettingsScreen() {
         onPress: async () => {
           try {
             const token = await getTokenRef.current();
-              await apiDelete(`/api/groups/${groupId}/members`, token);
-            router.replace("/(tabs)/groups");
+            await apiDelete(`/api/groups/${groupId}/members`, token);
+            if (router.canGoBack()) {
+              router.dismissAll();
+            } else {
+              router.replace("/(tabs)/groups");
+            }
           } catch (e) {
             Alert.alert("Error", e instanceof Error ? e.message : "Could not leave.");
           }
