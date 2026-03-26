@@ -183,6 +183,7 @@ type Props = {
   onDelete?: (messageId: string) => void;
   onAvatarPress?: (user: { id: string; name: string; avatar: string | null }) => void;
   onGoToMessage?: (messageId: string) => void;
+  onContextMenuOpen?: () => void;
   onContextMenuClose?: () => void;
 };
 
@@ -301,6 +302,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onDelete,
   onAvatarPress,
   onGoToMessage,
+  onContextMenuOpen,
   onContextMenuClose,
 }: Props) {
   const showAvatar = groupStyle === "single" || groupStyle === "bottom";
@@ -346,16 +348,19 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   const showPicker = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Keyboard.dismiss();
-    bubbleRef.current?.measureInWindow((x, y, width, height) => {
-      setBubbleLayout({ x, y, width, height });
-      setPickerVisible(true);
+    onContextMenuOpen?.();
+    requestAnimationFrame(() => {
+      Keyboard.dismiss();
+      bubbleRef.current?.measureInWindow((x, y, width, height) => {
+        setBubbleLayout({ x, y, width, height });
+        setPickerVisible(true);
+      });
     });
-  }, []);
+  }, [onContextMenuOpen]);
 
   const closePicker = useCallback(() => {
     setPickerVisible(false);
-    onContextMenuClose?.();
+    setTimeout(() => onContextMenuClose?.(), 350);
   }, [onContextMenuClose]);
 
   const triggerReply = useCallback(() => {

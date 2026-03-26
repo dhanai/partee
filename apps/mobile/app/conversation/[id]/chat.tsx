@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import ChatScrollView from "../../../components/chat-scroll-view";
+import ChatScrollView, { ChatFreezeContext } from "../../../components/chat-scroll-view";
 import { ChatBubbleRow } from "../../../components/chat-bubble-row";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { ChatDateSeparator } from "../../../components/chat-date-separator";
@@ -50,7 +50,8 @@ type MessagesResponse = {
 };
 
 const POLL_MS = 5000;
-const COMPOSER_AREA_HEIGHT = 60;
+const INPUT_HEIGHT = 42;
+const MARGIN = 8;
 
 type ConversationMetaResponse = {
   type: string;
@@ -492,7 +493,14 @@ export default function ConversationChatScreen() {
     }
   }, [invertedItems]);
 
+  const [chatFreeze, setChatFreeze] = useState(false);
+
+  const handleContextMenuOpen = useCallback(() => {
+    setChatFreeze(true);
+  }, []);
+
   const handleContextMenuClose = useCallback(() => {
+    setChatFreeze(false);
     composerRef.current?.focus();
   }, []);
 
@@ -523,11 +531,12 @@ export default function ConversationChatScreen() {
           onReply={handleReply}
           onAvatarPress={handleAvatarPress}
           onGoToMessage={handleGoToMessage}
+          onContextMenuOpen={handleContextMenuOpen}
           onContextMenuClose={handleContextMenuClose}
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuClose],
+    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuOpen, handleContextMenuClose],
   );
   const keyExtractor = useCallback(
     (item: ListItem) => chatItemKey(item),
@@ -555,7 +564,7 @@ export default function ConversationChatScreen() {
   );
 
   const stickyOffset = useMemo(
-    () => ({ opened: insets.bottom }),
+    () => ({ opened: insets.bottom - 8 }),
     [insets.bottom],
   );
 
@@ -570,6 +579,7 @@ export default function ConversationChatScreen() {
 
   return (
     <>
+    <ChatFreezeContext.Provider value={chatFreeze}>
     <View style={cStyles.root}>
       <View style={cStyles.listWrap}>
         <FlatList
@@ -627,6 +637,7 @@ export default function ConversationChatScreen() {
         </View>
       </KeyboardStickyView>
     </View>
+    </ChatFreezeContext.Provider>
     <FullscreenImageViewer
       images={viewerImages}
       initialIndex={viewerIndex}
@@ -656,7 +667,7 @@ const cStyles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingTop: COMPOSER_AREA_HEIGHT,
+    paddingTop: INPUT_HEIGHT + MARGIN,
   },
   separator: {
     height: 6,

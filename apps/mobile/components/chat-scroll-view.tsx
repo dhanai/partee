@@ -1,4 +1,4 @@
-import React, { forwardRef } from "react";
+import React, { createContext, forwardRef, useContext } from "react";
 import { KeyboardChatScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ScrollViewProps } from "react-native";
@@ -6,25 +6,25 @@ import type { KeyboardChatScrollViewProps } from "react-native-keyboard-controll
 
 type Ref = React.ElementRef<typeof KeyboardChatScrollView>;
 
-/**
- * Drop-in ScrollView replacement for FlatList in chat screens.
- * Handles keyboard padding, content repositioning, and interactive
- * dismiss natively — no manual keyboard state tracking needed.
- *
- * Usage: <FlatList renderScrollComponent={renderChatScrollComponent} />
- */
+const MARGIN = 8;
+
+export const ChatFreezeContext = createContext(false);
+
 const ChatScrollView = forwardRef<
   Ref,
   ScrollViewProps & KeyboardChatScrollViewProps
->((props, ref) => {
+>(({ inverted, ...props }, ref) => {
   const { bottom } = useSafeAreaInsets();
+  const freeze = useContext(ChatFreezeContext);
   return (
     <KeyboardChatScrollView
       ref={ref}
+      inverted={inverted}
+      freeze={freeze}
       automaticallyAdjustContentInsets={false}
       contentInsetAdjustmentBehavior="never"
       keyboardDismissMode="interactive"
-      offset={bottom}
+      offset={bottom - MARGIN}
       {...props}
     />
   );
