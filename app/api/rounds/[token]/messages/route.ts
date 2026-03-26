@@ -2,14 +2,20 @@ import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { roundMessages, roundMessageReactions, rounds, users } from "@/db/schema";
+import {
+  conversationParticipants,
+  conversations,
+  messageReactions,
+  messages,
+  rounds,
+  users,
+} from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyRoundChatMessagePushes } from "@/lib/notify-user";
 import {
   publishAfterRoundDetailChanged,
   publishGroupChatToastFanout,
 } from "@/lib/parfade-ably-publish";
-import { canAccessRoundChat } from "@/lib/round-chat-access";
 
 type RouteContext = {
   params: { token: string };
@@ -69,12 +75,12 @@ async function attachReactions(msgs: MappedMessage[]): Promise<MappedMessage[]> 
   const ids = msgs.map((m) => m.id);
   const rows = await db
     .select({
-      messageId: roundMessageReactions.messageId,
-      emoji: roundMessageReactions.emoji,
-      userId: roundMessageReactions.userId,
+      messageId: messageReactions.messageId,
+      emoji: messageReactions.emoji,
+      userId: messageReactions.userId,
     })
-    .from(roundMessageReactions)
-    .where(inArray(roundMessageReactions.messageId, ids));
+    .from(messageReactions)
+    .where(inArray(messageReactions.messageId, ids));
 
   if (rows.length === 0) return msgs;
 
@@ -105,13 +111,13 @@ async function attachParentPreviews(msgs: MappedMessage[]): Promise<MappedMessag
 
   const parentRows = await db
     .select({
-      id: roundMessages.id,
-      body: roundMessages.body,
+      id: messages.id,
+      body: messages.body,
       userName: users.name,
     })
-    .from(roundMessages)
-    .innerJoin(users, eq(users.id, roundMessages.userId))
-    .where(sql`${roundMessages.id} IN (${sql.join(parentIds.map((id) => sql`${id}`), sql`, `)})`);
+    .from(messages)
+    .innerJoin(users, eq(users.id, messages.userId))
+    .where(sql`${messages.id} IN (${sql.join(parentIds.map((id) => sql`${id}`), sql`, `)})`);
 
   const parentMap = new Map(
     parentRows.map((p) => [p.id, { body: p.body, userName: p.userName }]),
@@ -132,6 +138,47 @@ async function attachParentPreviews(msgs: MappedMessage[]): Promise<MappedMessag
   });
 }
 
+async function resolveRoundConversation(token: string, viewerId: string) {
+  const [round] = await db
+    .select({
+      id: rounds.id,
+      inviteToken: rounds.inviteToken,
+      courseName: rounds.courseName,
+      planningLocation: rounds.planningLocation,
+      mode: rounds.mode,
+      teeTime: rounds.teeTime,
+      targetDate: rounds.targetDate,
+    })
+    .from(rounds)
+    .where(eq(rounds.inviteToken, token))
+    .limit(1);
+
+  if (!round) return null;
+
+  const [conv] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(eq(conversations.roundId, round.id), eq(conversations.type, "round")))
+    .limit(1);
+
+  if (!conv) return null;
+
+  const [participant] = await db
+    .select({ id: conversationParticipants.id })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conv.id),
+        eq(conversationParticipants.userId, viewerId),
+      ),
+    )
+    .limit(1);
+
+  if (!participant) return null;
+
+  return { round, conversationId: conv.id };
+}
+
 export async function GET(req: Request, { params }: RouteContext) {
   try {
     const viewer = await requireDbUser(req);
@@ -140,20 +187,11 @@ export async function GET(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "Token is required." }, { status: 400 });
     }
 
-    const [round] = await db
-      .select({ id: rounds.id })
-      .from(rounds)
-      .where(eq(rounds.inviteToken, token))
-      .limit(1);
-
-    if (!round) {
-      return NextResponse.json({ error: "Round not found." }, { status: 404 });
-    }
-
-    const allowed = await canAccessRoundChat(round.id, viewer.id);
-    if (!allowed) {
+    const resolved = await resolveRoundConversation(token, viewer.id);
+    if (!resolved) {
       return NextResponse.json({ error: "You do not have access to this chat." }, { status: 403 });
     }
+    const { conversationId } = resolved;
 
     const { searchParams } = new URL(req.url);
     const after = searchParams.get("after");
@@ -169,12 +207,12 @@ export async function GET(req: Request, { params }: RouteContext) {
       }
 
       const [ref] = await db
-        .select({ createdAt: roundMessages.createdAt })
-        .from(roundMessages)
+        .select({ createdAt: messages.createdAt })
+        .from(messages)
         .where(
           and(
-            eq(roundMessages.id, uuidParse.data),
-            eq(roundMessages.roundId, round.id),
+            eq(messages.id, uuidParse.data),
+            eq(messages.conversationId, conversationId),
           ),
         )
         .limit(1);
@@ -188,18 +226,18 @@ export async function GET(req: Request, { params }: RouteContext) {
 
       const rows = await db
         .select({
-          id: roundMessages.id,
-          body: roundMessages.body,
-          parentId: roundMessages.parentId,
-          createdAt: roundMessages.createdAt,
-          userId: roundMessages.userId,
+          id: messages.id,
+          body: messages.body,
+          parentId: messages.parentId,
+          createdAt: messages.createdAt,
+          userId: messages.userId,
           userName: users.name,
           userAvatar: users.avatar,
         })
-        .from(roundMessages)
-        .innerJoin(users, eq(users.id, roundMessages.userId))
-        .where(and(eq(roundMessages.roundId, round.id), gt(roundMessages.createdAt, ref.createdAt)))
-        .orderBy(asc(roundMessages.createdAt))
+        .from(messages)
+        .innerJoin(users, eq(users.id, messages.userId))
+        .where(and(eq(messages.conversationId, conversationId), gt(messages.createdAt, ref.createdAt)))
+        .orderBy(asc(messages.createdAt))
         .limit(limit);
 
       const mapped = rows.map((row) => mapMessageRow(row, viewer.id));
@@ -211,18 +249,18 @@ export async function GET(req: Request, { params }: RouteContext) {
 
     const rowsDesc = await db
       .select({
-        id: roundMessages.id,
-        body: roundMessages.body,
-        parentId: roundMessages.parentId,
-        createdAt: roundMessages.createdAt,
-        userId: roundMessages.userId,
+        id: messages.id,
+        body: messages.body,
+        parentId: messages.parentId,
+        createdAt: messages.createdAt,
+        userId: messages.userId,
         userName: users.name,
         userAvatar: users.avatar,
       })
-      .from(roundMessages)
-      .innerJoin(users, eq(users.id, roundMessages.userId))
-      .where(eq(roundMessages.roundId, round.id))
-      .orderBy(desc(roundMessages.createdAt))
+      .from(messages)
+      .innerJoin(users, eq(users.id, messages.userId))
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(desc(messages.createdAt))
       .limit(limit);
 
     const chronological = [...rowsDesc].reverse();
@@ -248,45 +286,28 @@ export async function POST(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "Token is required." }, { status: 400 });
     }
 
-    const [round] = await db
-      .select({
-        id: rounds.id,
-        inviteToken: rounds.inviteToken,
-        courseName: rounds.courseName,
-        planningLocation: rounds.planningLocation,
-        mode: rounds.mode,
-        teeTime: rounds.teeTime,
-        targetDate: rounds.targetDate,
-      })
-      .from(rounds)
-      .where(eq(rounds.inviteToken, token))
-      .limit(1);
-
-    if (!round) {
-      return NextResponse.json({ error: "Round not found." }, { status: 404 });
-    }
-
-    const allowed = await canAccessRoundChat(round.id, viewer.id);
-    if (!allowed) {
+    const resolved = await resolveRoundConversation(token, viewer.id);
+    if (!resolved) {
       return NextResponse.json({ error: "You do not have access to this chat." }, { status: 403 });
     }
+    const { round, conversationId } = resolved;
 
     const parsed = postSchema.parse(await req.json());
 
     const [inserted] = await db
-      .insert(roundMessages)
+      .insert(messages)
       .values({
-        roundId: round.id,
+        conversationId,
         userId: viewer.id,
         body: parsed.body,
         parentId: parsed.parentId ?? null,
       })
       .returning({
-        id: roundMessages.id,
-        body: roundMessages.body,
-        parentId: roundMessages.parentId,
-        createdAt: roundMessages.createdAt,
-        userId: roundMessages.userId,
+        id: messages.id,
+        body: messages.body,
+        parentId: messages.parentId,
+        createdAt: messages.createdAt,
+        userId: messages.userId,
       });
 
     if (!inserted) {

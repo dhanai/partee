@@ -6,11 +6,14 @@ import {
   conversations,
   conversationParticipants,
   conversationReadReceipts,
+  courses,
   groups,
   messages,
+  rounds,
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { resolveRoundImageUrl } from "@/lib/round-images";
 
 export async function GET(req: Request) {
   try {
@@ -74,6 +77,59 @@ export async function GET(req: Request) {
       }
     }
 
+    const roundIds = rows.map((r) => r.roundId).filter((id): id is string => Boolean(id));
+    type RoundInfo = {
+      mode: string;
+      courseName: string | null;
+      teeTime: Date | null;
+      targetDate: Date;
+      inviteToken: string;
+      customImageUrl: string | null;
+      courseMetadata: Record<string, unknown> | null;
+    };
+    const roundMap = new Map<string, RoundInfo>();
+    if (roundIds.length > 0) {
+      const roundRows = await db
+        .select({
+          id: rounds.id,
+          mode: rounds.mode,
+          courseName: rounds.courseName,
+          teeTime: rounds.teeTime,
+          targetDate: rounds.targetDate,
+          inviteToken: rounds.inviteToken,
+          customImageUrl: rounds.customImageUrl,
+          courseId: rounds.courseId,
+        })
+        .from(rounds)
+        .where(inArray(rounds.id, roundIds));
+
+      const courseIds = roundRows
+        .map((r) => r.courseId)
+        .filter((id): id is string => Boolean(id));
+      const courseMetaMap = new Map<string, Record<string, unknown> | null>();
+      if (courseIds.length > 0) {
+        const courseRows = await db
+          .select({ id: courses.id, metadata: courses.metadata })
+          .from(courses)
+          .where(inArray(courses.id, courseIds));
+        for (const c of courseRows) {
+          courseMetaMap.set(c.id, c.metadata as Record<string, unknown> | null);
+        }
+      }
+
+      for (const r of roundRows) {
+        roundMap.set(r.id, {
+          mode: r.mode,
+          courseName: r.courseName,
+          teeTime: r.teeTime,
+          targetDate: r.targetDate,
+          inviteToken: r.inviteToken,
+          customImageUrl: r.customImageUrl,
+          courseMetadata: r.courseId ? (courseMetaMap.get(r.courseId) ?? null) : null,
+        });
+      }
+    }
+
     const participantRows = await db
       .select({
         conversationId: conversationParticipants.conversationId,
@@ -126,10 +182,36 @@ export async function GET(req: Request) {
         .filter((a): a is string => Boolean(a))
         .slice(0, 3);
 
+      let roundMode: string | null = null;
+      let roundInviteToken: string | null = null;
+
       if (r.type === "dm") {
         const other = otherParticipants[0];
         title = other?.name ?? "Chat";
         imageUrl = other?.avatar ?? null;
+      } else if (r.type === "round" && r.roundId) {
+        const ri = roundMap.get(r.roundId);
+        if (ri) {
+          roundMode = ri.mode;
+          roundInviteToken = ri.inviteToken;
+          if (ri.mode === "scheduled") {
+            const datePart = ri.teeTime
+              ? new Date(ri.teeTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+              : new Date(ri.targetDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+            title = ri.courseName
+              ? `${ri.courseName} · ${datePart}`
+              : datePart;
+            imageUrl = resolveRoundImageUrl({
+              customImageUrl: ri.customImageUrl,
+              courseMetadata: ri.courseMetadata,
+            });
+          } else {
+            title = new Date(ri.targetDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+            imageUrl = null;
+          }
+        } else {
+          title = "Group Chat";
+        }
       } else if (r.type === "group" && r.groupId) {
         title = groupNameMap.get(r.groupId) ?? "Group Chat";
         imageUrl = groupImageMap.get(r.groupId) ?? null;
@@ -146,6 +228,8 @@ export async function GET(req: Request) {
         imageUrl,
         participantAvatars: avatars,
         isUnread,
+        roundMode,
+        roundInviteToken,
         lastMessage: {
           body: r.lastMsgBody,
           senderName: r.lastMsgSenderName,

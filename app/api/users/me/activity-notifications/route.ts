@@ -1,7 +1,7 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { inAppNotifications } from "@/db/schema";
+import { groupJoinRequests, inAppNotifications, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { toIsoTimestamp } from "@/lib/utils";
 
@@ -25,10 +25,66 @@ export async function GET(req: Request) {
       .orderBy(desc(inAppNotifications.createdAt))
       .limit(LIMIT);
 
+    const groupJoinRows = rows.filter((r) => r.type === "group_join_request");
+    const actorIdsForGroupJoins = groupJoinRows
+      .map((r) => (r.data as { actorUserId?: string }).actorUserId)
+      .filter((id): id is string => Boolean(id));
+
+    let actorProfileMap = new Map<string, { name: string; avatar: string | null }>();
+    if (actorIdsForGroupJoins.length > 0) {
+      const actorRows = await db
+        .select({ id: users.id, name: users.name, avatar: users.avatar })
+        .from(users)
+        .where(inArray(users.id, actorIdsForGroupJoins));
+      for (const a of actorRows) {
+        actorProfileMap.set(a.id, { name: a.name, avatar: a.avatar });
+      }
+    }
+
+    const groupIds = groupJoinRows
+      .map((r) => (r.data as { groupId?: string }).groupId)
+      .filter((id): id is string => Boolean(id));
+
+    let pendingRequestMap = new Map<string, { pending: boolean; requestId: string | null }>();
+    if (groupIds.length > 0 && actorIdsForGroupJoins.length > 0) {
+      const pendingRows = await db
+        .select({
+          id: groupJoinRequests.id,
+          groupId: groupJoinRequests.groupId,
+          userId: groupJoinRequests.userId,
+          status: groupJoinRequests.status,
+        })
+        .from(groupJoinRequests)
+        .where(
+          and(
+            inArray(groupJoinRequests.groupId, groupIds),
+            inArray(groupJoinRequests.userId, actorIdsForGroupJoins),
+          ),
+        );
+      for (const pr of pendingRows) {
+        pendingRequestMap.set(`${pr.groupId}:${pr.userId}`, {
+          pending: pr.status === "pending",
+          requestId: pr.id,
+        });
+      }
+    }
+
     const items = rows.flatMap((r) => {
       try {
-        const rawToken = (r.data as { inviteToken?: unknown }).inviteToken;
-        const inviteToken = typeof rawToken === "string" ? rawToken : "";
+        const d = r.data as {
+          inviteToken?: string;
+          groupId?: string;
+          actorUserId?: string;
+        };
+        const inviteToken = typeof d.inviteToken === "string" ? d.inviteToken : "";
+        const groupId = typeof d.groupId === "string" ? d.groupId : "";
+        const actorUserId = typeof d.actorUserId === "string" ? d.actorUserId : "";
+
+        const actorProfile = actorUserId ? actorProfileMap.get(actorUserId) : undefined;
+        const requestEntry = groupId && actorUserId
+          ? pendingRequestMap.get(`${groupId}:${actorUserId}`)
+          : undefined;
+
         return [
           {
             id: r.id,
@@ -36,6 +92,12 @@ export async function GET(req: Request) {
             title: r.title,
             body: r.body,
             inviteToken,
+            groupId,
+            actorUserId,
+            actorName: actorProfile?.name ?? "",
+            actorAvatar: actorProfile?.avatar ?? null,
+            stillPending: requestEntry?.pending ?? false,
+            joinRequestId: requestEntry?.requestId ?? null,
             createdAt: toIsoTimestamp(r.createdAt),
           },
         ];

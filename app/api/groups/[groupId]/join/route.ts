@@ -9,6 +9,7 @@ import {
   groups,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { notifyGroupJoinRequest } from "@/lib/notify-user";
 
 type Ctx = { params: { groupId: string } };
 
@@ -18,7 +19,7 @@ export async function POST(req: Request, { params }: Ctx) {
     const { groupId } = params;
 
     const [group] = await db
-      .select({ joinPolicy: groups.joinPolicy })
+      .select({ joinPolicy: groups.joinPolicy, name: groups.name })
       .from(groups)
       .where(eq(groups.id, groupId))
       .limit(1);
@@ -51,6 +52,14 @@ export async function POST(req: Request, { params }: Ctx) {
         .insert(groupJoinRequests)
         .values({ groupId, userId: viewer.id, status: "pending" })
         .onConflictDoNothing();
+
+      void notifyGroupJoinRequest({
+        groupId,
+        groupName: group.name,
+        requesterId: viewer.id,
+        requesterName: viewer.name,
+      }).catch((e) => console.error("[join] notifyGroupJoinRequest", e));
+
       return NextResponse.json({ status: "requested" });
     }
 

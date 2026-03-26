@@ -7,9 +7,11 @@ import {
   conversations,
   groupJoinRequests,
   groupMembers,
+  groups,
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { sendExpoPushMessages } from "@/lib/push-expo";
 
 type Ctx = { params: { groupId: string } };
 
@@ -133,6 +135,27 @@ export async function PATCH(req: Request, { params }: Ctx) {
           .values({ conversationId: conv.id, userId: request.userId })
           .onConflictDoNothing();
       }
+
+      void (async () => {
+        try {
+          const [[group], [user]] = await Promise.all([
+            db.select({ name: groups.name }).from(groups).where(eq(groups.id, groupId)).limit(1),
+            db.select({ token: users.expoPushToken }).from(users).where(eq(users.id, request.userId)).limit(1),
+          ]);
+          const token = user?.token?.trim();
+          if (token && group) {
+            await sendExpoPushMessages([{
+              to: token,
+              sound: "default",
+              title: "You're in!",
+              body: `Your request to join ${group.name} was accepted.`,
+              data: { type: "group_join_accepted", groupId },
+            }]);
+          }
+        } catch (e) {
+          console.error("[requests] push accepted user", e);
+        }
+      })();
     } else {
       await db
         .update(groupJoinRequests)

@@ -41,6 +41,7 @@ export const followStatusEnum = pgEnum("follow_status", ["requested", "accepted"
 export const notificationEventEnum = pgEnum("notification_event_type", [
   "round_rsvp_accepted",
   "round_rsvp_declined",
+  "group_join_request",
 ]);
 
 export const gameTypeEnum = pgEnum("game_type", [
@@ -128,8 +129,9 @@ export const inAppNotifications = pgTable(
     body: text("body").notNull(),
     data: jsonb("data")
       .$type<{
-        roundId: string;
-        inviteToken: string;
+        roundId?: string;
+        inviteToken?: string;
+        groupId?: string;
         actorUserId: string;
       }>()
       .notNull(),
@@ -318,53 +320,6 @@ export const gameHoleEvents = pgTable(
   }),
 );
 
-/** Group chat: host + confirmed players only (enforced in API). */
-export const roundMessages = pgTable(
-  "round_messages",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    roundId: uuid("round_id")
-      .notNull()
-      .references(() => rounds.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    body: text("body").notNull(),
-    parentId: uuid("parent_id"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    roundCreatedIdx: index("round_messages_round_id_created_at_idx").on(
-      table.roundId,
-      table.createdAt,
-    ),
-    roundIdIdx: index("round_messages_round_id_idx").on(table.roundId),
-  }),
-);
-
-export const roundMessageReactions = pgTable(
-  "round_message_reactions",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    messageId: uuid("message_id")
-      .notNull()
-      .references(() => roundMessages.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    emoji: reactionEmojiEnum("emoji").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    msgUserEmojiUnique: uniqueIndex("round_msg_reactions_msg_user_emoji_unique").on(
-      table.messageId,
-      table.userId,
-      table.emoji,
-    ),
-    messageIdx: index("round_msg_reactions_message_idx").on(table.messageId),
-  }),
-);
-
 export const conversations = pgTable(
   "conversations",
   {
@@ -467,28 +422,6 @@ export const conversationReadReceipts = pgTable(
     userConvUnique: uniqueIndex("conversation_read_receipts_user_conv_unique").on(
       table.userId,
       table.conversationId,
-    ),
-  }),
-);
-
-export const chatReadReceipts = pgTable(
-  "chat_read_receipts",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    roundId: uuid("round_id")
-      .notNull()
-      .references(() => rounds.id, { onDelete: "cascade" }),
-    lastReadAt: timestamp("last_read_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => ({
-    userRoundUnique: uniqueIndex("chat_read_receipts_user_round_unique").on(
-      table.userId,
-      table.roundId,
     ),
   }),
 );
@@ -765,9 +698,6 @@ export type Spot = typeof spots.$inferSelect;
 export type Course = typeof courses.$inferSelect;
 export type UserFollow = typeof userFollows.$inferSelect;
 export type InAppNotification = typeof inAppNotifications.$inferSelect;
-export type RoundMessage = typeof roundMessages.$inferSelect;
-export type RoundMessageReaction = typeof roundMessageReactions.$inferSelect;
-export type ChatReadReceipt = typeof chatReadReceipts.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
 export type GameSessionPlayer = typeof gameSessionPlayers.$inferSelect;
 export type GameHoleEvent = typeof gameHoleEvents.$inferSelect;

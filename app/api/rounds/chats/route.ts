@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { chatReadReceipts, courses, roundMessages, rounds, spots, users } from "@/db/schema";
+import {
+  conversationParticipants,
+  conversationReadReceipts,
+  conversations,
+  courses,
+  messages,
+  rounds,
+  spots,
+  users,
+} from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
@@ -9,23 +18,18 @@ export async function GET(req: Request) {
   try {
     const user = await requireDbUser(req);
 
-    const hostRoundIds = db
-      .select({ id: rounds.id })
-      .from(rounds)
-      .where(eq(rounds.hostId, user.id));
-
-    const confirmedRoundIds = db
-      .select({ id: spots.roundId })
-      .from(spots)
-      .where(and(eq(spots.userId, user.id), eq(spots.status, "confirmed")));
+    const viewerConvIds = db
+      .select({ conversationId: conversationParticipants.conversationId })
+      .from(conversationParticipants)
+      .where(eq(conversationParticipants.userId, user.id));
 
     const latestMsgSubquery = db
       .select({
-        roundId: roundMessages.roundId,
-        lastCreatedAt: sql<string>`MAX(${roundMessages.createdAt})`.as("last_created_at"),
+        conversationId: messages.conversationId,
+        lastCreatedAt: sql<string>`MAX(${messages.createdAt})`.as("last_created_at"),
       })
-      .from(roundMessages)
-      .groupBy(roundMessages.roundId)
+      .from(messages)
+      .groupBy(messages.conversationId)
       .as("latest_msg");
 
     const rows = await db
@@ -40,21 +44,25 @@ export async function GET(req: Request) {
         courseId: rounds.courseId,
         customImageUrl: rounds.customImageUrl,
         lastMessageAt: latestMsgSubquery.lastCreatedAt,
-        lastMsgBody: roundMessages.body,
+        lastMsgBody: messages.body,
         lastMsgSenderName: users.name,
       })
-      .from(rounds)
-      .innerJoin(latestMsgSubquery, eq(latestMsgSubquery.roundId, rounds.id))
+      .from(conversations)
+      .innerJoin(rounds, eq(rounds.id, conversations.roundId))
+      .innerJoin(latestMsgSubquery, eq(latestMsgSubquery.conversationId, conversations.id))
       .innerJoin(
-        roundMessages,
+        messages,
         and(
-          eq(roundMessages.roundId, rounds.id),
-          eq(roundMessages.createdAt, latestMsgSubquery.lastCreatedAt),
+          eq(messages.conversationId, conversations.id),
+          eq(messages.createdAt, latestMsgSubquery.lastCreatedAt),
         ),
       )
-      .innerJoin(users, eq(users.id, roundMessages.userId))
+      .innerJoin(users, eq(users.id, messages.userId))
       .where(
-        sql`${rounds.id} IN (${hostRoundIds}) OR ${rounds.id} IN (${confirmedRoundIds})`,
+        and(
+          eq(conversations.type, "round"),
+          sql`${conversations.id} IN (${viewerConvIds})`,
+        ),
       )
       .orderBy(desc(latestMsgSubquery.lastCreatedAt));
 
@@ -105,16 +113,39 @@ export async function GET(req: Request) {
       }
     }
 
+    const convIdsByRound = new Map<string, string>();
+    const convRows = roundIds.length > 0
+      ? await db
+          .select({ id: conversations.id, roundId: conversations.roundId })
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.type, "round"),
+              inArray(conversations.roundId, roundIds),
+            ),
+          )
+      : [];
+    for (const c of convRows) {
+      if (c.roundId) convIdsByRound.set(c.roundId, c.id);
+    }
+
+    const convIds = [...convIdsByRound.values()];
     const readReceiptMap = new Map<string, Date>();
-    if (roundIds.length > 0) {
+    if (convIds.length > 0) {
       const receipts = await db
-        .select({ roundId: chatReadReceipts.roundId, lastReadAt: chatReadReceipts.lastReadAt })
-        .from(chatReadReceipts)
+        .select({
+          conversationId: conversationReadReceipts.conversationId,
+          lastReadAt: conversationReadReceipts.lastReadAt,
+        })
+        .from(conversationReadReceipts)
         .where(
-          and(eq(chatReadReceipts.userId, user.id), inArray(chatReadReceipts.roundId, roundIds)),
+          and(
+            eq(conversationReadReceipts.userId, user.id),
+            inArray(conversationReadReceipts.conversationId, convIds),
+          ),
         );
       for (const rc of receipts) {
-        readReceiptMap.set(rc.roundId, rc.lastReadAt);
+        readReceiptMap.set(rc.conversationId, rc.lastReadAt);
       }
     }
 
@@ -146,7 +177,9 @@ export async function GET(req: Request) {
       }
       const playerAvatars = avatarsByRound.get(r.roundId) ?? [];
       const msgIso = new Date(r.lastMessageAt).toISOString();
-      const lastRead = readReceiptMap.get(r.roundId);
+
+      const convId = convIdsByRound.get(r.roundId);
+      const lastRead = convId ? readReceiptMap.get(convId) : undefined;
       const isUnread = !lastRead || new Date(r.lastMessageAt).getTime() > lastRead.getTime();
 
       return {

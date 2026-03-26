@@ -2,13 +2,12 @@ import { NextResponse } from "next/server";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { courses, roundMessages, rounds, spots, users } from "@/db/schema";
+import { conversationParticipants, conversations, courses, messages, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { ensureDbUser, requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
-import { canAccessRoundChat } from "@/lib/round-chat-access";
 
 type RouteContext = {
   params: { token: string };
@@ -161,25 +160,45 @@ export async function GET(req: Request, { params }: RouteContext) {
     .where(and(eq(spots.roundId, round.id), eq(spots.status, "declined")))
     .orderBy(asc(spots.createdAt));
 
-  const chatAllowed =
-    currentUser != null && (await canAccessRoundChat(round.id, currentUser.id));
+  const [conv] = currentUser
+    ? await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(eq(conversations.roundId, round.id), eq(conversations.type, "round")))
+        .limit(1)
+    : [undefined];
+
+  let chatAllowed = false;
+  if (conv && currentUser) {
+    const [participant] = await db
+      .select({ id: conversationParticipants.id })
+      .from(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, conv.id),
+          eq(conversationParticipants.userId, currentUser.id),
+        ),
+      )
+      .limit(1);
+    chatAllowed = Boolean(participant);
+  }
 
   let lastChatMessage: {
     body: string;
     senderName: string;
     createdAt: string;
   } | null = null;
-  if (chatAllowed) {
+  if (chatAllowed && conv) {
     const [lastRow] = await db
       .select({
-        body: roundMessages.body,
-        createdAt: roundMessages.createdAt,
+        body: messages.body,
+        createdAt: messages.createdAt,
         senderName: users.name,
       })
-      .from(roundMessages)
-      .innerJoin(users, eq(users.id, roundMessages.userId))
-      .where(eq(roundMessages.roundId, round.id))
-      .orderBy(desc(roundMessages.createdAt))
+      .from(messages)
+      .innerJoin(users, eq(users.id, messages.userId))
+      .where(eq(messages.conversationId, conv.id))
+      .orderBy(desc(messages.createdAt))
       .limit(1);
     if (lastRow) {
       lastChatMessage = {

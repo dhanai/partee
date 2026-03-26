@@ -1,56 +1,57 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { rounds, spots } from "@/db/schema";
+import { conversationParticipants, conversations } from "@/db/schema";
 
 /**
- * Host + confirmed players (for chat push), excluding `excludeUserId` (usually the sender).
+ * Conversation participants for round chat push (excluding sender).
  */
 export async function listRoundChatPushRecipientUserIds(
   roundId: string,
   excludeUserId: string,
 ): Promise<string[]> {
-  const [row] = await db
-    .select({ hostId: rounds.hostId })
-    .from(rounds)
-    .where(eq(rounds.id, roundId))
+  const [conv] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(eq(conversations.roundId, roundId), eq(conversations.type, "round")))
     .limit(1);
 
-  if (!row) return [];
+  if (!conv) return [];
 
-  const confirmed = await db
-    .select({ userId: spots.userId })
-    .from(spots)
-    .where(and(eq(spots.roundId, roundId), eq(spots.status, "confirmed")));
-
-  const ids = new Set<string>();
-  ids.add(row.hostId);
-  for (const s of confirmed) ids.add(s.userId);
-  ids.delete(excludeUserId);
-  return Array.from(ids);
-}
-
-/** Host or confirmed spot on the round may use group chat. */
-export async function canAccessRoundChat(roundId: string, viewerUserId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ hostId: rounds.hostId })
-    .from(rounds)
-    .where(eq(rounds.id, roundId))
-    .limit(1);
-
-  if (!row) return false;
-  if (row.hostId === viewerUserId) return true;
-
-  const [spot] = await db
-    .select({ id: spots.id })
-    .from(spots)
+  const rows = await db
+    .select({ userId: conversationParticipants.userId })
+    .from(conversationParticipants)
     .where(
       and(
-        eq(spots.roundId, roundId),
-        eq(spots.userId, viewerUserId),
-        eq(spots.status, "confirmed"),
+        eq(conversationParticipants.conversationId, conv.id),
+        ne(conversationParticipants.userId, excludeUserId),
+      ),
+    );
+
+  return rows.map((r) => r.userId);
+}
+
+/**
+ * Whether a user is a participant in the round's conversation.
+ */
+export async function canAccessRoundChat(roundId: string, viewerUserId: string): Promise<boolean> {
+  const [conv] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(eq(conversations.roundId, roundId), eq(conversations.type, "round")))
+    .limit(1);
+
+  if (!conv) return false;
+
+  const [participant] = await db
+    .select({ id: conversationParticipants.id })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conv.id),
+        eq(conversationParticipants.userId, viewerUserId),
       ),
     )
     .limit(1);
 
-  return Boolean(spot);
+  return Boolean(participant);
 }

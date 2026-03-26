@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { courses, rounds, spots, users } from "@/db/schema";
+import { conversationParticipants, conversations, courses, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { notifyRoundInvites } from "@/lib/notify-user";
@@ -179,6 +179,14 @@ export async function POST(req: Request) {
         userId: user.id,
         status: "confirmed",
       });
+
+      const [conv] = await tx
+        .insert(conversations)
+        .values({ type: "round", roundId: newRound.id })
+        .returning({ id: conversations.id });
+      await tx
+        .insert(conversationParticipants)
+        .values({ conversationId: conv.id, userId: user.id });
 
       if (dedupedInviteeIds.length > 0) {
         const validInvitees = await tx

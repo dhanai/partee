@@ -10,6 +10,11 @@ import {
   publishRsvpToast,
 } from "@/lib/parfade-ably-publish";
 import { formatChatPushTitleLine } from "@/lib/round-invite-push-message";
+import {
+  ensureRoundChatParticipant,
+  getOrCreateRoundConversation,
+  removeRoundChatParticipant,
+} from "@/lib/round-conversation";
 import { delay } from "@/lib/utils";
 
 const joinSchema = z.object({
@@ -28,6 +33,23 @@ function desiredStatus(action: z.infer<typeof joinSchema>["action"], joinPolicy:
     return "requested" as const;
   }
   return "confirmed" as const;
+}
+
+async function syncRoundConversationParticipant(
+  roundId: string,
+  userId: string,
+  spotStatus: "confirmed" | "requested" | "declined",
+) {
+  try {
+    const convId = await getOrCreateRoundConversation(roundId);
+    if (spotStatus === "confirmed") {
+      await ensureRoundChatParticipant(convId, userId);
+    } else {
+      await removeRoundChatParticipant(convId, userId);
+    }
+  } catch (e) {
+    console.error("[join] sync conversation participant", e);
+  }
 }
 
 export async function POST(req: Request, { params }: RouteContext) {
@@ -87,6 +109,7 @@ export async function POST(req: Request, { params }: RouteContext) {
           .returning({ id: spots.id });
 
         if (updated.length > 0) {
+          void syncRoundConversationParticipant(round.id, user.id, targetStatus);
           void recordHostRoundRsvpAndMaybePush({
             hostId: round.hostId,
             guestId: user.id,
@@ -130,6 +153,7 @@ export async function POST(req: Request, { params }: RouteContext) {
             userId: user.id,
             status: targetStatus,
           });
+          void syncRoundConversationParticipant(round.id, user.id, targetStatus);
           void recordHostRoundRsvpAndMaybePush({
             hostId: round.hostId,
             guestId: user.id,
@@ -177,7 +201,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       { error: "Spot update conflict. Please retry." },
       { status: 409 },
     );
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Invalid join payload.", issues: error.flatten() },

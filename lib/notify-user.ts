@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { conversationParticipants, inAppNotifications, users } from "@/db/schema";
+import { conversationParticipants, groupMembers, inAppNotifications, users } from "@/db/schema";
 import { listRoundChatPushRecipientUserIds } from "@/lib/round-chat-access";
 import {
   buildHostRsvpNotificationCopy,
@@ -323,6 +323,67 @@ export async function notifyConversationMessage(input: {
         type: "conversation_message",
         conversationId: input.conversationId,
       },
+    })),
+  );
+}
+
+export async function notifyGroupJoinRequest(input: {
+  groupId: string;
+  groupName: string;
+  requesterId: string;
+  requesterName: string;
+}): Promise<void> {
+  const adminRows = await db
+    .select({ userId: groupMembers.userId, role: groupMembers.role })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, input.groupId));
+
+  const recipientIds = adminRows
+    .filter((r) => (r.role === "owner" || r.role === "admin") && r.userId !== input.requesterId)
+    .map((r) => r.userId);
+
+  if (recipientIds.length === 0) return;
+
+  const title = `${input.groupName}`;
+  const body = `${formatInviterFirstLastInitial(input.requesterName)} wants to join your group.`;
+
+  await Promise.all(
+    recipientIds.map((adminId) =>
+      db.insert(inAppNotifications).values({
+        recipientUserId: adminId,
+        type: "group_join_request",
+        title,
+        body,
+        data: {
+          groupId: input.groupId,
+          actorUserId: input.requesterId,
+        },
+      }),
+    ),
+  );
+
+  for (const adminId of recipientIds) {
+    publishNotificationBadgeNudge(adminId, "group-join-request");
+  }
+
+  const tokenRows = await db
+    .select({ token: users.expoPushToken })
+    .from(users)
+    .where(inArray(users.id, recipientIds));
+
+  const tokens = tokenRows
+    .map((r) => r.token?.trim())
+    .filter((t): t is string => Boolean(t));
+
+  if (tokens.length === 0) return;
+
+  await sendExpoPushMessages(
+    tokens.map((to) => ({
+      to,
+      sound: "default" as const,
+      title,
+      body,
+      data: { type: "group_join_request", groupId: input.groupId },
     })),
   );
 }

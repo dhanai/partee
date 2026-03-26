@@ -2,9 +2,14 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { rounds, roundMessages, roundMessageReactions } from "@/db/schema";
+import {
+  conversationParticipants,
+  conversations,
+  messageReactions,
+  messages,
+  rounds,
+} from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
-import { canAccessRoundChat } from "@/lib/round-chat-access";
 
 type RouteContext = { params: { token: string; messageId: string } };
 
@@ -14,29 +19,49 @@ const postSchema = z.object({
   emoji: z.enum(VALID_EMOJIS),
 });
 
+async function canAccessChat(token: string, viewerId: string) {
+  const [round] = await db
+    .select({ id: rounds.id })
+    .from(rounds)
+    .where(eq(rounds.inviteToken, token))
+    .limit(1);
+  if (!round) return null;
+
+  const [conv] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(eq(conversations.roundId, round.id), eq(conversations.type, "round")))
+    .limit(1);
+  if (!conv) return null;
+
+  const [participant] = await db
+    .select({ id: conversationParticipants.id })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conv.id),
+        eq(conversationParticipants.userId, viewerId),
+      ),
+    )
+    .limit(1);
+
+  return participant ? conv.id : null;
+}
+
 export async function POST(req: Request, { params }: RouteContext) {
   try {
     const viewer = await requireDbUser(req);
     const { token, messageId } = params;
 
-    const [round] = await db
-      .select({ id: rounds.id })
-      .from(rounds)
-      .where(eq(rounds.inviteToken, token))
-      .limit(1);
-
-    if (!round) {
-      return NextResponse.json({ error: "Round not found." }, { status: 404 });
-    }
-
-    if (!(await canAccessRoundChat(round.id, viewer.id))) {
+    const conversationId = await canAccessChat(token, viewer.id);
+    if (!conversationId) {
       return NextResponse.json({ error: "Access denied." }, { status: 403 });
     }
 
     const [msg] = await db
-      .select({ id: roundMessages.id })
-      .from(roundMessages)
-      .where(and(eq(roundMessages.id, messageId), eq(roundMessages.roundId, round.id)))
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
       .limit(1);
 
     if (!msg) {
@@ -46,16 +71,16 @@ export async function POST(req: Request, { params }: RouteContext) {
     const { emoji } = postSchema.parse(await req.json());
 
     await db
-      .delete(roundMessageReactions)
+      .delete(messageReactions)
       .where(
         and(
-          eq(roundMessageReactions.messageId, messageId),
-          eq(roundMessageReactions.userId, viewer.id),
+          eq(messageReactions.messageId, messageId),
+          eq(messageReactions.userId, viewer.id),
         ),
       );
 
     await db
-      .insert(roundMessageReactions)
+      .insert(messageReactions)
       .values({ messageId, userId: viewer.id, emoji })
       .onConflictDoNothing();
 
@@ -77,17 +102,8 @@ export async function DELETE(req: Request, { params }: RouteContext) {
     const viewer = await requireDbUser(req);
     const { token, messageId } = params;
 
-    const [round] = await db
-      .select({ id: rounds.id })
-      .from(rounds)
-      .where(eq(rounds.inviteToken, token))
-      .limit(1);
-
-    if (!round) {
-      return NextResponse.json({ error: "Round not found." }, { status: 404 });
-    }
-
-    if (!(await canAccessRoundChat(round.id, viewer.id))) {
+    const conversationId = await canAccessChat(token, viewer.id);
+    if (!conversationId) {
       return NextResponse.json({ error: "Access denied." }, { status: 403 });
     }
 
@@ -99,12 +115,12 @@ export async function DELETE(req: Request, { params }: RouteContext) {
     }
 
     await db
-      .delete(roundMessageReactions)
+      .delete(messageReactions)
       .where(
         and(
-          eq(roundMessageReactions.messageId, messageId),
-          eq(roundMessageReactions.userId, viewer.id),
-          eq(roundMessageReactions.emoji, emoji as typeof VALID_EMOJIS[number]),
+          eq(messageReactions.messageId, messageId),
+          eq(messageReactions.userId, viewer.id),
+          eq(messageReactions.emoji, emoji as typeof VALID_EMOJIS[number]),
         ),
       );
 

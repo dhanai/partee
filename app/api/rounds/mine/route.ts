@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { chatReadReceipts, courses, roundMessages, rounds, spots, users } from "@/db/schema";
+import { conversationReadReceipts, conversations, courses, messages, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { requireDbUser } from "@/lib/auth";
 import { resolveRoundImageUrl } from "@/lib/round-images";
@@ -54,16 +54,33 @@ export async function GET(req: Request) {
     const cursor = Number.isFinite(parsedCursor) ? Math.max(0, Math.trunc(parsedCursor)) : 0;
     const now = new Date();
 
-    const lastChatSubquery = sql<string | null>`(SELECT MAX(${roundMessages.createdAt}) FROM ${roundMessages} WHERE ${roundMessages.roundId} = ${rounds.id})`;
+    const lastChatSubquery = sql<string | null>`(
+      SELECT MAX(${messages.createdAt})
+      FROM ${messages}
+      INNER JOIN ${conversations} ON ${conversations.id} = ${messages.conversationId}
+      WHERE ${conversations.roundId} = ${rounds.id} AND ${conversations.type} = 'round'
+    )`;
 
     const isChatUnreadSubquery = sql<boolean>`(
       SELECT CASE
-        WHEN MAX(${roundMessages.createdAt}) IS NULL THEN false
-        WHEN (SELECT ${chatReadReceipts.lastReadAt} FROM ${chatReadReceipts} WHERE ${chatReadReceipts.userId} = ${sql.raw(`'${user.id}'`)} AND ${chatReadReceipts.roundId} = ${rounds.id}) IS NULL THEN true
-        WHEN MAX(${roundMessages.createdAt}) > (SELECT ${chatReadReceipts.lastReadAt} FROM ${chatReadReceipts} WHERE ${chatReadReceipts.userId} = ${sql.raw(`'${user.id}'`)} AND ${chatReadReceipts.roundId} = ${rounds.id}) THEN true
+        WHEN lm.last_msg IS NULL THEN false
+        WHEN lr.last_read IS NULL THEN true
+        WHEN lm.last_msg > lr.last_read THEN true
         ELSE false
       END
-      FROM ${roundMessages} WHERE ${roundMessages.roundId} = ${rounds.id}
+      FROM (
+        SELECT MAX(${messages.createdAt}) AS last_msg
+        FROM ${messages}
+        INNER JOIN ${conversations} ON ${conversations.id} = ${messages.conversationId}
+        WHERE ${conversations.roundId} = ${rounds.id} AND ${conversations.type} = 'round'
+      ) lm,
+      (
+        SELECT MAX(${conversationReadReceipts.lastReadAt}) AS last_read
+        FROM ${conversationReadReceipts}
+        INNER JOIN ${conversations} ON ${conversations.id} = ${conversationReadReceipts.conversationId}
+        WHERE ${conversationReadReceipts.userId} = ${sql.raw(`'${user.id}'`)}
+          AND ${conversations.roundId} = ${rounds.id} AND ${conversations.type} = 'round'
+      ) lr
     )`.mapWith(Boolean);
 
     const hosting = await db

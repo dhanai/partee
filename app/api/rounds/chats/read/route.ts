@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { chatReadReceipts, rounds } from "@/db/schema";
+import { conversationReadReceipts, conversations, rounds } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 
 export async function POST(req: Request) {
@@ -27,12 +27,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Round not found" }, { status: 404 });
     }
 
+    const [conv] = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(and(eq(conversations.roundId, round.id), eq(conversations.type, "round")))
+      .limit(1);
+
+    if (!conv) {
+      return NextResponse.json({ error: "Chat not found" }, { status: 404 });
+    }
+
     const now = new Date();
     await db
-      .insert(chatReadReceipts)
-      .values({ userId: user.id, roundId: round.id, lastReadAt: now })
+      .insert(conversationReadReceipts)
+      .values({ userId: user.id, conversationId: conv.id, lastReadAt: now })
       .onConflictDoUpdate({
-        target: [chatReadReceipts.userId, chatReadReceipts.roundId],
+        target: [conversationReadReceipts.userId, conversationReadReceipts.conversationId],
         set: { lastReadAt: now },
       });
 
