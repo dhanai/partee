@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribeNotificationsListsRefresh } from "../lib/notifications-list-refresh";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
+import { apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../lib/api";
 import { buildRoundListHint, prefetchRoundOpen } from "../lib/round-details-cache";
 import { useNotificationBadge } from "../lib/notification-badge-context";
 import { colors } from "../lib/theme";
@@ -27,15 +27,23 @@ type FollowRequestsResponse = {
   }>;
 };
 
+type ActivityNotificationItem = {
+  id: string;
+  type: "round_rsvp_accepted" | "round_rsvp_declined" | "group_join_request";
+  title: string;
+  body: string;
+  inviteToken: string;
+  groupId: string;
+  actorUserId: string;
+  actorName: string;
+  actorAvatar: string | null;
+  stillPending: boolean;
+  joinRequestId: string | null;
+  createdAt: string;
+};
+
 type ActivityNotificationsResponse = {
-  items: Array<{
-    id: string;
-    type: "round_rsvp_accepted" | "round_rsvp_declined";
-    title: string;
-    body: string;
-    inviteToken: string;
-    createdAt: string;
-  }>;
+  items: ActivityNotificationItem[];
 };
 
 export default function NotificationsScreen() {
@@ -47,11 +55,12 @@ export default function NotificationsScreen() {
   const getTokenRef = useRef(getToken);
   const [loading, setLoading] = useState(true);
   const [inviteNotifications, setInviteNotifications] = useState<MineRound[]>([]);
-  const [activityItems, setActivityItems] = useState<ActivityNotificationsResponse["items"]>([]);
+  const [activityItems, setActivityItems] = useState<ActivityNotificationItem[]>([]);
   const [followRequestNotifications, setFollowRequestNotifications] = useState<
     FollowRequestsResponse["requests"]
   >([]);
   const [requestBusyId, setRequestBusyId] = useState<string | null>(null);
+  const [groupRequestBusyId, setGroupRequestBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -170,6 +179,30 @@ export default function NotificationsScreen() {
     }
   }
 
+  async function handleGroupRequestAction(
+    groupId: string,
+    joinRequestId: string,
+    action: "accept" | "decline",
+  ) {
+    setGroupRequestBusyId(joinRequestId);
+    try {
+      const authToken = await getTokenRef.current();
+      await apiPatch(`/api/groups/${groupId}/requests`, { requestId: joinRequestId, action }, authToken);
+      setActivityItems((prev) =>
+        prev.map((item) =>
+          item.joinRequestId === joinRequestId
+            ? { ...item, stillPending: false }
+            : item,
+        ),
+      );
+      await refreshNotificationBadge();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Unable to process request.");
+    } finally {
+      setGroupRequestBusyId(null);
+    }
+  }
+
   function formatWhen(round: MineRound) {
     const effectiveDate = new Date(round.teeTime ?? round.targetDate);
     const dateText = effectiveDate.toLocaleDateString();
@@ -201,35 +234,94 @@ export default function NotificationsScreen() {
         </View>
       ) : (
         <>
-          {activityItems.length > 0 ? (
+          {activityItems.filter((i) => i.type === "group_join_request").length > 0 ? (
+            <View style={styles.notificationsList}>
+              <Text style={styles.sectionMiniTitle}>Group requests</Text>
+              {activityItems
+                .filter((i) => i.type === "group_join_request")
+                .map((item) => (
+                  <View key={`gjr-${item.id}`} style={styles.notificationCard}>
+                    <Pressable
+                      style={styles.notificationRow}
+                      onPress={() => {
+                        if (item.actorUserId) {
+                          router.push({
+                            pathname: "/profile/[userId]",
+                            params: { userId: item.actorUserId, userName: item.actorName, userAvatar: item.actorAvatar ?? "" },
+                          });
+                        }
+                      }}
+                    >
+                      {item.actorAvatar ? (
+                        <Image source={{ uri: toAbsoluteUrl(item.actorAvatar) }} style={styles.notificationAvatar} />
+                      ) : (
+                        <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                          <Text style={styles.notificationAvatarInitial}>
+                            {item.actorName.trim().charAt(0).toUpperCase() || "?"}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.notificationMetaWrap}>
+                        <Text style={styles.notificationTitle}>{item.actorName || item.title}</Text>
+                        <Text style={styles.notificationMeta}>Wants to join {item.title}</Text>
+                      </View>
+                    </Pressable>
+                    {item.stillPending && item.joinRequestId ? (
+                      <View style={styles.notificationActionsRow}>
+                        <Pressable
+                          style={[styles.requestBtn, styles.requestApprove, groupRequestBusyId === item.joinRequestId && styles.disabledBtn]}
+                          onPress={() => void handleGroupRequestAction(item.groupId, item.joinRequestId!, "accept")}
+                          disabled={groupRequestBusyId === item.joinRequestId}
+                        >
+                          <Text style={styles.requestApproveText}>Approve</Text>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.requestBtn, styles.requestDecline, groupRequestBusyId === item.joinRequestId && styles.disabledBtn]}
+                          onPress={() => void handleGroupRequestAction(item.groupId, item.joinRequestId!, "decline")}
+                          disabled={groupRequestBusyId === item.joinRequestId}
+                        >
+                          <Text style={styles.requestDeclineText}>Decline</Text>
+                        </Pressable>
+                      </View>
+                    ) : !item.stillPending ? (
+                      <Text style={[styles.notificationPill, styles.notificationPillMuted]}>Handled</Text>
+                    ) : null}
+                  </View>
+                ))}
+            </View>
+          ) : null}
+
+          {activityItems.filter((i) => i.type !== "group_join_request").length > 0 ? (
             <View style={styles.notificationsList}>
               <Text style={styles.sectionMiniTitle}>Round updates</Text>
-              {activityItems.map((item) => (
-                <Pressable
-                  key={`activity-${item.id}`}
-                  style={styles.notificationCard}
-                  onPressIn={() =>
-                    prefetchRoundOpen(item.inviteToken, "", () => getTokenRef.current())
-                  }
-                  onPress={() =>
-                    router.push({
-                      pathname: "/round/[token]",
-                      params: { token: item.inviteToken },
-                    })
-                  }
-                >
-                  <Text style={styles.notificationTitle}>{item.title}</Text>
-                  <Text style={styles.notificationMeta}>{item.body}</Text>
-                  <Text
-                    style={[
-                      styles.notificationPill,
-                      item.type === "round_rsvp_declined" && styles.notificationPillMuted,
-                    ]}
+              {activityItems
+                .filter((i) => i.type !== "group_join_request")
+                .map((item) => (
+                  <Pressable
+                    key={`activity-${item.id}`}
+                    style={styles.notificationCard}
+                    onPressIn={() =>
+                      prefetchRoundOpen(item.inviteToken, "", () => getTokenRef.current())
+                    }
+                    onPress={() =>
+                      router.push({
+                        pathname: "/round/[token]",
+                        params: { token: item.inviteToken },
+                      })
+                    }
                   >
-                    {item.type === "round_rsvp_declined" ? "Declined" : "RSVP"}
-                  </Text>
-                </Pressable>
-              ))}
+                    <Text style={styles.notificationTitle}>{item.title}</Text>
+                    <Text style={styles.notificationMeta}>{item.body}</Text>
+                    <Text
+                      style={[
+                        styles.notificationPill,
+                        item.type === "round_rsvp_declined" && styles.notificationPillMuted,
+                      ]}
+                    >
+                      {item.type === "round_rsvp_declined" ? "Declined" : "RSVP"}
+                    </Text>
+                  </Pressable>
+                ))}
             </View>
           ) : null}
 

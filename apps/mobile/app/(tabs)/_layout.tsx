@@ -9,12 +9,14 @@ import { NotificationMustardDot } from "../../components/notification-mustard-do
 import { ParfadeLogo } from "../../components/parfade-logo";
 import { apiGet } from "../../lib/api";
 import { isMeProfileStale, setCachedMeProfile, type MeProfile } from "../../lib/me-profile-cache";
+import { useChatUnread } from "../../lib/chat-unread-context";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
 import { colors } from "../../lib/theme";
 
 export default function TabsLayout() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { showBadge: showNotificationBadge } = useNotificationBadge();
+  const { hasAnyUnreadChat } = useChatUnread();
   const [createSheetOpen, setCreateSheetOpen] = useState(false);
   const showAdvancedCreateTypes = false;
   const getTokenRef = useRef(getToken);
@@ -128,7 +130,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, focused }) => (
               <View style={styles.tabIconWrap}>
                 <Ionicons name={focused ? "list" : "list-outline"} size={22} color={color} />
-                {showNotificationBadge ? (
+                {showNotificationBadge || hasAnyUnreadChat ? (
                   <NotificationMustardDot style={styles.tabBarNotificationDot} />
                 ) : null}
               </View>

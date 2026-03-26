@@ -10,7 +10,17 @@ export type ParfadeRealtimeMessageV1 =
       inviteToken: string;
       roundTitle: string;
       senderLabel: string;
+      senderAvatar?: string;
       bodyPreview: string;
+    }
+  | {
+      v: 1;
+      type: "rsvp-toast";
+      inviteToken: string;
+      roundTitle: string;
+      guestName: string;
+      guestAvatar?: string;
+      spotStatus: "confirmed" | "requested" | "declined";
     };
 
 export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessageV1 | null {
@@ -65,6 +75,7 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
       inviteToken?: unknown;
       roundTitle?: unknown;
       senderLabel?: unknown;
+      senderAvatar?: unknown;
       bodyPreview?: unknown;
     };
     if (
@@ -79,7 +90,33 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
         inviteToken: r.inviteToken,
         roundTitle: r.roundTitle,
         senderLabel: r.senderLabel,
+        senderAvatar: typeof r.senderAvatar === "string" ? r.senderAvatar : undefined,
         bodyPreview: r.bodyPreview,
+      };
+    }
+  }
+  if (o.type === "rsvp-toast") {
+    const r = raw as {
+      inviteToken?: unknown;
+      roundTitle?: unknown;
+      guestName?: unknown;
+      guestAvatar?: unknown;
+      spotStatus?: unknown;
+    };
+    if (
+      typeof r.inviteToken === "string" &&
+      typeof r.roundTitle === "string" &&
+      typeof r.guestName === "string" &&
+      (r.spotStatus === "confirmed" || r.spotStatus === "requested" || r.spotStatus === "declined")
+    ) {
+      return {
+        v: 1,
+        type: "rsvp-toast",
+        inviteToken: r.inviteToken,
+        roundTitle: r.roundTitle,
+        guestName: r.guestName,
+        guestAvatar: typeof r.guestAvatar === "string" ? r.guestAvatar : undefined,
+        spotStatus: r.spotStatus,
       };
     }
   }

@@ -1,16 +1,16 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter, Stack } from "expo-router";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { NotificationMustardDot } from "../components/notification-mustard-dot";
 import { apiGet, toAbsoluteUrl } from "../lib/api";
 import { useChatUnread } from "../lib/chat-unread-context";
@@ -18,12 +18,15 @@ import { colors } from "../lib/theme";
 
 type ConversationRow = {
   id: string;
-  type: "dm" | "round";
+  type: "dm" | "round" | "group";
   roundId: string | null;
+  groupId: string | null;
   title: string;
   imageUrl: string | null;
   participantAvatars: string[];
   isUnread: boolean;
+  roundMode: string | null;
+  roundInviteToken: string | null;
   lastMessage: {
     body: string;
     senderName: string;
@@ -33,33 +36,9 @@ type ConversationRow = {
   participantCount: number;
 };
 
-type LegacyChatRow = {
-  inviteToken: string;
-  courseName: string;
-  imageUrl: string | null;
-  playerAvatars: string[];
-  isUnread: boolean;
-  lastChatMessage: {
-    body: string;
-    senderName: string;
-    createdAt: string;
-  };
-};
-
 type ConversationsResponse = { conversations: ConversationRow[] };
-type LegacyChatsResponse = { chats: LegacyChatRow[] };
 
-type UnifiedRow = {
-  id: string;
-  type: "dm" | "round";
-  roundInviteToken?: string;
-  conversationId?: string;
-  title: string;
-  imageUrl: string | null;
-  avatars: string[];
-  isUnread: boolean;
-  lastMessage: { body: string; senderName: string; createdAt: string };
-};
+const AVATAR_SIZE = 48;
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -74,14 +53,107 @@ function relativeTime(iso: string): string {
   return `${weeks}w`;
 }
 
+function ChatAvatar({ item }: { item: ConversationRow }) {
+  if (item.type === "dm" && item.imageUrl) {
+    return (
+      <Image
+        source={toAbsoluteUrl(item.imageUrl)}
+        style={styles.avatar}
+        contentFit="cover"
+        transition={0}
+      />
+    );
+  }
+
+  if (item.type === "round" && item.roundMode === "scheduled" && item.imageUrl) {
+    return (
+      <Image
+        source={toAbsoluteUrl(item.imageUrl)}
+        style={styles.avatar}
+        contentFit="cover"
+        transition={0}
+      />
+    );
+  }
+
+  const avatars = item.participantAvatars;
+
+  if (avatars.length === 0) {
+    return (
+      <View style={[styles.avatar, styles.avatarPlaceholder]}>
+        <Ionicons
+          name={item.type === "dm" ? "person-outline" : "people-outline"}
+          size={22}
+          color={colors.muted}
+        />
+      </View>
+    );
+  }
+
+  if (avatars.length === 1) {
+    return (
+      <Image
+        source={toAbsoluteUrl(avatars[0])}
+        style={styles.avatar}
+        contentFit="cover"
+        transition={0}
+      />
+    );
+  }
+
+  if (avatars.length === 2) {
+    return (
+      <View style={styles.avatarGroup}>
+        <Image
+          source={toAbsoluteUrl(avatars[0])}
+          style={styles.avatarTwo1}
+          contentFit="cover"
+          transition={0}
+        />
+        <Image
+          source={toAbsoluteUrl(avatars[1])}
+          style={styles.avatarTwo2}
+          contentFit="cover"
+          transition={0}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.avatarGroup}>
+      <Image
+        source={toAbsoluteUrl(avatars[0])}
+        style={styles.avatarThreeLarge}
+        contentFit="cover"
+        transition={0}
+      />
+      <View style={styles.avatarThreeStack}>
+        <Image
+          source={toAbsoluteUrl(avatars[1])}
+          style={styles.avatarThreeSmall}
+          contentFit="cover"
+          transition={0}
+        />
+        <Image
+          source={toAbsoluteUrl(avatars[2])}
+          style={styles.avatarThreeSmall}
+          contentFit="cover"
+          transition={0}
+        />
+      </View>
+    </View>
+  );
+}
+
 export default function ChatsScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
-  const { reportRounds, reportConversations } = useChatUnread();
+  const { reportConversations } = useChatUnread();
 
-  const [rows, setRows] = useState<UnifiedRow[]>([]);
+  const [rows, setRows] = useState<ConversationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,74 +162,17 @@ export default function ChatsScreen() {
     try {
       setError(null);
       const authToken = await getTokenRef.current();
-
-      const [convResult, legacyResult] = await Promise.allSettled([
-        apiGet<ConversationsResponse>("/api/conversations", authToken),
-        apiGet<LegacyChatsResponse>("/api/rounds/chats", authToken),
-      ]);
-
-      const unified: UnifiedRow[] = [];
-      const seenRoundIds = new Set<string>();
-
-      if (convResult.status === "fulfilled") {
-        const convos = convResult.value.conversations;
-        reportConversations(convos.map((c) => ({ id: c.id, isUnread: c.isUnread })));
-        for (const c of convos) {
-          if (c.roundId) seenRoundIds.add(c.roundId);
-          unified.push({
-            id: c.id,
-            type: c.type,
-            conversationId: c.id,
-            title: c.title,
-            imageUrl: c.imageUrl,
-            avatars: c.participantAvatars,
-            isUnread: c.isUnread,
-            lastMessage: {
-              body: c.lastMessage.body,
-              senderName: c.lastMessage.senderName,
-              createdAt: c.lastMessage.createdAt,
-            },
-          });
-        }
-      }
-
-      if (legacyResult.status === "fulfilled") {
-        const chats = legacyResult.value.chats;
-        reportRounds(
-          chats.map((c) => ({ inviteToken: c.inviteToken, isChatUnread: c.isUnread })),
-        );
-        for (const c of chats) {
-          unified.push({
-            id: `round-${c.inviteToken}`,
-            type: "round",
-            roundInviteToken: c.inviteToken,
-            title: c.courseName,
-            imageUrl: c.imageUrl,
-            avatars: c.playerAvatars,
-            isUnread: c.isUnread,
-            lastMessage: {
-              body: c.lastChatMessage.body,
-              senderName: c.lastChatMessage.senderName,
-              createdAt: c.lastChatMessage.createdAt,
-            },
-          });
-        }
-      }
-
-      unified.sort(
-        (a, b) =>
-          new Date(b.lastMessage.createdAt).getTime() -
-          new Date(a.lastMessage.createdAt).getTime(),
-      );
-
-      setRows(unified);
+      const result = await apiGet<ConversationsResponse>("/api/conversations", authToken);
+      const convos = result.conversations;
+      reportConversations(convos.map((c) => ({ id: c.id, isUnread: c.isUnread })));
+      setRows(convos);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load chats.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [reportRounds, reportConversations]);
+  }, [reportConversations]);
 
   useFocusEffect(
     useCallback(() => {
@@ -166,52 +181,26 @@ export default function ChatsScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: UnifiedRow }) => {
+    ({ item }: { item: ConversationRow }) => {
       const unread = item.isUnread;
       return (
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => {
-            if (item.conversationId) {
-              router.push({
-                pathname: "/conversation/[id]/chat",
-                params: { id: item.conversationId },
-              });
-            } else if (item.roundInviteToken) {
+            if (item.roundInviteToken) {
               router.push({
                 pathname: "/round/[token]/chat",
                 params: { token: item.roundInviteToken },
               });
+            } else {
+              router.push({
+                pathname: "/conversation/[id]/chat",
+                params: { id: item.id },
+              });
             }
           }}
         >
-          {item.imageUrl ? (
-            <Image
-              source={{ uri: toAbsoluteUrl(item.imageUrl) }}
-              style={styles.avatar}
-            />
-          ) : item.avatars.length > 0 ? (
-            <View style={styles.avatarStack}>
-              {item.avatars.slice(0, 3).map((uri, i) => (
-                <Image
-                  key={`${item.id}-${i}`}
-                  source={{ uri: toAbsoluteUrl(uri) }}
-                  style={[
-                    styles.stackedAvatar,
-                    { zIndex: 3 - i, marginLeft: i === 0 ? 0 : -10 },
-                  ]}
-                />
-              ))}
-            </View>
-          ) : (
-            <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <Ionicons
-                name={item.type === "dm" ? "person-outline" : "golf-outline"}
-                size={22}
-                color={colors.muted}
-              />
-            </View>
-          )}
+          <ChatAvatar item={item} />
           <View style={styles.textCol}>
             <Text
               style={[styles.chatTitle, unread && styles.chatTitleUnread]}
@@ -294,17 +283,13 @@ export default function ChatsScreen() {
   );
 }
 
+const HALF = AVATAR_SIZE / 2;
+const SMALL = (AVATAR_SIZE - 4) / 2;
+
 const styles = StyleSheet.create({
-  list: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  listContent: {
-    paddingVertical: 4,
-  },
-  emptyContainer: {
-    flex: 1,
-  },
+  list: { flex: 1, backgroundColor: colors.background },
+  listContent: { paddingVertical: 4 },
+  emptyContainer: { flex: 1 },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -312,62 +297,59 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
   },
-  rowPressed: {
-    backgroundColor: colors.fairwaySoft,
-  },
+  rowPressed: { backgroundColor: colors.fairwaySoft },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
   },
   avatarPlaceholder: {
     backgroundColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarStack: {
+  avatarGroup: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
     flexDirection: "row",
-    alignItems: "center",
-    width: 48,
-    height: 48,
+    overflow: "hidden",
   },
-  stackedAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: colors.background,
+  avatarTwo1: {
+    width: HALF,
+    height: AVATAR_SIZE,
+    borderTopLeftRadius: AVATAR_SIZE / 2,
+    borderBottomLeftRadius: AVATAR_SIZE / 2,
   },
-  textCol: {
-    flex: 1,
-    gap: 2,
-    minWidth: 0,
+  avatarTwo2: {
+    width: HALF,
+    height: AVATAR_SIZE,
+    borderTopRightRadius: AVATAR_SIZE / 2,
+    borderBottomRightRadius: AVATAR_SIZE / 2,
   },
-  chatTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.text,
+  avatarThreeLarge: {
+    width: HALF,
+    height: AVATAR_SIZE,
+    borderTopLeftRadius: AVATAR_SIZE / 2,
+    borderBottomLeftRadius: AVATAR_SIZE / 2,
   },
-  chatTitleUnread: {
-    fontWeight: "800",
+  avatarThreeStack: {
+    width: HALF,
+    height: AVATAR_SIZE,
+    justifyContent: "space-between",
   },
-  preview: {
-    fontSize: 14,
-    color: colors.muted,
+  avatarThreeSmall: {
+    width: HALF,
+    height: SMALL,
+    borderTopRightRadius: SMALL,
+    borderBottomRightRadius: SMALL,
   },
-  previewUnread: {
-    color: colors.text,
-    fontWeight: "600",
-  },
-  trailingCol: {
-    alignItems: "flex-end",
-    gap: 6,
-    flexShrink: 0,
-  },
-  time: {
-    fontSize: 12,
-    color: colors.muted,
-  },
+  textCol: { flex: 1, gap: 2, minWidth: 0 },
+  chatTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
+  chatTitleUnread: { fontWeight: "800" },
+  preview: { fontSize: 14, color: colors.muted },
+  previewUnread: { color: colors.text, fontWeight: "600" },
+  trailingCol: { alignItems: "flex-end", gap: 6, flexShrink: 0 },
+  time: { fontSize: 12, color: colors.muted },
   unreadDot: {
     position: "relative",
     top: 0,
@@ -381,21 +363,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     gap: 12,
   },
-  errorText: {
-    color: colors.muted,
-    textAlign: "center",
-    paddingHorizontal: 32,
-  },
+  errorText: { color: colors.muted, textAlign: "center", paddingHorizontal: 32 },
   retryBtn: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: colors.fairway,
   },
-  retryText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  retryText: { color: "#fff", fontWeight: "600" },
   emptyWrap: {
     flex: 1,
     alignItems: "center",
@@ -403,15 +378,6 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 40,
   },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: colors.text,
-    marginTop: 4,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: colors.muted,
-    textAlign: "center",
-  },
+  emptyTitle: { fontSize: 17, fontWeight: "700", color: colors.text, marginTop: 4 },
+  emptySubtitle: { fontSize: 14, color: colors.muted, textAlign: "center" },
 });

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAblyChatMounted } from "../lib/ably-chat-context";
 import { parfadeDiscoverChannel, parfadeUserInboxChannel } from "../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../lib/parfade-ably-messages";
+import { useChatUnread } from "../lib/chat-unread-context";
 import { useInAppToast } from "../lib/in-app-toast-context";
 import { emitNotificationsListsShouldRefresh } from "../lib/notifications-list-refresh";
 import { emitRoundListsShouldRefresh } from "../lib/round-lists-refresh";
@@ -19,7 +20,8 @@ const PARFADE_EVENT = "parfade";
 export function ParfadeAppRealtime() {
   const ably = useAbly();
   const { refresh: refreshNotificationBadge } = useNotificationBadge();
-  const { showGroupChatToast } = useInAppToast();
+  const { showGroupChatToast, showRsvpToast } = useInAppToast();
+  const { markRoundChatUnread } = useChatUnread();
   const [inboxUserId, setInboxUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,15 +51,26 @@ export function ParfadeAppRealtime() {
         return;
       }
       if (parsed.type === "group-chat-toast") {
+        markRoundChatUnread(parsed.inviteToken);
         showGroupChatToast({
           inviteToken: parsed.inviteToken,
           roundTitle: parsed.roundTitle,
           senderName: parsed.senderLabel,
+          senderAvatar: parsed.senderAvatar,
           bodyPreview: parsed.bodyPreview,
         });
       }
+      if (parsed.type === "rsvp-toast") {
+        showRsvpToast({
+          inviteToken: parsed.inviteToken,
+          roundTitle: parsed.roundTitle,
+          guestName: parsed.guestName,
+          guestAvatar: parsed.guestAvatar,
+          spotStatus: parsed.spotStatus,
+        });
+      }
     },
-    [refreshNotificationBadge, showGroupChatToast],
+    [refreshNotificationBadge, showGroupChatToast, showRsvpToast, markRoundChatUnread],
   );
 
   const onDiscoverMessage = useCallback((message: Message) => {

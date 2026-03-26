@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -10,8 +10,12 @@ import {
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { AnimatedBottomSheetFrame } from "../../components/animated-bottom-sheet-frame";
+import { GameSettingsSheetContent, gameSettingsSheetStyles } from "../../components/game-settings-sheet-content";
+import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { createGameSession } from "../../lib/games-api";
 import { getGameDefinition, type GameTypeId } from "../../lib/games-registry";
@@ -23,6 +27,7 @@ type NetworkFriend = { id: string; name: string; avatar: string | null };
 
 export default function CreateGameScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { getToken } = useAuth();
   const { gameType, roundInviteToken } = useLocalSearchParams<{
     gameType?: string;
@@ -30,6 +35,26 @@ export default function CreateGameScreen() {
   }>();
 
   const def = gameType ? getGameDefinition(gameType) : undefined;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
+  const hasSettings = gameType === "wolf" || gameType === "skins";
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: def?.title ?? "New Game",
+      headerRight: () => (
+        <Pressable
+          onPress={() => setMenuOpen(true)}
+          hitSlop={8}
+          style={{ paddingHorizontal: 8 }}
+          accessibilityLabel="Game options"
+        >
+          <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
+        </Pressable>
+      ),
+    });
+  }, [navigation, def?.title]);
   const [friends, setFriends] = useState<NetworkFriend[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [roundLockedIds, setRoundLockedIds] = useState<string[] | null>(null);
@@ -213,104 +238,10 @@ export default function CreateGameScreen() {
   }
 
   return (
+    <>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
       <Text style={styles.head}>{def.title}</Text>
       <Text style={styles.sub}>{def.subtitle}</Text>
-
-      {gameType === "skins" ? (
-        <View style={styles.wolfSetup}>
-          <Text style={styles.label}>Holes to play</Text>
-          <View style={styles.chipRow}>
-            {([9, 18] as const).map((n) => (
-              <Pressable
-                key={n}
-                style={[styles.optChip, skinsHolesCount === n && styles.optChipOn]}
-                onPress={() => setSkinsHolesCount(n)}
-              >
-                <Text style={[styles.optChipText, skinsHolesCount === n && styles.optChipTextOn]}>
-                  {n}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text style={styles.label}>If the hole ties</Text>
-          <View style={styles.chipRow}>
-            {(
-              [
-                ["carry", "Carry"],
-                ["wash", "Wash"],
-              ] as const
-            ).map(([v, label]) => (
-              <Pressable
-                key={v}
-                style={[styles.optChip, skinsTieHandling === v && styles.optChipOn]}
-                onPress={() => setSkinsTieHandling(v)}
-              >
-                <Text style={[styles.optChipText, skinsTieHandling === v && styles.optChipTextOn]}>
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ) : null}
-
-      {gameType === "wolf" ? (
-        <View style={styles.wolfSetup}>
-          <Text style={styles.label}>Holes to play</Text>
-          <View style={styles.chipRow}>
-            {([9, 18] as const).map((n) => (
-              <Pressable
-                key={n}
-                style={[styles.optChip, wolfHolesCount === n && styles.optChipOn]}
-                onPress={() => setWolfHolesCount(n)}
-              >
-                <Text style={[styles.optChipText, wolfHolesCount === n && styles.optChipTextOn]}>
-                  {n}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text style={styles.label}>Wolf tees</Text>
-          <View style={styles.chipRow}>
-            {(
-              [
-                ["first", "Wolf first"],
-                ["last", "Wolf last"],
-              ] as const
-            ).map(([v, label]) => (
-              <Pressable
-                key={v}
-                style={[styles.optChip, wolfTeeOff === v && styles.optChipOn]}
-                onPress={() => setWolfTeeOff(v)}
-              >
-                <Text style={[styles.optChipText, wolfTeeOff === v && styles.optChipTextOn]}>
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text style={styles.label}>If the hole ties</Text>
-          <View style={styles.chipRow}>
-            {(
-              [
-                ["carry", "Carry"],
-                ["wash", "Wash"],
-              ] as const
-            ).map(([v, label]) => (
-              <Pressable
-                key={v}
-                style={[styles.optChip, wolfTieHandling === v && styles.optChipOn]}
-                onPress={() => setWolfTieHandling(v)}
-              >
-                <Text style={[styles.optChipText, wolfTieHandling === v && styles.optChipTextOn]}>
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ) : null}
 
       {loading ? (
         <ActivityIndicator color={colors.fairway} style={styles.loader} />
@@ -449,33 +380,70 @@ export default function CreateGameScreen() {
         </Text>
       </Pressable>
     </ScrollView>
+
+    <OverflowMenuSheet
+      visible={menuOpen}
+      onClose={() => setMenuOpen(false)}
+      items={[
+        ...(hasSettings
+          ? [
+              {
+                key: "settings",
+                label: "Game settings",
+                icon: "settings-outline" as keyof typeof Ionicons.glyphMap,
+                onPress: () => setSettingsSheetOpen(true),
+              },
+            ]
+          : []),
+        {
+          key: "how-to-play",
+          label: "How to play",
+          icon: "help-circle-outline" as keyof typeof Ionicons.glyphMap,
+          onPress: () => setHowToPlayOpen(true),
+        },
+      ]}
+    />
+
+    <AnimatedBottomSheetFrame
+      visible={settingsSheetOpen}
+      onClose={() => setSettingsSheetOpen(false)}
+      backdropAccessibilityLabel="Dismiss settings"
+      sheetStyle={gameSettingsSheetStyles.sheet}
+    >
+      <Text style={gameSettingsSheetStyles.title}>Game settings</Text>
+      <GameSettingsSheetContent
+        gameType={gameType}
+        holesCount={gameType === "wolf" ? wolfHolesCount : skinsHolesCount}
+        onHolesCountChange={(n) => {
+          if (gameType === "wolf") setWolfHolesCount(n);
+          else setSkinsHolesCount(n);
+        }}
+        skinsTieHandling={skinsTieHandling}
+        onSkinsTieHandlingChange={setSkinsTieHandling}
+        wolfTeeOff={wolfTeeOff}
+        onWolfTeeOffChange={setWolfTeeOff}
+        wolfTieHandling={wolfTieHandling}
+        onWolfTieHandlingChange={setWolfTieHandling}
+      />
+    </AnimatedBottomSheetFrame>
+
+    <AnimatedBottomSheetFrame
+      visible={howToPlayOpen}
+      onClose={() => setHowToPlayOpen(false)}
+      backdropAccessibilityLabel="Dismiss how to play"
+      sheetStyle={gameSettingsSheetStyles.sheet}
+    >
+      <Text style={gameSettingsSheetStyles.title}>How to play {def.title}</Text>
+      <Text style={styles.howToPlayBody}>{def.howToPlay}</Text>
+    </AnimatedBottomSheetFrame>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 40 },
-  wolfSetup: {
-    marginBottom: 16,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    gap: 8,
-  },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  optChip: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  optChipOn: { borderColor: colors.fairway, backgroundColor: colors.fairwaySoft },
-  optChipText: { fontSize: 14, fontWeight: "600", color: colors.text },
-  optChipTextOn: { color: colors.fairway },
+  howToPlayBody: { fontSize: 15, color: colors.text, lineHeight: 22, paddingBottom: 16 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   title: { fontSize: 20, fontWeight: "700", color: colors.text, marginBottom: 8 },
   head: { fontSize: 22, fontWeight: "800", color: colors.text, marginBottom: 6 },

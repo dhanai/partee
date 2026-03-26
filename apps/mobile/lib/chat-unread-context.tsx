@@ -11,6 +11,7 @@ type ChatUnreadContextValue = {
   hasAnyUnreadChat: boolean;
   isRoundChatUnread: (inviteToken: string) => boolean;
   markChatRead: (inviteToken: string) => void;
+  markRoundChatUnread: (inviteToken: string) => void;
   reportRounds: (rounds: Array<{ inviteToken: string; isChatUnread?: boolean }>) => void;
   unreadConversationIds: Set<string>;
   markConversationRead: (conversationId: string) => void;
@@ -50,6 +51,15 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const markRoundChatUnread = useCallback((inviteToken: string) => {
+    setUnreadTokens((prev) => {
+      if (prev.has(inviteToken)) return prev;
+      const next = new Set(prev);
+      next.add(inviteToken);
+      return next;
+    });
+  }, []);
+
   const isRoundChatUnread = useCallback(
     (inviteToken: string) => unreadTokens.has(inviteToken),
     [unreadTokens],
@@ -84,12 +94,13 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
       hasAnyUnreadChat: unreadTokens.size > 0 || unreadConvIds.size > 0,
       isRoundChatUnread,
       markChatRead,
+      markRoundChatUnread,
       reportRounds,
       unreadConversationIds: unreadConvIds,
       markConversationRead,
       reportConversations,
     }),
-    [unreadTokens, unreadConvIds, isRoundChatUnread, markChatRead, reportRounds, markConversationRead, reportConversations],
+    [unreadTokens, unreadConvIds, isRoundChatUnread, markChatRead, markRoundChatUnread, reportRounds, markConversationRead, reportConversations],
   );
 
   return (

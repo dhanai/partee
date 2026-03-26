@@ -21,6 +21,7 @@ import {
   useRouter,
 } from "expo-router";
 import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
+import { GameSettingsSheetContent, gameSettingsSheetStyles } from "../../../components/game-settings-sheet-content";
 import { GameEndHousePromoModal } from "../../../components/game-end-house-promo-modal";
 import {
   HoleCompletionAvatars,
@@ -33,6 +34,7 @@ import { WolfHoleEditor, type WolfPayload } from "../../../components/games/wolf
 import {
   deleteGameSession,
   getGameSession,
+  patchGameSession,
   putGameHole,
   updateGameSessionStatus,
   type GameHoleRow,
@@ -95,6 +97,14 @@ export default function GameSessionScreen() {
   const [editorHole, setEditorHole] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
+  const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
+  const [settingsHolesCount, setSettingsHolesCount] = useState<9 | 18>(18);
+  const [settingsHolesTouched, setSettingsHolesTouched] = useState(false);
+  const [settingsWolfTeeOff, setSettingsWolfTeeOff] = useState<"first" | "last">("first");
+  const [settingsWolfTieHandling, setSettingsWolfTieHandling] = useState<"carry" | "wash">("carry");
+  const [settingsSkinsTieHandling, setSettingsSkinsTieHandling] = useState<"carry" | "wash">("carry");
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [completing, setCompleting] = useState(false);
   /** True after interstitial closes until URL has `recap=1` (deep links / sync). */
@@ -340,6 +350,60 @@ export default function GameSessionScreen() {
       Alert.alert("Could not delete", msg);
     } finally {
       setDeleteBusy(false);
+    }
+  }
+
+  function openSettingsSheet() {
+    if (!session) return;
+    const hc: 9 | 18 = session.holesCount === 9 || session.holesCount === 18 ? session.holesCount : 18;
+    setSettingsHolesCount(hc);
+    setSettingsHolesTouched(false);
+    setSettingsWolfTeeOff(session.settings?.wolfTeeOff === "last" ? "last" : "first");
+    setSettingsWolfTieHandling(session.settings?.wolfTieHandling === "wash" ? "wash" : "carry");
+    setSettingsSkinsTieHandling(session.settings?.skinsTieHandling === "wash" ? "wash" : "carry");
+    setSettingsSheetOpen(true);
+  }
+
+  async function saveSettings() {
+    if (!sessionId || !session) return;
+    setSettingsSaving(true);
+    try {
+      const token = await getToken();
+      const gameType = session.gameType as GameTypeId;
+      const body: Parameters<typeof patchGameSession>[2] = {};
+
+      if (
+        (gameType === "skins" || gameType === "wolf") &&
+        settingsHolesTouched &&
+        settingsHolesCount !== session.holesCount
+      ) {
+        body.holesCount = settingsHolesCount;
+      }
+
+      if (gameType === "wolf") {
+        const tee = session.settings?.wolfTeeOff === "last" ? "last" : "first";
+        const wt = session.settings?.wolfTieHandling === "wash" ? "wash" : "carry";
+        if (settingsWolfTeeOff !== tee || settingsWolfTieHandling !== wt) {
+          body.settings = { wolfTeeOff: settingsWolfTeeOff, wolfTieHandling: settingsWolfTieHandling };
+        }
+      }
+
+      if (gameType === "skins") {
+        const st = session.settings?.skinsTieHandling === "wash" ? "wash" : "carry";
+        if (settingsSkinsTieHandling !== st) {
+          body.settings = { skinsTieHandling: settingsSkinsTieHandling };
+        }
+      }
+
+      if (Object.keys(body).length > 0) {
+        const result = await patchGameSession(token, sessionId, body);
+        setSession(result.session);
+      }
+      setSettingsSheetOpen(false);
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not save settings.");
+    } finally {
+      setSettingsSaving(false);
     }
   }
 
@@ -723,13 +787,13 @@ export default function GameSessionScreen() {
               key: "settings",
               label: "Game settings",
               icon: "settings-outline" as const,
-              onPress: () => {
-                if (!sessionId) return;
-                router.push({
-                  pathname: "/games/session/[sessionId]/settings",
-                  params: { sessionId },
-                });
-              },
+              onPress: () => openSettingsSheet(),
+            },
+            {
+              key: "how-to-play",
+              label: "How to play",
+              icon: "help-circle-outline" as const,
+              onPress: () => setHowToPlayOpen(true),
             },
             {
               key: "delete",
@@ -742,6 +806,45 @@ export default function GameSessionScreen() {
             },
           ]}
         />
+
+        <AnimatedBottomSheetFrame
+          visible={howToPlayOpen}
+          onClose={() => setHowToPlayOpen(false)}
+          backdropAccessibilityLabel="Dismiss how to play"
+          sheetStyle={styles.howToPlaySheet}
+        >
+          <Text style={styles.howToPlayTitle}>How to play {def?.title ?? session.gameType}</Text>
+          <Text style={styles.howToPlayBody}>
+            {def?.howToPlay ?? "No instructions available for this game."}
+          </Text>
+        </AnimatedBottomSheetFrame>
+
+        <AnimatedBottomSheetFrame
+          visible={settingsSheetOpen}
+          onClose={() => { if (!settingsSaving) setSettingsSheetOpen(false); }}
+          backdropAccessibilityLabel="Dismiss game settings"
+          sheetStyle={gameSettingsSheetStyles.sheet}
+        >
+          <Text style={gameSettingsSheetStyles.title}>Game settings</Text>
+          <GameSettingsSheetContent
+            gameType={session.gameType}
+            holesCount={settingsHolesCount}
+            onHolesCountChange={(n) => { setSettingsHolesCount(n); setSettingsHolesTouched(true); }}
+            skinsTieHandling={settingsSkinsTieHandling}
+            onSkinsTieHandlingChange={setSettingsSkinsTieHandling}
+            wolfTeeOff={settingsWolfTeeOff}
+            onWolfTeeOffChange={setSettingsWolfTeeOff}
+            wolfTieHandling={settingsWolfTieHandling}
+            onWolfTieHandlingChange={setSettingsWolfTieHandling}
+          />
+          <Pressable
+            style={[styles.settingsSaveBtn, settingsSaving && { opacity: 0.5 }]}
+            onPress={() => void saveSettings()}
+            disabled={settingsSaving}
+          >
+            <Text style={styles.settingsSaveBtnText}>{settingsSaving ? "Saving…" : "Save"}</Text>
+          </Pressable>
+        </AnimatedBottomSheetFrame>
       </View>
     </>
   );
@@ -950,4 +1053,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   holeEditorTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 12 },
+  howToPlaySheet: { paddingHorizontal: 16, paddingTop: 8 },
+  howToPlayTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 14 },
+  howToPlayBody: { fontSize: 15, color: colors.text, lineHeight: 22, paddingBottom: 16 },
+  settingsSaveBtn: {
+    marginTop: 4,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: colors.fairway,
+    alignItems: "center" as const,
+  },
+  settingsSaveBtnText: { fontSize: 16, fontWeight: "800", color: "#fff" },
 });

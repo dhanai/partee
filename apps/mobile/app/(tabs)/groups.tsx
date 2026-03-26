@@ -240,7 +240,7 @@ export default function GroupsScreen() {
   const emptyMessage =
     activeTab === "mine"
       ? "Create a group to organize rounds with friends, clubs, or leagues."
-      : "There are no public groups right now.";
+      : "No groups to show yet. Start your own to organize rounds with friends, clubs, or leagues.";
 
   return (
     <View style={styles.root}>

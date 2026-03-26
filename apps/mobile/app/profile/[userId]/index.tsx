@@ -113,6 +113,7 @@ export default function PublicProfileScreen() {
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const [dmBusy, setDmBusy] = useState(false);
 
   const [prevUserId, setPrevUserId] = useState(userId);
   if (userId !== prevUserId) {
@@ -170,6 +171,29 @@ export default function PublicProfileScreen() {
     const hasBootstrap = Boolean(computeBootstrapProfile(userId, userName, userAvatar));
     void loadProfile({ silent: hasBootstrap });
   }, [userId, userName, userAvatar, loadProfile]);
+
+  const openOrCreateDm = useCallback(async () => {
+    if (!userId || dmBusy) return;
+    setDmBusy(true);
+    try {
+      const authToken = await getTokenRef.current();
+      const data = await apiPost<{ conversationId: string; existing: boolean }>(
+        "/api/conversations",
+        { participantUserId: userId },
+        authToken,
+      );
+      router.push({
+        pathname: "/conversation/[id]/chat",
+        params: { id: data.conversationId },
+      });
+    } catch {
+      Alert.alert("Error", "Unable to open conversation.");
+    } finally {
+      setDmBusy(false);
+    }
+  }, [userId, dmBusy, router]);
+
+  const isMutual = profile?.user.relationship === "mutual";
 
   useLayoutEffect(() => {
     const title = loading ? "Profile" : formatProfileNavTitle(profile?.user.name ?? "");
@@ -395,9 +419,15 @@ export default function PublicProfileScreen() {
             <Text style={btn.primaryText}>{followButtonText()}</Text>
           </Pressable>
         ) : null}
-        <Pressable style={[btn.button, btn.secondaryButton]} onPress={() => void handleShareProfile()}>
-          <Text style={btn.secondaryText}>Share profile</Text>
-        </Pressable>
+        {isMutual ? (
+          <Pressable
+            style={[btn.button, btn.secondaryButton, dmBusy && styles.disabledButton]}
+            onPress={() => void openOrCreateDm()}
+            disabled={dmBusy}
+          >
+            <Text style={btn.secondaryText}>Message</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {userId ? (
@@ -415,6 +445,12 @@ export default function PublicProfileScreen() {
       visible={overflowOpen}
       onClose={() => setOverflowOpen(false)}
       items={[
+        {
+          key: "share",
+          label: "Share profile",
+          icon: "share-outline" as const,
+          onPress: () => void handleShareProfile(),
+        },
         {
           key: "report",
           label: `Report ${profile?.user.name?.split(" ")[0] ?? "user"}`,

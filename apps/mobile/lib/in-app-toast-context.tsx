@@ -9,19 +9,35 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { toAbsoluteUrl } from "./api";
 import { colors } from "./theme";
 
 export type GroupChatToastPayload = {
   inviteToken: string;
   roundTitle: string;
   senderName: string;
+  senderAvatar?: string;
   bodyPreview: string;
 };
 
+export type RsvpToastPayload = {
+  inviteToken: string;
+  roundTitle: string;
+  guestName: string;
+  guestAvatar?: string;
+  spotStatus: "confirmed" | "requested" | "declined";
+};
+
+type ToastItem =
+  | { type: "group-chat"; payload: GroupChatToastPayload }
+  | { type: "rsvp"; payload: RsvpToastPayload };
+
 type InAppToastContextValue = {
   showGroupChatToast: (payload: GroupChatToastPayload) => void;
+  showRsvpToast: (payload: RsvpToastPayload) => void;
 };
 
 const InAppToastContext = createContext<InAppToastContextValue | null>(null);
@@ -33,6 +49,19 @@ function isViewingRoundChatPath(path: string, inviteToken: string): boolean {
   return n.includes(`/round/${t}/chat`);
 }
 
+function isViewingRoundDetailPath(path: string, inviteToken: string): boolean {
+  const t = inviteToken.trim();
+  if (!t) return false;
+  const n = path.replace(/\/+/g, "/");
+  return n === `/round/${t}` || n.startsWith(`/round/${t}/`);
+}
+
+function rsvpBodyText(status: RsvpToastPayload["spotStatus"]): string {
+  if (status === "confirmed") return "Claimed a spot on your round.";
+  if (status === "requested") return "Requested to join your round.";
+  return "Declined your invite.";
+}
+
 const TOAST_AUTO_HIDE_MS = 5200;
 
 export function InAppToastProvider({ children }: { children: ReactNode }) {
@@ -42,9 +71,9 @@ export function InAppToastProvider({ children }: { children: ReactNode }) {
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
 
-  const [payload, setPayload] = useState<GroupChatToastPayload | null>(null);
-  const payloadRef = useRef<GroupChatToastPayload | null>(null);
-  payloadRef.current = payload;
+  const [toast, setToast] = useState<ToastItem | null>(null);
+  const toastRef = useRef<ToastItem | null>(null);
+  toastRef.current = toast;
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const translateY = useRef(new Animated.Value(-160)).current;
 
@@ -62,24 +91,21 @@ export function InAppToastProvider({ children }: { children: ReactNode }) {
       duration: 200,
       useNativeDriver: true,
     }).start(({ finished }) => {
-      if (finished) setPayload(null);
+      if (finished) setToast(null);
     });
   }, [clearTimer, translateY]);
 
-  const showGroupChatToast = useCallback(
-    (p: GroupChatToastPayload) => {
-      if (isViewingRoundChatPath(pathnameRef.current, p.inviteToken)) return;
-
+  const showToast = useCallback(
+    (item: ToastItem) => {
       clearTimer();
       translateY.setValue(-160);
-      setPayload(p);
+      setToast(item);
       Animated.spring(translateY, {
         toValue: 0,
         useNativeDriver: true,
         friction: 9,
         tension: 65,
       }).start();
-
       hideTimerRef.current = setTimeout(() => {
         hide();
       }, TOAST_AUTO_HIDE_MS);
@@ -87,25 +113,68 @@ export function InAppToastProvider({ children }: { children: ReactNode }) {
     [clearTimer, hide, translateY],
   );
 
+  const showGroupChatToast = useCallback(
+    (p: GroupChatToastPayload) => {
+      if (isViewingRoundChatPath(pathnameRef.current, p.inviteToken)) return;
+      showToast({ type: "group-chat", payload: p });
+    },
+    [showToast],
+  );
+
+  const showRsvpToast = useCallback(
+    (p: RsvpToastPayload) => {
+      if (isViewingRoundDetailPath(pathnameRef.current, p.inviteToken)) return;
+      showToast({ type: "rsvp", payload: p });
+    },
+    [showToast],
+  );
+
   useEffect(() => () => clearTimer(), [clearTimer]);
 
-  const openChat = useCallback(() => {
-    const p = payloadRef.current;
-    if (!p) return;
-    const token = p.inviteToken;
-    router.push({
-      pathname: "/round/[token]/chat",
-      params: { token },
-    });
+  const handlePress = useCallback(() => {
+    const t = toastRef.current;
+    if (!t) return;
+    if (t.type === "group-chat") {
+      router.push({
+        pathname: "/round/[token]/chat",
+        params: { token: t.payload.inviteToken },
+      });
+    } else if (t.type === "rsvp") {
+      router.push({
+        pathname: "/round/[token]",
+        params: { token: t.payload.inviteToken },
+      });
+    }
     hide();
   }, [hide, router]);
 
-  const value = useMemo(() => ({ showGroupChatToast }), [showGroupChatToast]);
+  const value = useMemo(
+    () => ({ showGroupChatToast, showRsvpToast }),
+    [showGroupChatToast, showRsvpToast],
+  );
+
+  let kicker = "";
+  let avatarUrl: string | undefined;
+  let title = "";
+  let body = "";
+  if (toast?.type === "group-chat") {
+    const p = toast.payload;
+    kicker = `Group chat · ${p.roundTitle}`;
+    avatarUrl = p.senderAvatar;
+    title = p.senderName;
+    body = p.bodyPreview;
+  } else if (toast?.type === "rsvp") {
+    const p = toast.payload;
+    kicker = p.roundTitle;
+    avatarUrl = p.guestAvatar;
+    title = p.guestName;
+    body = rsvpBodyText(p.spotStatus);
+  }
 
   return (
     <InAppToastContext.Provider value={value}>
       {children}
-      {payload ? (
+      {toast ? (
         <Animated.View
           pointerEvents="box-none"
           style={[
@@ -117,18 +186,32 @@ export function InAppToastProvider({ children }: { children: ReactNode }) {
           ]}
         >
           <Pressable
-            onPress={openChat}
+            onPress={handlePress}
             style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
             accessibilityRole="button"
-            accessibilityLabel={`Open group chat: ${payload.roundTitle}`}
+            accessibilityLabel={`Open: ${title}`}
           >
-            <Text style={styles.kicker}>Group chat · {payload.roundTitle}</Text>
-            <Text style={styles.title} numberOfLines={1}>
-              {payload.senderName}
-            </Text>
-            <Text style={styles.body} numberOfLines={2}>
-              {payload.bodyPreview}
-            </Text>
+            <Text style={styles.kicker}>{kicker}</Text>
+            <View style={styles.row}>
+              {avatarUrl ? (
+                <Image
+                  source={{ uri: toAbsoluteUrl(avatarUrl) }}
+                  style={styles.avatar}
+                />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Ionicons name="person" size={16} color={colors.muted} />
+                </View>
+              )}
+              <View style={styles.textCol}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {title}
+                </Text>
+                <Text style={styles.body} numberOfLines={2}>
+                  {body}
+                </Text>
+              </View>
+            </View>
           </Pressable>
         </Animated.View>
       ) : null}
@@ -177,6 +260,30 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.4,
     marginBottom: 6,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.border,
+    marginTop: 2,
+  },
+  avatarFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  textCol: {
+    flex: 1,
   },
   title: {
     fontSize: 17,

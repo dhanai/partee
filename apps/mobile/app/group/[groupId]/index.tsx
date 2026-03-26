@@ -121,6 +121,7 @@ export default function GroupLandingScreen() {
   const [group, setGroup] = useState<GroupDetail | null>(bootstrap);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(!bootstrap);
+  const [apiResolved, setApiResolved] = useState(false);
 
   const [prevGroupId, setPrevGroupId] = useState(groupId);
   if (groupId !== prevGroupId) {
@@ -129,6 +130,7 @@ export default function GroupLandingScreen() {
     setGroup(next);
     setLoading(!next);
     setActivity([]);
+    setApiResolved(false);
   }
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -193,8 +195,10 @@ export default function GroupLandingScreen() {
           ),
         ]);
         setGroup(groupData.group);
-        setActivity(activityData.activity);
-        setNextCursor(activityData.nextCursor);
+        const memberOfGroup = groupData.group.myRole !== null;
+        setActivity(memberOfGroup ? activityData.activity : []);
+        setNextCursor(memberOfGroup ? activityData.nextCursor : null);
+        setApiResolved(true);
       } catch (e) {
         if (!group) {
           setLoadError(e instanceof Error ? e.message : "Unable to load group.");
@@ -660,8 +664,8 @@ export default function GroupLandingScreen() {
     );
   }
 
-  const isAdmin = group.myRole === "owner" || group.myRole === "admin";
-  const isMember = group.myRole !== null;
+  const isAdmin = apiResolved && (group.myRole === "owner" || group.myRole === "admin");
+  const isMember = apiResolved && group.myRole !== null;
 
   function goToProfile(user: { id: string; name: string; avatar: string | null }) {
     router.push({
@@ -749,12 +753,12 @@ export default function GroupLandingScreen() {
         </Text>
       ) : null}
 
-      {/* Join button for non-members */}
-      {!isMember && group.joinPolicy === "invite_only" ? (
+      {/* Join button for non-members (only after API confirms role) */}
+      {apiResolved && !isMember && group.joinPolicy === "invite_only" ? (
         <Text style={styles.inviteOnlyNote}>
           This group is invite only. Ask a member to invite you.
         </Text>
-      ) : !isMember ? (
+      ) : apiResolved && !isMember ? (
         <Pressable style={styles.joinBtn} onPress={handleJoin}>
           <Text style={styles.joinBtnText}>
             {group.joinPolicy === "approval" ? "Request to Join" : "Join Group"}
@@ -816,7 +820,7 @@ export default function GroupLandingScreen() {
         </Pressable>
       ) : null}
 
-      {activity.length > 0 ? (
+      {isMember && activity.length > 0 ? (
         <Text style={styles.sectionTitle}>Activity</Text>
       ) : null}
     </View>

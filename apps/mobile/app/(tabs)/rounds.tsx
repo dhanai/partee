@@ -374,8 +374,8 @@ export default function MyRoundsScreen() {
   }, []);
 
   useEffect(() => {
-    reportRounds([...hosting, ...joined]);
-  }, [hosting, joined, reportRounds]);
+    reportRounds([...hosting, ...joined, ...invited]);
+  }, [hosting, joined, invited, reportRounds]);
 
   useEffect(() => {
     const listLen =

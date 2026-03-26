@@ -3,7 +3,7 @@ import { Alert, Image, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
-import * as Haptics from "expo-haptics";
+
 import { apiPost } from "../lib/api";
 import { getCachedMeProfile, subscribeMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
@@ -28,7 +28,6 @@ export function HeaderProfileIcon() {
   }, []);
 
   const handleLongPress = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setMenuOpen(true);
   }, []);
 

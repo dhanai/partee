@@ -51,12 +51,14 @@ function groupChatPreviewSubtitle(last: RoundDetails["lastChatMessage"]): string
   const cut = snippet.length > max ? `${snippet.slice(0, max)}…` : snippet;
   return `${formatInviterFirstLastInitial(last.senderName)}: ${cut}`;
 }
+import { AnimatedBottomSheetFrame } from "../../components/animated-bottom-sheet-frame";
 import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
+import { GAME_DEFINITIONS } from "../../lib/games-registry";
 
 type CourseResult = { id: string; name: string; address: string };
 
@@ -122,6 +124,7 @@ export default function RoundDetailsScreen() {
   const [inviteBusy, setInviteBusy] = useState(false);
   const [finalizeExpanded, setFinalizeExpanded] = useState(true);
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
+  const [sideGamesSheetOpen, setSideGamesSheetOpen] = useState(false);
   const confirmedPlayerIds = useMemo(
     () => new Set(round?.confirmedPlayers.map((p) => p.id) ?? []),
     [round],
@@ -807,12 +810,7 @@ export default function RoundDetailsScreen() {
             styles.chatPreviewRow,
             pressed && styles.chatPreviewRowPressed,
           ]}
-          onPress={() =>
-            router.push({
-              pathname: "/games",
-              params: { roundInviteToken: token },
-            })
-          }
+          onPress={() => setSideGamesSheetOpen(true)}
           accessibilityLabel="Open side games for this round"
           accessibilityRole="button"
         >
@@ -958,6 +956,44 @@ export default function RoundDetailsScreen() {
         confirmLabel="Send invites"
         excludeIds={confirmedPlayerIds}
       />
+
+      <AnimatedBottomSheetFrame
+        visible={sideGamesSheetOpen}
+        onClose={() => setSideGamesSheetOpen(false)}
+        backdropAccessibilityLabel="Dismiss side games"
+        sheetStyle={styles.sideGamesSheet}
+      >
+        <Text style={styles.sideGamesTitle}>Side games</Text>
+        <Text style={styles.sideGamesSub}>
+          Pick a game — confirmed players are added automatically.
+        </Text>
+        <View style={styles.sideGamesGrid}>
+          {GAME_DEFINITIONS.filter((g) => g.implemented).map((g) => (
+            <Pressable
+              key={g.id}
+              style={({ pressed }) => [
+                styles.sideGameCard,
+                pressed && { opacity: 0.7 },
+              ]}
+              onPress={() => {
+                setSideGamesSheetOpen(false);
+                setTimeout(() => {
+                  router.push({
+                    pathname: "/games/create",
+                    params: { gameType: g.id, roundInviteToken: token },
+                  });
+                }, 300);
+              }}
+            >
+              <Ionicons name="golf-outline" size={22} color={colors.fairway} />
+              <Text style={styles.sideGameCardTitle}>{g.title}</Text>
+              <Text style={styles.sideGameCardSub} numberOfLines={2}>
+                {g.subtitle}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </AnimatedBottomSheetFrame>
     </View>
   );
 }
@@ -1109,4 +1145,17 @@ const styles = StyleSheet.create({
   },
   listTitle: { color: colors.text, fontWeight: "600" },
   listMeta: { color: colors.muted, fontSize: 12 },
+  sideGamesSheet: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
+  sideGamesTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 4 },
+  sideGamesSub: { fontSize: 14, color: colors.muted, marginBottom: 16 },
+  sideGamesGrid: { gap: 10 },
+  sideGameCard: {
+    backgroundColor: "#f9f7f3",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sideGameCardTitle: { fontSize: 16, fontWeight: "700", color: colors.text, marginTop: 6 },
+  sideGameCardSub: { fontSize: 13, color: colors.muted, marginTop: 2, lineHeight: 18 },
 });
