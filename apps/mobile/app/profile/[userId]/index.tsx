@@ -184,7 +184,14 @@ export default function PublicProfileScreen() {
       );
       router.push({
         pathname: "/conversation/[id]/chat",
-        params: { id: data.conversationId },
+        params: {
+          id: data.conversationId,
+          chatTitle: profile?.user.name ?? "Chat",
+          chatAvatars: JSON.stringify(
+            profile?.user.avatar ? [profile.user.avatar] : [],
+          ),
+          chatType: "dm",
+        },
       });
     } catch {
       Alert.alert("Error", "Unable to open conversation.");

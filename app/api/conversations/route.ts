@@ -180,7 +180,7 @@ export async function GET(req: Request) {
       const avatars = otherParticipants
         .map((p) => p.avatar)
         .filter((a): a is string => Boolean(a))
-        .slice(0, 3);
+        .slice(0, 4);
 
       let roundMode: string | null = null;
       let roundInviteToken: string | null = null;

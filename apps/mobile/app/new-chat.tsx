@@ -78,7 +78,14 @@ export default function NewChatScreen() {
         );
         router.replace({
           pathname: "/conversation/[id]/chat",
-          params: { id: data.conversationId },
+          params: {
+            id: data.conversationId,
+            chatTitle: friend.name,
+            chatAvatars: JSON.stringify(
+              friend.avatar ? [friend.avatar] : [],
+            ),
+            chatType: "dm",
+          },
         });
       } catch {
         setCreating(null);

@@ -775,7 +775,14 @@ export default function GroupLandingScreen() {
               if (group.conversationId) {
                 router.push({
                   pathname: "/conversation/[id]/chat",
-                  params: { id: group.conversationId },
+                  params: {
+                    id: group.conversationId,
+                    chatTitle: group.name,
+                    chatAvatars: JSON.stringify(
+                      group.imageUrl ? [group.imageUrl] : [],
+                    ),
+                    chatType: "group",
+                  },
                 });
               }
             }}

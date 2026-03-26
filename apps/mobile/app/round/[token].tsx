@@ -782,12 +782,34 @@ export default function RoundDetailsScreen() {
             styles.chatPreviewRow,
             pressed && styles.chatPreviewRowPressed,
           ]}
-          onPress={() =>
+          onPress={() => {
+            const playerAvatars = round.confirmedPlayers
+              .map((p) => p.avatar)
+              .filter((a): a is string => Boolean(a));
+            const headerAvatars =
+              round.mode === "scheduled" && round.imageUrl
+                ? [round.imageUrl, ...playerAvatars]
+                : playerAvatars;
+            const datePart = (round.teeTime ?? round.targetDate)
+              ? new Date(round.teeTime ?? round.targetDate).toLocaleDateString(
+                  "en-US",
+                  { month: "short", day: "numeric" },
+                )
+              : "";
+            const chatTitle =
+              round.mode === "scheduled" && round.courseName
+                ? `${round.courseName} · ${datePart}`
+                : datePart || "Group chat";
             router.push({
               pathname: "/round/[token]/chat",
-              params: { token },
-            })
-          }
+              params: {
+                token,
+                chatTitle,
+                chatAvatars: JSON.stringify(headerAvatars.slice(0, 4)),
+                chatType: "round",
+              },
+            });
+          }}
           accessibilityLabel="Open group chat"
           accessibilityRole="button"
         >

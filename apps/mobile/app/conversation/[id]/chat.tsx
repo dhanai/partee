@@ -1,7 +1,8 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigation } from "@react-navigation/native";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -17,6 +18,7 @@ import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-co
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatBubbleRow } from "../../../components/chat-bubble-row";
 import { ChatDateSeparator } from "../../../components/chat-date-separator";
+import { ChatHeaderAvatars, ChatHeaderInfoButton } from "../../../components/chat-header-avatars";
 import { ChatScrollToBottom } from "../../../components/chat-scroll-to-bottom";
 import { ChatTimestamp } from "../../../components/chat-timestamp";
 import { buildChatItems, chatItemKey, type ChatListItem } from "../../../lib/build-chat-items";
@@ -45,9 +47,34 @@ type MessagesResponse = {
 
 const POLL_MS = 5000;
 
+type ConversationMetaResponse = {
+  type: string;
+  title: string;
+  imageUrl: string | null;
+  roundMode: string | null;
+  participantAvatars: string[];
+};
+
+type ConversationMeta = {
+  type: string;
+  title: string;
+  participantAvatars: string[];
+};
+
 export default function ConversationChatScreen() {
-  const { id: conversationId } = useLocalSearchParams<{ id: string }>();
+  const {
+    id: conversationId,
+    chatTitle: paramTitle,
+    chatAvatars: paramAvatarsJson,
+    chatType: paramType,
+  } = useLocalSearchParams<{
+    id: string;
+    chatTitle?: string;
+    chatAvatars?: string;
+    chatType?: string;
+  }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -55,6 +82,68 @@ export default function ConversationChatScreen() {
   const headerHeight = useHeaderHeight();
   const kbVisible = useKeyboardState((s) => s.isVisible);
   const { markConversationRead } = useChatUnread();
+
+  const paramAvatars = useMemo<string[]>(() => {
+    if (!paramAvatarsJson) return [];
+    try { return JSON.parse(paramAvatarsJson); } catch { return []; }
+  }, [paramAvatarsJson]);
+
+  const [meta, setMeta] = useState<ConversationMeta | null>(() =>
+    paramType && paramTitle
+      ? { type: paramType, title: paramTitle, participantAvatars: paramAvatars }
+      : null,
+  );
+
+  useEffect(() => {
+    if (meta || !conversationId) return;
+    void (async () => {
+      try {
+        const authToken = await getTokenRef.current();
+        const data = await apiGet<ConversationMetaResponse>(
+          `/api/conversations/${conversationId}`,
+          authToken,
+        );
+        let avatars = data.participantAvatars;
+        if (data.type === "group" && data.imageUrl) {
+          avatars = [data.imageUrl];
+        } else if (data.roundMode === "scheduled" && data.imageUrl) {
+          avatars = [data.imageUrl, ...data.participantAvatars];
+        }
+        setMeta({
+          type: data.type,
+          title: data.title,
+          participantAvatars: avatars.slice(0, 4),
+        });
+      } catch {
+        /* header stays default */
+      }
+    })();
+  }, [conversationId, meta]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: () => (
+        <ChatHeaderAvatars
+          type={meta?.type ?? "dm"}
+          title={meta?.title ?? ""}
+          avatars={meta?.participantAvatars ?? []}
+        />
+      ),
+      headerRight: () => (
+        <ChatHeaderInfoButton
+          onPress={() =>
+            router.push({
+              pathname: "/chat-info",
+              params: {
+                conversationId: conversationId ?? "",
+                chatType: meta?.type ?? "dm",
+              },
+            })
+          }
+        />
+      ),
+    });
+  }, [navigation, meta, router, conversationId]);
 
   const [msgs, setMsgs] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);

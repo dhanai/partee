@@ -53,6 +53,35 @@ function relativeTime(iso: string): string {
   return `${weeks}w`;
 }
 
+function OverlappedPair({
+  backUri,
+  frontUri,
+  id,
+}: {
+  backUri: string;
+  frontUri: string;
+  id: string;
+}) {
+  return (
+    <View style={styles.overlapWrap}>
+      <Image
+        key={`back-${id}`}
+        source={toAbsoluteUrl(backUri)}
+        style={styles.overlapBack}
+        contentFit="cover"
+        transition={0}
+      />
+      <Image
+        key={`front-${id}`}
+        source={toAbsoluteUrl(frontUri)}
+        style={styles.overlapFront}
+        contentFit="cover"
+        transition={0}
+      />
+    </View>
+  );
+}
+
 function ChatAvatar({ item }: { item: ConversationRow }) {
   if (item.type === "dm" && item.imageUrl) {
     return (
@@ -66,6 +95,21 @@ function ChatAvatar({ item }: { item: ConversationRow }) {
   }
 
   if (item.type === "round" && item.roundMode === "scheduled" && item.imageUrl) {
+    const first = item.participantAvatars[0];
+    if (!first) {
+      return (
+        <Image
+          source={toAbsoluteUrl(item.imageUrl)}
+          style={styles.avatar}
+          contentFit="cover"
+          transition={0}
+        />
+      );
+    }
+    return <OverlappedPair backUri={item.imageUrl} frontUri={first} id={item.id} />;
+  }
+
+  if (item.type === "group" && item.imageUrl) {
     return (
       <Image
         source={toAbsoluteUrl(item.imageUrl)}
@@ -102,45 +146,32 @@ function ChatAvatar({ item }: { item: ConversationRow }) {
   }
 
   if (avatars.length === 2) {
+    return <OverlappedPair backUri={avatars[0]} frontUri={avatars[1]} id={item.id} />;
+  }
+
+  if (avatars.length === 3) {
     return (
-      <View style={styles.avatarGroup}>
-        <Image
-          source={toAbsoluteUrl(avatars[0])}
-          style={styles.avatarTwo1}
-          contentFit="cover"
-          transition={0}
-        />
-        <Image
-          source={toAbsoluteUrl(avatars[1])}
-          style={styles.avatarTwo2}
-          contentFit="cover"
-          transition={0}
-        />
+      <View style={styles.gridWrap}>
+        <View style={styles.gridTopRow}>
+          <Image source={toAbsoluteUrl(avatars[0])} style={styles.gridCell} contentFit="cover" transition={0} />
+          <Image source={toAbsoluteUrl(avatars[1])} style={styles.gridCell} contentFit="cover" transition={0} />
+        </View>
+        <View style={styles.gridBottomRow}>
+          <Image source={toAbsoluteUrl(avatars[2])} style={styles.gridCell} contentFit="cover" transition={0} />
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.avatarGroup}>
-      <Image
-        source={toAbsoluteUrl(avatars[0])}
-        style={styles.avatarThreeLarge}
-        contentFit="cover"
-        transition={0}
-      />
-      <View style={styles.avatarThreeStack}>
-        <Image
-          source={toAbsoluteUrl(avatars[1])}
-          style={styles.avatarThreeSmall}
-          contentFit="cover"
-          transition={0}
-        />
-        <Image
-          source={toAbsoluteUrl(avatars[2])}
-          style={styles.avatarThreeSmall}
-          contentFit="cover"
-          transition={0}
-        />
+    <View style={styles.gridWrap}>
+      <View style={styles.gridTopRow}>
+        <Image source={toAbsoluteUrl(avatars[0])} style={styles.gridCell} contentFit="cover" transition={0} />
+        <Image source={toAbsoluteUrl(avatars[1])} style={styles.gridCell} contentFit="cover" transition={0} />
+      </View>
+      <View style={styles.gridBottomRow}>
+        <Image source={toAbsoluteUrl(avatars[2])} style={styles.gridCell} contentFit="cover" transition={0} />
+        <Image source={toAbsoluteUrl(avatars[3])} style={styles.gridCell} contentFit="cover" transition={0} />
       </View>
     </View>
   );
@@ -187,15 +218,32 @@ export default function ChatsScreen() {
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => {
+            let headerAvatars = item.participantAvatars;
+            if (item.roundMode === "scheduled" && item.imageUrl) {
+              headerAvatars = [item.imageUrl, ...item.participantAvatars];
+            } else if (item.type === "group" && item.imageUrl) {
+              headerAvatars = [item.imageUrl];
+            }
+            const avatarsJson = JSON.stringify(headerAvatars.slice(0, 4));
             if (item.roundInviteToken) {
               router.push({
                 pathname: "/round/[token]/chat",
-                params: { token: item.roundInviteToken },
+                params: {
+                  token: item.roundInviteToken,
+                  chatTitle: item.title,
+                  chatAvatars: avatarsJson,
+                  chatType: item.type,
+                },
               });
             } else {
               router.push({
                 pathname: "/conversation/[id]/chat",
-                params: { id: item.id },
+                params: {
+                  id: item.id,
+                  chatTitle: item.title,
+                  chatAvatars: avatarsJson,
+                  chatType: item.type,
+                },
               });
             }
           }}
@@ -283,8 +331,8 @@ export default function ChatsScreen() {
   );
 }
 
-const HALF = AVATAR_SIZE / 2;
-const SMALL = (AVATAR_SIZE - 4) / 2;
+const OVERLAP_SIZE = 34;
+const OVERLAP_BORDER = 2;
 
 const styles = StyleSheet.create({
   list: { flex: 1, backgroundColor: colors.background },
@@ -308,40 +356,46 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarGroup: {
+  overlapWrap: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
+  },
+  overlapBack: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: OVERLAP_SIZE,
+    height: OVERLAP_SIZE,
+    borderRadius: OVERLAP_SIZE / 2,
+  },
+  overlapFront: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: OVERLAP_SIZE,
+    height: OVERLAP_SIZE,
+    borderRadius: OVERLAP_SIZE / 2,
+    borderWidth: OVERLAP_BORDER,
+    borderColor: colors.background,
+  },
+  gridWrap: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    gap: 2,
+  },
+  gridTopRow: {
     flexDirection: "row",
-    overflow: "hidden",
+    gap: 2,
+    flex: 1,
   },
-  avatarTwo1: {
-    width: HALF,
-    height: AVATAR_SIZE,
-    borderTopLeftRadius: AVATAR_SIZE / 2,
-    borderBottomLeftRadius: AVATAR_SIZE / 2,
+  gridBottomRow: {
+    flexDirection: "row",
+    gap: 2,
+    flex: 1,
   },
-  avatarTwo2: {
-    width: HALF,
-    height: AVATAR_SIZE,
-    borderTopRightRadius: AVATAR_SIZE / 2,
-    borderBottomRightRadius: AVATAR_SIZE / 2,
-  },
-  avatarThreeLarge: {
-    width: HALF,
-    height: AVATAR_SIZE,
-    borderTopLeftRadius: AVATAR_SIZE / 2,
-    borderBottomLeftRadius: AVATAR_SIZE / 2,
-  },
-  avatarThreeStack: {
-    width: HALF,
-    height: AVATAR_SIZE,
-    justifyContent: "space-between",
-  },
-  avatarThreeSmall: {
-    width: HALF,
-    height: SMALL,
-    borderTopRightRadius: SMALL,
-    borderBottomRightRadius: SMALL,
+  gridCell: {
+    flex: 1,
+    borderRadius: AVATAR_SIZE / 4,
   },
   textCol: { flex: 1, gap: 2, minWidth: 0 },
   chatTitle: { fontSize: 15, fontWeight: "600", color: colors.text },

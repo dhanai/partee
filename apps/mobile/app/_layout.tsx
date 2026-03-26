@@ -100,80 +100,81 @@ export default function RootLayout() {
                     headerStyle: { backgroundColor: colors.background },
                     headerTintColor: colors.text,
                     headerShadowVisible: false,
+                    headerBackButtonDisplayMode: "minimal",
                     contentStyle: { backgroundColor: colors.background },
                   }}
                 >
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false, headerBackTitle: "" }} />
             <Stack.Screen
               name="round/[token]"
               options={{
                 title: "Round",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="round/[token]/edit"
               options={{
                 title: "Edit Round",
-                headerBackTitle: "Round",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="round/[token]/chat"
               options={{
-                title: "Group chat",
-                headerBackTitle: "Round",
+                title: "",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="round/[token]/results"
               options={{
                 title: "Recap",
-                headerBackTitle: "Round",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="profile/[userId]/index"
               options={{
                 title: "Profile",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="profile/[userId]/followers"
               options={{
                 title: "Followers",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="profile/[userId]/following"
               options={{
                 title: "Following",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="profile/edit"
               options={{
                 title: "Edit profile",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="badges/index"
               options={{
                 title: "All badges",
-                headerBackTitle: "Profile",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="profile/[userId]/stats/[category]"
               options={{
                 title: "Stats",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
                 animation: "fade",
               }}
             />
@@ -181,98 +182,105 @@ export default function RootLayout() {
               name="chats"
               options={{
                 title: "Chats",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="new-chat"
               options={{
                 title: "New Message",
-                headerBackTitle: "Chats",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="conversation/[id]/chat"
               options={{
-                title: "Chat",
-                headerBackTitle: "Back",
+                title: "",
+                headerBackTitle: "",
+              }}
+            />
+            <Stack.Screen
+              name="chat-info"
+              options={{
+                title: "Details",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="notifications"
               options={{
                 title: "Notifications",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="settings"
               options={{
                 title: "Settings",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="invite-friends"
               options={{
                 title: "Invite Friends",
-                headerBackTitle: "Back",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="games/create"
               options={{
                 title: "New game",
-                headerBackTitle: "Games",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="games/session/[sessionId]"
               options={{
                 title: "Game",
-                headerBackTitle: "Games",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="games/session/[sessionId]/settings"
               options={{
                 title: "Game settings",
-                headerBackTitle: "Game",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="search-groups"
               options={{
                 title: "Search Groups",
-                headerBackTitle: "Groups",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="create-group"
               options={{
                 title: "Create Group",
-                headerBackTitle: "Groups",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="group/[groupId]/index"
               options={{
                 title: "Group",
-                headerBackTitle: "Groups",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="group/[groupId]/members"
               options={{
                 title: "Members",
-                headerBackTitle: "Group",
+                headerBackTitle: "",
               }}
             />
             <Stack.Screen
               name="group/[groupId]/settings"
               options={{
                 title: "Group Settings",
-                headerBackTitle: "Group",
+                headerBackTitle: "",
               }}
             />
                 </Stack>
