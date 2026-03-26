@@ -1,0 +1,2 @@
+ALTER TABLE messages ADD COLUMN attachments JSONB;
+ALTER TABLE messages ALTER COLUMN body DROP NOT NULL;

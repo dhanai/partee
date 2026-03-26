@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import { Image as ExpoImage } from "expo-image";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -23,9 +24,133 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { toAbsoluteUrl } from "../lib/api";
+import { getImageUrls } from "../lib/attachment-types";
 import type { GroupStyle } from "../lib/chat-group-styles";
 import { colors } from "../lib/theme";
 import { type ChatMessage, roundGroupChatStyles as legacyStyles } from "./round-group-chat-poll";
+
+const MOSAIC_MAX_W = 240;
+const MOSAIC_GAP = 2;
+
+function ImageMosaic({
+  urls,
+  radii,
+  onPress,
+}: {
+  urls: string[];
+  radii: { borderTopLeftRadius: number; borderTopRightRadius: number; borderBottomLeftRadius: number; borderBottomRightRadius: number };
+  onPress?: (index: number) => void;
+}) {
+  const count = urls.length;
+
+  if (count === 1) {
+    return (
+      <Pressable onPress={() => onPress?.(0)} style={[mosaicStyles.single, radii]}>
+        <ExpoImage source={toAbsoluteUrl(urls[0])} style={[mosaicStyles.singleImg, radii]} contentFit="cover" transition={200} />
+      </Pressable>
+    );
+  }
+
+  if (count === 2) {
+    const cellW = (MOSAIC_MAX_W - MOSAIC_GAP) / 2;
+    return (
+      <View style={[mosaicStyles.row, { width: MOSAIC_MAX_W }, radii, { overflow: "hidden" }]}>
+        <Pressable onPress={() => onPress?.(0)} style={{ width: cellW, height: cellW }}>
+          <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+        </Pressable>
+        <View style={{ width: MOSAIC_GAP }} />
+        <Pressable onPress={() => onPress?.(1)} style={{ width: cellW, height: cellW }}>
+          <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (count === 3) {
+    const leftW = Math.round(MOSAIC_MAX_W * 0.66);
+    const rightW = MOSAIC_MAX_W - leftW - MOSAIC_GAP;
+    const h = leftW;
+    const halfH = (h - MOSAIC_GAP) / 2;
+    return (
+      <View style={[mosaicStyles.row, { width: MOSAIC_MAX_W, height: h }, radii, { overflow: "hidden" }]}>
+        <Pressable onPress={() => onPress?.(0)} style={{ width: leftW, height: h }}>
+          <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: leftW, height: h }} contentFit="cover" transition={200} />
+        </Pressable>
+        <View style={{ width: MOSAIC_GAP }} />
+        <View style={{ width: rightW, height: h, justifyContent: "space-between" }}>
+          <Pressable onPress={() => onPress?.(1)} style={{ width: rightW, height: halfH }}>
+            <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: rightW, height: halfH }} contentFit="cover" transition={200} />
+          </Pressable>
+          <Pressable onPress={() => onPress?.(2)} style={{ width: rightW, height: halfH }}>
+            <ExpoImage source={toAbsoluteUrl(urls[2])} style={{ width: rightW, height: halfH }} contentFit="cover" transition={200} />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  if (count === 4) {
+    const cellW = (MOSAIC_MAX_W - MOSAIC_GAP) / 2;
+    return (
+      <View style={[{ width: MOSAIC_MAX_W }, radii, { overflow: "hidden" }]}>
+        <View style={mosaicStyles.row}>
+          <Pressable onPress={() => onPress?.(0)} style={{ width: cellW, height: cellW }}>
+            <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+          </Pressable>
+          <View style={{ width: MOSAIC_GAP }} />
+          <Pressable onPress={() => onPress?.(1)} style={{ width: cellW, height: cellW }}>
+            <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+          </Pressable>
+        </View>
+        <View style={{ height: MOSAIC_GAP }} />
+        <View style={mosaicStyles.row}>
+          <Pressable onPress={() => onPress?.(2)} style={{ width: cellW, height: cellW }}>
+            <ExpoImage source={toAbsoluteUrl(urls[2])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+          </Pressable>
+          <View style={{ width: MOSAIC_GAP }} />
+          <Pressable onPress={() => onPress?.(3)} style={{ width: cellW, height: cellW }}>
+            <ExpoImage source={toAbsoluteUrl(urls[3])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  // 5 images: 2 on top, 3 on bottom
+  const topCellW = (MOSAIC_MAX_W - MOSAIC_GAP) / 2;
+  const botCellW = (MOSAIC_MAX_W - MOSAIC_GAP * 2) / 3;
+  const cellH = topCellW * 0.75;
+  return (
+    <View style={[{ width: MOSAIC_MAX_W }, radii, { overflow: "hidden" }]}>
+      <View style={mosaicStyles.row}>
+        <Pressable onPress={() => onPress?.(0)} style={{ width: topCellW, height: cellH }}>
+          <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: topCellW, height: cellH }} contentFit="cover" transition={200} />
+        </Pressable>
+        <View style={{ width: MOSAIC_GAP }} />
+        <Pressable onPress={() => onPress?.(1)} style={{ width: topCellW, height: cellH }}>
+          <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: topCellW, height: cellH }} contentFit="cover" transition={200} />
+        </Pressable>
+      </View>
+      <View style={{ height: MOSAIC_GAP }} />
+      <View style={mosaicStyles.row}>
+        {urls.slice(2, 5).map((url, i) => (
+          <View key={url} style={mosaicStyles.row}>
+            {i > 0 ? <View style={{ width: MOSAIC_GAP }} /> : null}
+            <Pressable onPress={() => onPress?.(i + 2)} style={{ width: botCellW, height: cellH }}>
+              <ExpoImage source={toAbsoluteUrl(url)} style={{ width: botCellW, height: cellH }} contentFit="cover" transition={200} />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const mosaicStyles = StyleSheet.create({
+  single: { width: MOSAIC_MAX_W, aspectRatio: 4 / 3, overflow: "hidden" },
+  singleImg: { width: "100%", height: "100%" },
+  row: { flexDirection: "row" },
+});
 
 const REACTION_EMOJIS = [
   { key: "heart", display: String.fromCodePoint(0x2764, 0xFE0F) },
@@ -48,6 +173,8 @@ type Props = {
   groupStyle?: GroupStyle;
   showStatus?: boolean;
   highlighted?: boolean;
+  onImagePress?: (images: string[], index: number) => void;
+  userAvatarMap?: Record<string, string | null>;
   conversationId?: string;
   viewerId?: string | null;
   onReaction?: (messageId: string, emoji: string, action: "add" | "remove") => void;
@@ -72,11 +199,13 @@ function AnimatedReactionChip({
   emoji,
   count,
   isOwn,
+  userAvatars,
   onPress,
 }: {
   emoji: string;
   count: number;
   isOwn: boolean;
+  userAvatars?: string[];
   onPress: () => void;
 }) {
   const scale = useSharedValue(1);
@@ -91,6 +220,8 @@ function AnimatedReactionChip({
     onPress();
   }, [onPress, scale]);
 
+  const avatars = userAvatars?.slice(0, 3) ?? [];
+
   return (
     <Animated.View style={chipStyle}>
       <Pressable
@@ -98,7 +229,22 @@ function AnimatedReactionChip({
         onPress={handlePress}
       >
         <Text style={styles.reactionEmoji}>{emojiDisplay(emoji)}</Text>
-        {count > 1 && <Text style={styles.reactionCount}>{count}</Text>}
+        {avatars.length > 0 ? (
+          <View style={styles.reactionAvatarRow}>
+            {avatars.map((uri, i) => (
+              <Image
+                key={uri + i}
+                source={{ uri: toAbsoluteUrl(uri) }}
+                style={[
+                  styles.reactionAvatar,
+                  i > 0 && { marginLeft: -4 },
+                ]}
+              />
+            ))}
+          </View>
+        ) : count > 1 ? (
+          <Text style={styles.reactionCount}>{count}</Text>
+        ) : null}
       </Pressable>
     </Animated.View>
   );
@@ -144,6 +290,8 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   groupStyle = "single",
   showStatus,
   highlighted,
+  onImagePress,
+  userAvatarMap,
   conversationId,
   viewerId,
   onReaction,
@@ -207,7 +355,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   }, [m, onReply]);
 
   const handleCopy = useCallback(() => {
-    void Clipboard.setStringAsync(m.body);
+    void Clipboard.setStringAsync(m.body ?? "");
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setPickerVisible(false);
   }, [m.body]);
@@ -332,12 +480,19 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     <View style={styles.reactionRow}>
       {Object.entries(reactions).map(([emoji, data]) => {
         const isOwn = data.userIds?.includes(viewerId ?? "");
+        const avatars = userAvatarMap
+          ? data.userIds
+              ?.map((uid) => userAvatarMap[uid])
+              .filter((a): a is string => Boolean(a))
+              .slice(0, 3) ?? []
+          : [];
         return (
           <AnimatedReactionChip
             key={emoji}
             emoji={emoji}
             count={data.count}
             isOwn={isOwn}
+            userAvatars={avatars}
             onPress={() => {
               if (!onReaction) return;
               if (isOwn) {
@@ -373,7 +528,10 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   const avatarSpacer = <View style={styles.avatarSpacer} />;
 
-  const emojiOnly = !m.parentPreview && isEmojiOnly(m.body);
+  const imageUrls = getImageUrls(m.attachments);
+  const hasImages = imageUrls.length > 0;
+  const bodyText = m.body ?? "";
+  const emojiOnly = !hasImages && !m.parentPreview && isEmojiOnly(bodyText);
 
   const RADIUS = 18;
   const GROUPED_RADIUS = 4;
@@ -387,12 +545,24 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     borderBottomRightRadius: isMine ? (hasTail ? TAIL_RADIUS : GROUPED_RADIUS) : RADIUS,
   };
 
-  const messageBody = emojiOnly ? (
-    <Text style={styles.emojiOnlyText}>{m.body.trim()}</Text>
+  const handleMosaicPress = useCallback(
+    (index: number) => {
+      onImagePress?.(imageUrls, index);
+    },
+    [imageUrls, onImagePress],
+  );
+
+  const messageBody = hasImages ? (
+    <View>
+      {showName && !isMine ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
+      <ImageMosaic urls={imageUrls} radii={bubbleRadii} onPress={handleMosaicPress} />
+    </View>
+  ) : emojiOnly ? (
+    <Text style={styles.emojiOnlyText}>{bodyText.trim()}</Text>
   ) : isMine ? (
     <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, bubbleRadii]}>
       <Autolink
-        text={m.body}
+        text={bodyText}
         style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}
         linkStyle={styles.linkMine}
         url
@@ -404,7 +574,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, bubbleRadii]}>
       {showName ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
       <Autolink
-        text={m.body}
+        text={bodyText}
         style={legacyStyles.bubbleBody}
         linkStyle={styles.linkTheirs}
         url
@@ -422,7 +592,6 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
         {messageBody}
         {reactionChips}
       </View>
-      {showAvatar ? avatarEl : avatarSpacer}
     </>
   ) : (
     <>
@@ -506,26 +675,32 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
               {/* Focused message bubble */}
               <View style={[styles.focusedBubbleRow, isMine ? styles.focusedBubbleRight : styles.focusedBubbleLeft]}>
-                <View style={[
-                  legacyStyles.bubble,
-                  isMine ? legacyStyles.bubbleMine : legacyStyles.bubbleTheirs,
-                  { borderRadius: RADIUS, maxWidth: Dimensions.get("window").width * 0.75 },
-                ]}>
-                  {!isMine && showName ? (
-                    <Text style={legacyStyles.bubbleName}>{m.user.name}</Text>
-                  ) : null}
-                  <Text style={[legacyStyles.bubbleBody, isMine ? legacyStyles.bubbleBodyMine : null]}>
-                    {m.body}
-                  </Text>
-                </View>
+                {hasImages ? (
+                  <ImageMosaic urls={imageUrls} radii={{ borderTopLeftRadius: RADIUS, borderTopRightRadius: RADIUS, borderBottomLeftRadius: RADIUS, borderBottomRightRadius: RADIUS }} />
+                ) : (
+                  <View style={[
+                    legacyStyles.bubble,
+                    isMine ? legacyStyles.bubbleMine : legacyStyles.bubbleTheirs,
+                    { borderRadius: RADIUS, maxWidth: Dimensions.get("window").width * 0.75 },
+                  ]}>
+                    {!isMine && showName ? (
+                      <Text style={legacyStyles.bubbleName}>{m.user.name}</Text>
+                    ) : null}
+                    <Text style={[legacyStyles.bubbleBody, isMine ? legacyStyles.bubbleBodyMine : null]}>
+                      {bodyText}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Context menu actions — directly below the bubble */}
               <View style={[styles.contextActions, isMine ? styles.contextAlignRight : styles.contextAlignLeft]}>
-                <Pressable style={styles.contextAction} onPress={handleCopy}>
-                  <Ionicons name="copy-outline" size={18} color={colors.text} />
-                  <Text style={styles.contextActionText}>Copy</Text>
-                </Pressable>
+                {bodyText ? (
+                  <Pressable style={styles.contextAction} onPress={handleCopy}>
+                    <Ionicons name="copy-outline" size={18} color={colors.text} />
+                    <Text style={styles.contextActionText}>Copy</Text>
+                  </Pressable>
+                ) : null}
                 {onReply ? (
                   <Pressable
                     style={styles.contextAction}
@@ -609,12 +784,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   reactionChipOwn: {
-    borderColor: colors.fairway,
-    backgroundColor: colors.fairwaySoft,
+    backgroundColor: "#d4e8da",
   },
   reactionEmoji: {
     fontSize: 14,
@@ -623,6 +795,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.muted,
     fontWeight: "600",
+  },
+  reactionAvatarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 2,
+  },
+  reactionAvatar: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "#fff",
   },
   replyPreview: {
     flexDirection: "row",

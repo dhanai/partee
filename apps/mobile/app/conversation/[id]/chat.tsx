@@ -17,14 +17,17 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatBubbleRow } from "../../../components/chat-bubble-row";
+import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { ChatDateSeparator } from "../../../components/chat-date-separator";
 import { ChatHeaderAvatars, ChatHeaderInfoButton } from "../../../components/chat-header-avatars";
 import { ChatScrollToBottom } from "../../../components/chat-scroll-to-bottom";
 import { ChatTimestamp } from "../../../components/chat-timestamp";
 import { buildChatItems, chatItemKey, type ChatListItem } from "../../../lib/build-chat-items";
-import { RoundGroupChatComposer } from "../../../components/round-group-chat-composer";
+import { RoundGroupChatComposer, type PickedImageAsset } from "../../../components/round-group-chat-composer";
 import { TypingIndicator } from "../../../components/typing-indicator";
 import { apiGet, apiPost, apiDelete } from "../../../lib/api";
+import { imageAttachments } from "../../../lib/attachment-types";
+import { uploadImage, POST_MAX_BYTES } from "../../../lib/upload-image";
 import { useChatUnread } from "../../../lib/chat-unread-context";
 import { GROUP_CHAT_COMPOSER_GAP } from "../../../lib/group-chat-layout-constants";
 import { getCachedMeProfile } from "../../../lib/me-profile-cache";
@@ -152,6 +155,9 @@ export default function ConversationChatScreen() {
     () => getCachedMeProfile()?.id ?? null,
   );
   const [replyTo, setReplyTo] = useState<ConversationMessage | null>(null);
+  const [viewerImages, setViewerImages] = useState<string[]>([]);
+  const [viewerIndex, setViewerIndex] = useState(0);
+  const [viewerVisible, setViewerVisible] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -261,9 +267,10 @@ export default function ConversationChatScreen() {
       const me = getCachedMeProfile();
       const tempId = `optimistic-${Date.now()}`;
       const parentId = replyTo?.id ?? null;
+      const replyBody = replyTo?.body ?? "";
       const parentPreview = replyTo
         ? {
-            body: replyTo.body.length > 80 ? replyTo.body.slice(0, 77) + "…" : replyTo.body,
+            body: replyBody.length > 80 ? replyBody.slice(0, 77) + "…" : replyBody,
             senderName: replyTo.user.name,
           }
         : null;
@@ -309,6 +316,60 @@ export default function ConversationChatScreen() {
       }
     },
     [conversationId, replyTo],
+  );
+
+  const handleAttachImages = useCallback(
+    async (assets: PickedImageAsset[]) => {
+      if (!conversationId || assets.length === 0) return;
+
+      const me = getCachedMeProfile();
+      const tempId = `optimistic-img-${Date.now()}`;
+
+      const optimistic: ConversationMessage = {
+        id: tempId,
+        body: null,
+        attachments: assets.map((a) => ({ type: "image" as const, url: a.uri })),
+        createdAt: new Date().toISOString(),
+        isMine: true,
+        user: { id: me?.id ?? "", name: me?.name ?? "You", avatar: me?.avatar ?? null },
+        reactions: {},
+      };
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setMsgs((prev) => [...prev, optimistic]);
+
+      try {
+        const uploadedUrls = await Promise.all(
+          assets.map((a) =>
+            uploadImage({
+              uri: a.uri,
+              filename: `chat-image-${Date.now()}.jpg`,
+              maxBytes: POST_MAX_BYTES,
+              getToken: getTokenRef.current,
+              width: a.width,
+              height: a.height,
+            }),
+          ),
+        );
+
+        const authToken = await getTokenRef.current();
+        const data = await apiPost<{ message: ConversationMessage }>(
+          `/api/conversations/${conversationId}/messages`,
+          { attachments: imageAttachments(uploadedUrls) },
+          authToken,
+        );
+        setMsgs((prev) => {
+          const without = prev.filter((m) => m.id !== tempId);
+          if (without.some((m) => m.id === data.message.id)) return without;
+          const merged = [...without, data.message];
+          void setCachedMessages(conversationId, merged);
+          return merged;
+        });
+      } catch {
+        setMsgs((prev) => prev.filter((m) => m.id !== tempId));
+        setError("Could not send image.");
+      }
+    },
+    [conversationId],
   );
 
   useEffect(() => {
@@ -400,6 +461,12 @@ export default function ConversationChatScreen() {
     setReplyTo(msg);
   }, []);
 
+  const handleImagePress = useCallback((images: string[], index: number) => {
+    setViewerImages(images);
+    setViewerIndex(index);
+    setViewerVisible(true);
+  }, []);
+
   const handleAvatarPress = useCallback((user: { id: string; name: string; avatar: string | null }) => {
     router.push({ pathname: "/profile/[userId]", params: { userId: user.id, userName: user.name, userAvatar: user.avatar ?? "" } });
   }, [router]);
@@ -437,6 +504,8 @@ export default function ConversationChatScreen() {
           groupStyle={item.groupStyle}
           showStatus={item.data.id === lastOwnMessageId}
           highlighted={item.data.id === highlightedId}
+          onImagePress={handleImagePress}
+          userAvatarMap={userAvatarMap}
           conversationId={conversationId}
           viewerId={viewerId}
           onReaction={handleReaction}
@@ -446,12 +515,22 @@ export default function ConversationChatScreen() {
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, lastOwnMessageId, highlightedId, handleGoToMessage],
+    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage],
   );
   const keyExtractor = useCallback(
     (item: ListItem) => chatItemKey(item),
     [],
   );
+
+  const userAvatarMap = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const m of msgs) {
+      if (m.user?.id && !(m.user.id in map)) {
+        map[m.user.id] = m.user.avatar;
+      }
+    }
+    return map;
+  }, [msgs]);
 
   const composerStyles = useMemo(
     () => ({
@@ -464,6 +543,7 @@ export default function ConversationChatScreen() {
   );
 
   return (
+    <>
     <KeyboardAvoidingView
       style={cStyles.root}
       behavior="padding"
@@ -514,12 +594,20 @@ export default function ConversationChatScreen() {
           styles={composerStyles}
           sendBusy={false}
           onSend={handleSend}
+          onAttachImages={handleAttachImages}
           onTyping={publishTyping}
           replyTo={replyTo}
           onCancelReply={() => setReplyTo(null)}
         />
       </View>
     </KeyboardAvoidingView>
+    <FullscreenImageViewer
+      images={viewerImages}
+      initialIndex={viewerIndex}
+      visible={viewerVisible}
+      onClose={() => setViewerVisible(false)}
+    />
+    </>
   );
 }
 

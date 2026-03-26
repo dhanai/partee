@@ -14,11 +14,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { apiBaseUrl, apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../../lib/api";
-import {
-  compressImageToJpegUriForUpload,
-  compressImageToMaxBytes,
-} from "../../lib/compress-image-for-upload";
+import { apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { uploadImage, AVATAR_MAX_BYTES } from "../../lib/upload-image";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import { colors } from "../../lib/theme";
 
@@ -187,57 +184,16 @@ export default function EditProfileScreen() {
     setUploading(true);
     setError(null);
     try {
-      const token = await getTokenRef.current();
       const asset = result.assets[0];
-      const maxBytes = 3 * 1024 * 1024;
-      const formData = new FormData();
-      if (Platform.OS === "web") {
-        const imageBlob = await compressImageToMaxBytes(
-          asset.uri,
-          maxBytes,
-          asset.width,
-          asset.height,
-        );
-        if (imageBlob.size > maxBytes) {
-          throw new Error("Could not reduce photo under 3 MB. Try a different image.");
-        }
-        formData.append("file", imageBlob, "profile-image.jpg");
-      } else {
-        const fileUri = await compressImageToJpegUriForUpload(
-          asset.uri,
-          maxBytes,
-          asset.width,
-          asset.height,
-        );
-        const sizeCheck = await (await fetch(fileUri)).blob();
-        if (sizeCheck.size > maxBytes) {
-          throw new Error("Could not reduce photo under 3 MB. Try a different image.");
-        }
-        formData.append("file", {
-          uri: fileUri,
-          name: "profile-image.jpg",
-          type: "image/jpeg",
-        } as unknown as Blob);
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/uploads/event-image`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData,
+      const url = await uploadImage({
+        uri: asset.uri,
+        filename: "profile-image.jpg",
+        maxBytes: AVATAR_MAX_BYTES,
+        getToken: getTokenRef.current,
+        width: asset.width,
+        height: asset.height,
       });
-      const bodyText = await response.text();
-      let json: { url?: string; error?: string } = {};
-      try {
-        json = JSON.parse(bodyText) as { url?: string; error?: string };
-      } catch {
-        throw new Error(`Image upload failed (${response.status}).`);
-      }
-      if (!response.ok || !json.url) {
-        throw new Error(
-          json.error ?? `Image upload failed (HTTP ${response.status}).`,
-        );
-      }
-      setAvatar(json.url);
+      setAvatar(url);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Image upload failed.");
     } finally {

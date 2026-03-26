@@ -3,9 +3,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const KEY_PREFIX = "msg_cache_";
 const MAX_MESSAGES = 30;
 
+import type { MessageAttachment } from "./attachment-types";
+
 export type CachedMessage = {
   id: string;
-  body: string;
+  body: string | null;
+  attachments?: MessageAttachment[] | null;
   createdAt: string;
   isMine: boolean;
   parentId?: string | null;

@@ -9,7 +9,7 @@ import { isRoundChatPath } from "@/lib/is-round-chat-path";
 
 type ChatMessage = {
   id: string;
-  body: string;
+  body: string | null;
   createdAt: string;
   isMine?: boolean;
   user: { id: string; name: string; avatar: string | null };
@@ -431,7 +431,7 @@ export function RoundChatPanel({
                             {avatarFor(m, scrollMessagesToBottom)}
                             <div className="max-w-[78%] shrink rounded-[14px] border border-[#ece8e1] bg-[#f1efea] px-2.5 py-2">
                               <p className="text-[11px] font-bold text-[#6e6e6e]">{m.user.name}</p>
-                              <p className="whitespace-pre-wrap text-[15px] text-[#1c1c1e]">{m.body}</p>
+                              <p className="whitespace-pre-wrap text-[15px] text-[#1c1c1e]">{m.body ?? ""}</p>
                               <p className="mt-1 text-right text-[10px] text-[#6e6e6e]">
                                 {formatTime(m.createdAt)}
                               </p>
@@ -442,7 +442,7 @@ export function RoundChatPanel({
                           <>
                             <div className="min-w-0 flex-1" aria-hidden />
                             <div className="max-w-[78%] shrink rounded-[14px] bg-[#1a3c2a] px-2.5 py-2">
-                              <p className="whitespace-pre-wrap text-[15px] text-white">{m.body}</p>
+                              <p className="whitespace-pre-wrap text-[15px] text-white">{m.body ?? ""}</p>
                               <p className="mt-1 text-right text-[10px] text-white/85">
                                 {formatTime(m.createdAt)}
                               </p>
@@ -540,7 +540,7 @@ export function RoundChatPanel({
                           </>
                         ) : null}
                         <p className={`mt-0.5 whitespace-pre-wrap ${mine ? "text-white" : ""}`}>
-                          {m.body}
+                          {m.body ?? ""}
                         </p>
                         {mine ? (
                           <p className="mt-1 text-right text-[10px] text-white/75">

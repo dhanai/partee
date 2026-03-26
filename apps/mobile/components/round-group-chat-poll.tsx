@@ -13,21 +13,27 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiDelete, apiGet, apiPost } from "../lib/api";
+import { imageAttachments } from "../lib/attachment-types";
+import { uploadImage, POST_MAX_BYTES } from "../lib/upload-image";
 import { GROUP_CHAT_COMPOSER_GAP } from "../lib/group-chat-layout-constants";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
 import { ChatBubbleRow } from "./chat-bubble-row";
+import { FullscreenImageViewer } from "./fullscreen-image-viewer";
 import { ChatDateSeparator } from "./chat-date-separator";
 import { ChatScrollToBottom } from "./chat-scroll-to-bottom";
 import { ChatTimestamp } from "./chat-timestamp";
 import { buildChatItems, chatItemKey, type ChatListItem } from "../lib/build-chat-items";
 import { getGroupStyle } from "../lib/chat-group-styles";
-import { RoundGroupChatComposer, type ReplyTarget } from "./round-group-chat-composer";
+import { RoundGroupChatComposer, type ReplyTarget, type PickedImageAsset } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
+
+import type { MessageAttachment } from "../lib/attachment-types";
 
 export type ChatMessage = {
   id: string;
-  body: string;
+  body: string | null;
+  attachments?: MessageAttachment[] | null;
   createdAt: string;
   isMine?: boolean;
   parentId?: string | null;
@@ -82,6 +88,9 @@ export function RoundGroupChatPoll({
   inviteTokenRef.current = inviteToken;
   const [viewerId, setViewerId] = useState<string | null>(() => getCachedMeProfile()?.id ?? null);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const [viewerImages, setViewerImages] = useState<string[]>([]);
+  const [viewerIndex, setViewerIndex] = useState(0);
+  const [viewerVisible, setViewerVisible] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -277,6 +286,72 @@ export function RoundGroupChatPoll({
     [inviteToken, replyTo],
   );
 
+  const handleAttachImages = useCallback(
+    async (assets: PickedImageAsset[]) => {
+      if (assets.length === 0) return;
+      setLoadError(null);
+
+      const me = getCachedMeProfile();
+      const tempId = `optimistic-img-${Date.now()}`;
+
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      const optimistic: ChatMessage = {
+        id: tempId,
+        body: null,
+        attachments: assets.map((a) => ({ type: "image" as const, url: a.uri })),
+        createdAt: new Date().toISOString(),
+        isMine: true,
+        user: { id: me?.id ?? "", name: me?.name ?? "You", avatar: me?.avatar ?? null },
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
+      try {
+        const authToken = await getTokenRef.current();
+        if (!authToken) {
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+          setLoadError("Sign in to send images.");
+          return;
+        }
+        const uploadedUrls = await Promise.all(
+          assets.map((a) =>
+            uploadImage({
+              uri: a.uri,
+              filename: `chat-image-${Date.now()}.jpg`,
+              maxBytes: POST_MAX_BYTES,
+              getToken: getTokenRef.current,
+              width: a.width,
+              height: a.height,
+            }),
+          ),
+        );
+        const data = await apiPost<{ message: ChatMessage }>(
+          `/api/rounds/${inviteToken}/messages`,
+          { attachments: imageAttachments(uploadedUrls) },
+          authToken,
+        );
+        setMessages((prev) => {
+          const without = prev.filter((m) => m.id !== tempId);
+          if (without.some((m) => m.id === data.message.id)) return without;
+          return [...without, data.message];
+        });
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        setLoadError("Could not send image.");
+      }
+    },
+    [inviteToken],
+  );
+
+  const userAvatarMap = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const m of messages) {
+      if (m.user?.id && !(m.user.id in map)) {
+        map[m.user.id] = m.user.avatar;
+      }
+    }
+    return map;
+  }, [messages]);
+
   const composerStyles = useMemo(
     () => ({
       composerRow: styles.composerRow,
@@ -288,7 +363,13 @@ export function RoundGroupChatPoll({
   );
 
   const handleReply = useCallback((msg: ChatMessage) => {
-    setReplyTo({ id: msg.id, body: msg.body, user: { name: msg.user.name } });
+    setReplyTo({ id: msg.id, body: msg.body ?? "", user: { name: msg.user.name } });
+  }, []);
+
+  const handleImagePress = useCallback((images: string[], index: number) => {
+    setViewerImages(images);
+    setViewerIndex(index);
+    setViewerVisible(true);
   }, []);
 
   const composerRow = (
@@ -296,6 +377,7 @@ export function RoundGroupChatPoll({
       styles={composerStyles}
       sendBusy={sendBusy}
       onSend={handleSend}
+      onAttachImages={handleAttachImages}
       onComposerFocus={onComposerFocus}
       replyTo={replyTo}
       onCancelReply={() => setReplyTo(null)}
@@ -374,7 +456,7 @@ export function RoundGroupChatPoll({
       if (item.type === "date") return <ChatDateSeparator date={item.date} />;
       if (item.type === "timestamp") return <ChatTimestamp date={item.date} />;
       return (
-        <ChatBubbleRow message={item.data} isMine={resolveMine(item.data)} groupStyle={item.groupStyle} highlighted={item.data.id === highlightedId} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} onGoToMessage={handleGoToMessage} />
+        <ChatBubbleRow message={item.data} isMine={resolveMine(item.data)} groupStyle={item.groupStyle} highlighted={item.data.id === highlightedId} onImagePress={handleImagePress} userAvatarMap={userAvatarMap} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} onGoToMessage={handleGoToMessage} />
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -386,7 +468,7 @@ export function RoundGroupChatPoll({
       const next = arr[index + 1];
       const gs = getGroupStyle(m, prev, next);
       return (
-        <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} groupStyle={gs} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} onGoToMessage={handleGoToMessage} />
+        <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} groupStyle={gs} onImagePress={handleImagePress} userAvatarMap={userAvatarMap} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} onGoToMessage={handleGoToMessage} />
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -404,6 +486,7 @@ export function RoundGroupChatPoll({
   // ─── Fullscreen: inverted FlatList, keyboard-aware composer ───
   if (isFullscreen) {
     return (
+      <>
       <KeyboardAvoidingView
         style={styles.fullscreenRoot}
         behavior="padding"
@@ -437,6 +520,8 @@ export function RoundGroupChatPoll({
 
         <View style={{ paddingBottom: kbVisible ? 8 : Math.max(8, insets.bottom) }}>{composerRow}</View>
       </KeyboardAvoidingView>
+      <FullscreenImageViewer images={viewerImages} initialIndex={viewerIndex} visible={viewerVisible} onClose={() => setViewerVisible(false)} />
+      </>
     );
   }
 
@@ -471,6 +556,7 @@ export function RoundGroupChatPoll({
   );
 
   return (
+    <>
     <RoundDetailSection
       title="Group chat"
       hint="Host and confirmed players only."
@@ -481,6 +567,8 @@ export function RoundGroupChatPoll({
       {messagesColumn}
       {composerRow}
     </RoundDetailSection>
+    <FullscreenImageViewer images={viewerImages} initialIndex={viewerIndex} visible={viewerVisible} onClose={() => setViewerVisible(false)} />
+    </>
   );
 }
 

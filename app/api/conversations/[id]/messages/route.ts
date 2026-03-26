@@ -9,6 +9,7 @@ import {
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { type MessageAttachment, getImageUrls } from "@/lib/attachment-types";
 import { publishConversationMessage } from "@/lib/conversation-ably";
 import { notifyConversationMessage } from "@/lib/notify-user";
 
@@ -74,6 +75,7 @@ export async function GET(req: Request, { params }: RouteContext) {
         id: messages.id,
         body: messages.body,
         parentId: messages.parentId,
+        attachments: messages.attachments,
         createdAt: messages.createdAt,
         userId: messages.userId,
         userName: users.name,
@@ -126,7 +128,7 @@ export async function GET(req: Request, { params }: RouteContext) {
         .from(messages)
         .innerJoin(users, eq(users.id, messages.userId))
         .where(sql`${messages.id} IN (${sql.join(parentIds.map((id) => sql`${id}`), sql`, `)})`);
-      parentMap = new Map(parentRows.map((p) => [p.id, { body: p.body, userName: p.userName }]));
+      parentMap = new Map(parentRows.map((p) => [p.id, { body: p.body ?? "", userName: p.userName }]));
     }
 
     const mapped = chronological.map((m) => {
@@ -140,14 +142,16 @@ export async function GET(req: Request, { params }: RouteContext) {
 
       const parent = m.parentId ? parentMap.get(m.parentId) : null;
 
+      const parentBody = parent?.body ?? "";
       return {
         id: m.id,
         body: m.body,
+        attachments: (m.attachments as MessageAttachment[] | null) ?? null,
         createdAt: m.createdAt.toISOString(),
         isMine: m.userId === viewer.id,
         parentId: m.parentId,
         parentPreview: parent
-          ? { body: parent.body.length > 80 ? parent.body.slice(0, 77) + "…" : parent.body, senderName: parent.userName }
+          ? { body: parentBody.length > 80 ? parentBody.slice(0, 77) + "…" : parentBody, senderName: parent.userName }
           : null,
         user: { id: m.userId, name: m.userName, avatar: m.userAvatar },
         reactions: grouped,
@@ -164,10 +168,20 @@ export async function GET(req: Request, { params }: RouteContext) {
   }
 }
 
-const postSchema = z.object({
-  body: z.string().trim().min(1).max(MAX_BODY),
-  parentId: z.string().uuid().optional(),
+const attachmentSchema = z.object({
+  type: z.literal("image"),
+  url: z.string().url(),
 });
+
+const postSchema = z
+  .object({
+    body: z.string().trim().max(MAX_BODY).optional(),
+    parentId: z.string().uuid().optional(),
+    attachments: z.array(attachmentSchema).max(5).optional(),
+  })
+  .refine((d) => (d.body && d.body.length > 0) || (d.attachments && d.attachments.length > 0), {
+    message: "Message must have text or at least one attachment.",
+  });
 
 export async function POST(req: Request, { params }: RouteContext) {
   try {
@@ -180,13 +194,17 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     const parsed = postSchema.parse(await req.json());
 
+    const attachments = parsed.attachments?.length ? parsed.attachments : null;
+    const body = parsed.body?.length ? parsed.body : null;
+
     const [inserted] = await db
       .insert(messages)
       .values({
         conversationId,
         userId: viewer.id,
-        body: parsed.body,
+        body,
         parentId: parsed.parentId ?? null,
+        attachments,
       })
       .returning();
 
@@ -194,19 +212,28 @@ export async function POST(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "Failed to send message." }, { status: 500 });
     }
 
+    const imageCount = getImageUrls(attachments).length;
+    const pushBody = body
+      ? body
+      : imageCount === 1
+        ? "Sent a photo"
+        : imageCount > 1
+          ? `Sent ${imageCount} photos`
+          : "";
+
     void publishConversationMessage({
       conversationId,
       messageId: inserted.id,
       senderId: viewer.id,
       senderName: viewer.name,
-      body: parsed.body,
+      body: pushBody,
     }).catch((err) => console.error("[POST messages] ably publish", err));
 
     void notifyConversationMessage({
       conversationId,
       senderUserId: viewer.id,
       senderName: viewer.name,
-      messageBody: parsed.body,
+      messageBody: pushBody,
     }).catch((err) => console.error("[POST messages] push notify", err));
 
     let parentPreview: { body: string; senderName: string } | null = null;
@@ -218,8 +245,9 @@ export async function POST(req: Request, { params }: RouteContext) {
         .where(eq(messages.id, inserted.parentId))
         .limit(1);
       if (parent) {
+        const pBody = parent.body ?? "";
         parentPreview = {
-          body: parent.body.length > 80 ? parent.body.slice(0, 77) + "…" : parent.body,
+          body: pBody.length > 80 ? pBody.slice(0, 77) + "…" : pBody,
           senderName: parent.userName,
         };
       }
@@ -229,6 +257,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       message: {
         id: inserted.id,
         body: inserted.body,
+        attachments: (inserted.attachments as MessageAttachment[] | null) ?? null,
         createdAt: inserted.createdAt.toISOString(),
         isMine: true,
         parentId: inserted.parentId,

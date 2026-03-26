@@ -11,6 +11,7 @@ import {
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { type MessageAttachment, getImageUrls } from "@/lib/attachment-types";
 import { notifyRoundChatMessagePushes } from "@/lib/notify-user";
 import {
   publishAfterRoundDetailChanged,
@@ -24,18 +25,25 @@ type RouteContext = {
 const MAX_BODY = 2000;
 const MAX_LIMIT = 50;
 
-const postSchema = z.object({
-  body: z
-    .string()
-    .trim()
-    .min(1, "Message cannot be empty.")
-    .max(MAX_BODY, `Message must be ${MAX_BODY} characters or fewer.`),
-  parentId: z.string().uuid().optional(),
+const attachmentSchema = z.object({
+  type: z.literal("image"),
+  url: z.string().url(),
 });
+
+const postSchema = z
+  .object({
+    body: z.string().trim().max(MAX_BODY, `Message must be ${MAX_BODY} characters or fewer.`).optional(),
+    parentId: z.string().uuid().optional(),
+    attachments: z.array(attachmentSchema).max(5).optional(),
+  })
+  .refine((d) => (d.body && d.body.length > 0) || (d.attachments && d.attachments.length > 0), {
+    message: "Message must have text or at least one attachment.",
+  });
 
 type MappedMessage = {
   id: string;
-  body: string;
+  body: string | null;
+  attachments?: MessageAttachment[] | null;
   createdAt: string;
   isMine: boolean;
   parentId?: string | null;
@@ -47,18 +55,20 @@ type MappedMessage = {
 function mapMessageRow(
   r: {
     id: string;
-    body: string;
+    body: string | null;
     createdAt: Date;
     userId: string;
     userName: string;
     userAvatar: string | null;
     parentId?: string | null;
+    attachments?: unknown;
   },
   viewerId: string,
 ): MappedMessage {
   return {
     id: r.id,
     body: r.body,
+    attachments: (r.attachments as MessageAttachment[] | null) ?? null,
     createdAt: r.createdAt.toISOString(),
     isMine: r.userId === viewerId,
     parentId: r.parentId ?? null,
@@ -120,7 +130,7 @@ async function attachParentPreviews(msgs: MappedMessage[]): Promise<MappedMessag
     .where(sql`${messages.id} IN (${sql.join(parentIds.map((id) => sql`${id}`), sql`, `)})`);
 
   const parentMap = new Map(
-    parentRows.map((p) => [p.id, { body: p.body, userName: p.userName }]),
+    parentRows.map((p) => [p.id, { body: p.body ?? "", userName: p.userName }]),
   );
 
   return msgs.map((m) => {
@@ -229,6 +239,7 @@ export async function GET(req: Request, { params }: RouteContext) {
           id: messages.id,
           body: messages.body,
           parentId: messages.parentId,
+          attachments: messages.attachments,
           createdAt: messages.createdAt,
           userId: messages.userId,
           userName: users.name,
@@ -252,6 +263,7 @@ export async function GET(req: Request, { params }: RouteContext) {
         id: messages.id,
         body: messages.body,
         parentId: messages.parentId,
+        attachments: messages.attachments,
         createdAt: messages.createdAt,
         userId: messages.userId,
         userName: users.name,
@@ -294,18 +306,23 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     const parsed = postSchema.parse(await req.json());
 
+    const attachments = parsed.attachments?.length ? parsed.attachments : null;
+    const body = parsed.body?.length ? parsed.body : null;
+
     const [inserted] = await db
       .insert(messages)
       .values({
         conversationId,
         userId: viewer.id,
-        body: parsed.body,
+        body,
         parentId: parsed.parentId ?? null,
+        attachments,
       })
       .returning({
         id: messages.id,
         body: messages.body,
         parentId: messages.parentId,
+        attachments: messages.attachments,
         createdAt: messages.createdAt,
         userId: messages.userId,
       });
@@ -314,12 +331,21 @@ export async function POST(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "Failed to send message." }, { status: 500 });
     }
 
+    const imageCount = getImageUrls(attachments).length;
+    const pushBody = body
+      ? body
+      : imageCount === 1
+        ? "Sent a photo"
+        : imageCount > 1
+          ? `Sent ${imageCount} photos`
+          : "";
+
     void notifyRoundChatMessagePushes({
       roundId: round.id,
       inviteToken: round.inviteToken,
       senderUserId: viewer.id,
       senderName: viewer.name,
-      messageBody: parsed.body,
+      messageBody: pushBody,
       courseName: round.courseName,
       planningLocation: round.planningLocation,
       mode: round.mode,
@@ -333,7 +359,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       senderUserId: viewer.id,
       senderName: viewer.name,
       senderAvatar: viewer.avatar,
-      messageBody: parsed.body,
+      messageBody: pushBody,
       courseName: round.courseName,
       planningLocation: round.planningLocation,
       mode: round.mode,
@@ -348,6 +374,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         id: inserted.id,
         body: inserted.body,
         parentId: inserted.parentId,
+        attachments: inserted.attachments,
         createdAt: inserted.createdAt,
         userId: inserted.userId,
         userName: viewer.name,

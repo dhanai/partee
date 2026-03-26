@@ -197,6 +197,20 @@
       "when": 1775800000000,
       "tag": "0027_report_block",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1775900000000,
+      "tag": "0028_group_join_request_notification",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1776000000000,
+      "tag": "0029_message_attachments",
+      "breakpoints": true
     }
   ]
 }

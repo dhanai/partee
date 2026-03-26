@@ -29,7 +29,7 @@ export async function compressImageToJpegUriForUpload(
           ),
         )
       : DEFAULT_MAX_LONG_EDGE;
-  let quality = 0.9;
+  let quality = 0.8;
   let currentUri = uri;
 
   for (let attempt = 0; attempt < 18; attempt++) {

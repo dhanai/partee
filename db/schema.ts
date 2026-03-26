@@ -368,8 +368,9 @@ export const messages = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    body: text("body").notNull(),
+    body: text("body"),
     parentId: uuid("parent_id"),
+    attachments: jsonb("attachments").$type<{ type: string; url: string }[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

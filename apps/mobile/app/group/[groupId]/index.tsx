@@ -9,7 +9,6 @@ import {
   Alert,
   FlatList,
   Keyboard,
-  Platform,
   Pressable,
   RefreshControl,
   Share,
@@ -22,10 +21,11 @@ import { Image } from "expo-image";
 import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput } from "../../../components/animated-bottom-sheet-frame";
 import { OverflowMenuSheet, type OverflowMenuItem } from "../../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../../components/report-sheet";
-import { apiDelete, apiGet, apiPatch, apiPost, apiBaseUrl, publicWebOrigin } from "../../../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin } from "../../../lib/api";
 import { hapticLight } from "../../../lib/haptics";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
-import { compressImageToJpegUriForUpload, compressImageToMaxBytes } from "../../../lib/compress-image-for-upload";
+import { uploadImage, AVATAR_MAX_BYTES, COVER_MAX_BYTES, POST_MAX_BYTES } from "../../../lib/upload-image";
+import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { colors } from "../../../lib/theme";
 
 type GroupDetail = {
@@ -65,7 +65,6 @@ type CommentItem = {
   user: { id: string; name: string; avatar: string | null };
 };
 
-const MAX_IMG_BYTES = 3 * 1024 * 1024;
 const COMMENT_SNAP_POINTS = ["55%"] as const;
 
 function computeBootstrapGroup(
@@ -136,6 +135,10 @@ export default function GroupLandingScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  // Fullscreen image viewer
+  const [viewerImages, setViewerImages] = useState<string[]>([]);
+  const [viewerVisible, setViewerVisible] = useState(false);
 
   // Announcement bottom sheet
   const [showAnnounceSheet, setShowAnnounceSheet] = useState(false);
@@ -296,36 +299,21 @@ export default function GroupLandingScreen() {
 
       setUploadingImage(kind);
       try {
-        const token = await getTokenRef.current();
         const asset = result.assets[0];
-        const formData = new FormData();
-
-        if (Platform.OS === "web") {
-          const imageBlob = await compressImageToMaxBytes(asset.uri, MAX_IMG_BYTES, asset.width, asset.height);
-          formData.append("file", imageBlob, `group-${kind}.jpg`);
-        } else {
-          const fileUri = await compressImageToJpegUriForUpload(asset.uri, MAX_IMG_BYTES, asset.width, asset.height);
-          formData.append("file", {
-            uri: fileUri,
-            name: `group-${kind}.jpg`,
-            type: "image/jpeg",
-          } as unknown as Blob);
-        }
-
-        const response = await fetch(`${apiBaseUrl}/api/uploads/event-image`, {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          body: formData,
+        const url = await uploadImage({
+          uri: asset.uri,
+          filename: `group-${kind}.jpg`,
+          maxBytes: isProfile ? AVATAR_MAX_BYTES : COVER_MAX_BYTES,
+          getToken: getTokenRef.current,
+          width: asset.width,
+          height: asset.height,
         });
-        const json = await response.json() as { url?: string; error?: string };
-        if (!response.ok || !json.url) {
-          throw new Error(json.error ?? "Upload failed.");
-        }
 
         const patch: Record<string, string | null> = {};
-        if (isProfile) patch.imageUrl = json.url;
-        else patch.heroImageUrl = json.url;
+        if (isProfile) patch.imageUrl = url;
+        else patch.heroImageUrl = url;
 
+        const token = await getTokenRef.current();
         await apiPatch(`/api/groups/${groupId}`, patch, token);
         void load({ silent: true });
       } catch (e) {
@@ -395,29 +383,13 @@ export default function GroupLandingScreen() {
   const uploadPostImage = useCallback(async (localUri: string): Promise<string | null> => {
     setUploadingPostImage(true);
     try {
-      const token = await getTokenRef.current();
-      const formData = new FormData();
-
-      if (Platform.OS === "web") {
-        const imageBlob = await compressImageToMaxBytes(localUri, MAX_IMG_BYTES, 0, 0);
-        formData.append("file", imageBlob, "post-image.jpg");
-      } else {
-        const fileUri = await compressImageToJpegUriForUpload(localUri, MAX_IMG_BYTES, 0, 0);
-        formData.append("file", {
-          uri: fileUri,
-          name: "post-image.jpg",
-          type: "image/jpeg",
-        } as unknown as Blob);
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/uploads/event-image`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData,
+      const url = await uploadImage({
+        uri: localUri,
+        filename: "post-image.jpg",
+        maxBytes: POST_MAX_BYTES,
+        getToken: getTokenRef.current,
       });
-      const json = await response.json() as { url?: string; error?: string };
-      if (!response.ok || !json.url) throw new Error(json.error ?? "Upload failed.");
-      return json.url;
+      return url;
     } catch (e) {
       Alert.alert("Upload failed", e instanceof Error ? e.message : "Could not upload image.");
       return null;
@@ -882,12 +854,14 @@ export default function GroupLandingScreen() {
                 </View>
                 <Text style={styles.postBody}>{item.body}</Text>
                 {item.imageUrl ? (
-                  <Image
-                    source={item.imageUrl}
-                    style={styles.postImage}
-                    contentFit="cover"
-                    transition={0}
-                  />
+                  <Pressable onPress={() => { setViewerImages([item.imageUrl!]); setViewerVisible(true); }}>
+                    <Image
+                      source={item.imageUrl}
+                      style={styles.postImage}
+                      contentFit="cover"
+                      transition={0}
+                    />
+                  </Pressable>
                 ) : null}
                 <View style={styles.postFooter}>
                   <Pressable
@@ -1262,6 +1236,11 @@ export default function GroupLandingScreen() {
         contentId={reportItem?.id ?? ""}
         targetUserId={reportItem?.user.id}
         targetLabel="this post"
+      />
+      <FullscreenImageViewer
+        images={viewerImages}
+        visible={viewerVisible}
+        onClose={() => setViewerVisible(false)}
       />
     </View>
   );

@@ -28,11 +28,17 @@ export type GroupChatComposerStyles = {
   sendBtnDisabled: ViewStyle;
 };
 
+export type PickedImageAsset = {
+  uri: string;
+  width?: number;
+  height?: number;
+};
+
 type Props = {
   styles: GroupChatComposerStyles;
   sendBusy: boolean;
   onSend: (text: string) => Promise<boolean>;
-  onImagePicked?: (uri: string) => void;
+  onAttachImages?: (assets: PickedImageAsset[]) => void;
   onComposerFocus?: () => void;
   onTyping?: () => void;
   replyTo?: ReplyTarget | null;
@@ -43,7 +49,7 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
   styles: s,
   sendBusy,
   onSend,
-  onImagePicked,
+  onAttachImages,
   onComposerFocus,
   onTyping,
   replyTo,
@@ -87,12 +93,16 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: 5,
       allowsEditing: false,
     });
-    if (!result.canceled && result.assets[0]) {
-      onImagePicked?.(result.assets[0].uri);
+    if (!result.canceled && result.assets.length > 0) {
+      onAttachImages?.(
+        result.assets.map((a) => ({ uri: a.uri, width: a.width, height: a.height })),
+      );
     }
-  }, [onImagePicked]);
+  }, [onAttachImages]);
 
   return (
     <View>
@@ -113,7 +123,7 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
         </View>
       ) : null}
       <View style={s.composerRow}>
-        {onImagePicked ? (
+        {onAttachImages ? (
           <Pressable
             style={composerBtnStyles.plusBtn}
             onPress={() => void handlePickImage()}

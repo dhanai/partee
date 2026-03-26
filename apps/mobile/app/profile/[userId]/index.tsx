@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { ParfadeProfileLiveRefresh } from "../../../components/parfade-profile-live-refresh";
 import { ProfileStatCategoryCards } from "../../../components/profile-stat-category-cards";
@@ -104,6 +105,7 @@ export default function PublicProfileScreen() {
   );
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [avatarViewerVisible, setAvatarViewerVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(
     () => computeBootstrapProfile(userId, userName, userAvatar),
@@ -354,7 +356,11 @@ export default function PublicProfileScreen() {
           />
         }
       >
-      <View style={[styles.avatarShadowOuter, { width: avatarSize, height: avatarSize }]}>
+      <Pressable
+        style={[styles.avatarShadowOuter, { width: avatarSize, height: avatarSize }]}
+        onPress={profile.user.avatar ? () => setAvatarViewerVisible(true) : undefined}
+        disabled={!profile.user.avatar}
+      >
         <View style={[styles.avatarClip, { width: avatarSize, height: avatarSize }]}>
           {profile.user.avatar ? (
             <Image
@@ -374,7 +380,7 @@ export default function PublicProfileScreen() {
             </View>
           )}
         </View>
-      </View>
+      </Pressable>
 
       <View style={styles.identityBlock}>
         <Text style={styles.profileName}>{profile.user.name}</Text>
@@ -523,6 +529,13 @@ export default function PublicProfileScreen() {
         contentId={userId}
         targetUserId={userId}
         targetLabel={profile?.user.name ?? "this user"}
+      />
+    ) : null}
+    {profile?.user.avatar ? (
+      <FullscreenImageViewer
+        images={[toAbsoluteUrl(profile.user.avatar)]}
+        visible={avatarViewerVisible}
+        onClose={() => setAvatarViewerVisible(false)}
       />
     ) : null}
     </>
