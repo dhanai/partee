@@ -34,6 +34,16 @@ export default function AuthLayout() {
             sheetExpandsWhenScrolledToEdge: true,
           }}
         />
+        <Stack.Screen
+          name="forgot-password"
+          options={{
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.45, 1.0],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 16,
+            sheetExpandsWhenScrolledToEdge: true,
+          }}
+        />
       </Stack>
     </View>
   );

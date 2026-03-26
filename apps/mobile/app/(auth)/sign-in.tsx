@@ -297,6 +297,9 @@ export default function SignInScreen() {
                   placeholderTextColor={colors.muted}
                   style={authFormStyles.input}
                 />
+                <Pressable onPress={() => router.push("/(auth)/forgot-password")}>
+                  <Text style={styles.forgotLink}>Forgot password?</Text>
+                </Pressable>
                 {error ? <Text style={authFormStyles.error}>{error}</Text> : null}
                 <Pressable
                   style={[
@@ -359,4 +362,5 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 22, paddingTop: 24 },
   form: { gap: 12, paddingBottom: 24 },
   link: { color: colors.fairway, fontWeight: "600", fontSize: 15 },
+  forgotLink: { color: colors.fairway, fontWeight: "600", fontSize: 14, alignSelf: "flex-end" },
 });

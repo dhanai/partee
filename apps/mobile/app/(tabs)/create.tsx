@@ -284,6 +284,7 @@ export default function CreateScreen() {
   }
 
   function openCalendar(target: "targetDate" | "teeDate") {
+    Keyboard.dismiss();
     setCalendarTarget(target);
     setCalendarOpen(true);
   }
@@ -622,7 +623,7 @@ export default function CreateScreen() {
               </Pressable>
               <Pressable
                 style={[styles.datePickerBtn, styles.flex1]}
-                onPress={() => setTimePickerOpen(true)}
+                onPress={() => { Keyboard.dismiss(); setTimePickerOpen(true); }}
               >
                 <Text style={styles.datePickerText}>{formatTimeLabel(teeTimeValue)}</Text>
                 <Ionicons name="time-outline" size={18} color={colors.fairway} />

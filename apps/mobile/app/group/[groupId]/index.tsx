@@ -827,7 +827,7 @@ export default function GroupLandingScreen() {
   return (
     <View style={styles.root}>
       <FlatList
-        data={activity}
+        data={isMember ? activity : []}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={headerComponent}
         refreshControl={

@@ -8,6 +8,7 @@ import {
   Alert,
   Share,
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -313,6 +314,7 @@ export default function RoundDetailsScreen() {
   }
 
   function openCalendar() {
+    Keyboard.dismiss();
     setCalendarOpen(true);
   }
 
@@ -531,7 +533,6 @@ export default function RoundDetailsScreen() {
           style={styles.container}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
           keyboardDismissMode="interactive"
           refreshControl={
             <RefreshControl
@@ -674,6 +675,104 @@ export default function RoundDetailsScreen() {
         </View>
       ) : null}
 
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {message ? <Text style={styles.successText}>{message}</Text> : null}
+
+      {round.isHost && round.mode === "planning" ? (
+        <RoundDetailSection
+          title="Finalize details"
+          hint="Pick course and tee time for your group."
+          icon="calendar-outline"
+          expanded={finalizeExpanded}
+          onToggle={() => setFinalizeExpanded((e) => !e)}
+        >
+          <Text style={styles.sectionLabel}>Course</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              value={finalizeQuery}
+              onChangeText={(value) => {
+                setFinalizeQuery(value);
+                if (finalizeCourse && value !== finalizeCourse.name) {
+                  setFinalizeCourse(null);
+                }
+              }}
+              onFocus={() => finalizeResults.length > 0 && setShowFinalizeResults(true)}
+              placeholder="Search golf courses..."
+              placeholderTextColor={colors.muted}
+              style={[styles.input, styles.inputWithClear]}
+            />
+            {loadingFinalizeCourses &&
+            !finalizeCourse &&
+            finalizeQuery.trim().length >= 2 ? (
+              <View style={styles.inputAccessory}>
+                <ActivityIndicator size="small" color={colors.muted} />
+              </View>
+            ) : null}
+            {finalizeCourse ? (
+              <Pressable
+                style={styles.inputAccessory}
+                onPress={() => {
+                  setFinalizeCourse(null);
+                  setFinalizeQuery("");
+                  setFinalizeResults([]);
+                  setShowFinalizeResults(false);
+                }}
+              >
+                <Ionicons name="close" size={15} color={colors.muted} />
+              </Pressable>
+            ) : null}
+          </View>
+          {showFinalizeResults && finalizeResults.map((course) => (
+            <Pressable
+              key={course.id}
+              style={styles.listRow}
+              onPress={() => {
+                setFinalizeCourse(course);
+                setFinalizeQuery(course.name);
+                setFinalizeResults([]);
+              }}
+            >
+              <Text style={styles.listTitle}>{course.name}</Text>
+              <Text style={styles.listMeta}>{course.address}</Text>
+            </Pressable>
+          ))}
+
+          <Text style={styles.sectionLabel}>Tee time</Text>
+          <View style={styles.inlineRow}>
+            <Pressable style={[styles.datePickerBtn, styles.flex1]} onPress={openCalendar}>
+              <Text
+                style={[
+                  styles.datePickerText,
+                  !finalizeTeeDate && styles.datePickerPlaceholder,
+                ]}
+              >
+                {formatDateLabel(finalizeTeeDate)}
+              </Text>
+              <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
+            </Pressable>
+            <Pressable
+              style={[styles.datePickerBtn, styles.flex1]}
+              onPress={() => { Keyboard.dismiss(); setTimePickerOpen(true); }}
+            >
+              <Text style={styles.datePickerText}>
+                {formatTimeLabel(finalizeTeeTimeValue)}
+              </Text>
+              <Ionicons name="time-outline" size={18} color={colors.fairway} />
+            </Pressable>
+          </View>
+          {finalizeError ? <Text style={styles.errorText}>{finalizeError}</Text> : null}
+          <Pressable
+            style={[btn.button, btn.primaryButton, finalizeBusy && styles.disabledButton]}
+            onPress={() => void finalizeRound()}
+            disabled={finalizeBusy}
+          >
+            <Text style={btn.primaryText}>
+              {finalizeBusy ? "Finalizing..." : "Finalize round"}
+            </Text>
+          </Pressable>
+        </RoundDetailSection>
+      ) : null}
+
       {canUseGroupChat && token ? (
         <Pressable
           style={({ pressed }) => [
@@ -753,104 +852,6 @@ export default function RoundDetailsScreen() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.muted} />
         </Pressable>
-      ) : null}
-
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      {message ? <Text style={styles.successText}>{message}</Text> : null}
-
-      {round.isHost && round.mode === "planning" ? (
-        <RoundDetailSection
-          title="Finalize details"
-          hint="Pick course and tee time for your group."
-          icon="calendar-outline"
-          expanded={finalizeExpanded}
-          onToggle={() => setFinalizeExpanded((e) => !e)}
-        >
-          <Text style={styles.sectionLabel}>Course</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              value={finalizeQuery}
-              onChangeText={(value) => {
-                setFinalizeQuery(value);
-                if (finalizeCourse && value !== finalizeCourse.name) {
-                  setFinalizeCourse(null);
-                }
-              }}
-              onFocus={() => finalizeResults.length > 0 && setShowFinalizeResults(true)}
-              placeholder="Search golf courses..."
-              placeholderTextColor={colors.muted}
-              style={[styles.input, styles.inputWithClear]}
-            />
-            {loadingFinalizeCourses &&
-            !finalizeCourse &&
-            finalizeQuery.trim().length >= 2 ? (
-              <View style={styles.inputAccessory}>
-                <ActivityIndicator size="small" color={colors.muted} />
-              </View>
-            ) : null}
-            {finalizeCourse ? (
-              <Pressable
-                style={styles.inputAccessory}
-                onPress={() => {
-                  setFinalizeCourse(null);
-                  setFinalizeQuery("");
-                  setFinalizeResults([]);
-                  setShowFinalizeResults(false);
-                }}
-              >
-                <Ionicons name="close" size={15} color={colors.muted} />
-              </Pressable>
-            ) : null}
-          </View>
-          {showFinalizeResults && finalizeResults.map((course) => (
-            <Pressable
-              key={course.id}
-              style={styles.listRow}
-              onPress={() => {
-                setFinalizeCourse(course);
-                setFinalizeQuery(course.name);
-                setFinalizeResults([]);
-              }}
-            >
-              <Text style={styles.listTitle}>{course.name}</Text>
-              <Text style={styles.listMeta}>{course.address}</Text>
-            </Pressable>
-          ))}
-
-          <Text style={styles.sectionLabel}>Tee time</Text>
-          <View style={styles.inlineRow}>
-            <Pressable style={[styles.datePickerBtn, styles.flex1]} onPress={openCalendar}>
-              <Text
-                style={[
-                  styles.datePickerText,
-                  !finalizeTeeDate && styles.datePickerPlaceholder,
-                ]}
-              >
-                {formatDateLabel(finalizeTeeDate)}
-              </Text>
-              <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
-            </Pressable>
-            <Pressable
-              style={[styles.datePickerBtn, styles.flex1]}
-              onPress={() => setTimePickerOpen(true)}
-            >
-              <Text style={styles.datePickerText}>
-                {formatTimeLabel(finalizeTeeTimeValue)}
-              </Text>
-              <Ionicons name="time-outline" size={18} color={colors.fairway} />
-            </Pressable>
-          </View>
-          {finalizeError ? <Text style={styles.errorText}>{finalizeError}</Text> : null}
-          <Pressable
-            style={[btn.button, btn.primaryButton, finalizeBusy && styles.disabledButton]}
-            onPress={() => void finalizeRound()}
-            disabled={finalizeBusy}
-          >
-            <Text style={btn.primaryText}>
-              {finalizeBusy ? "Finalizing..." : "Finalize round"}
-            </Text>
-          </Pressable>
-        </RoundDetailSection>
       ) : null}
 
       {canInviteUsers ? (

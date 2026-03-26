@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, ilike, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -73,7 +73,7 @@ export async function GET(req: Request) {
       .from(groups)
       .where(
         and(
-          eq(groups.joinPolicy, "public"),
+          ne(groups.joinPolicy, "invite_only"),
           myGroupIds.length > 0
             ? sql`${groups.id} NOT IN (${sql.join(myGroupIds.map((id) => sql`${id}`), sql`, `)})`
             : sql`TRUE`,
