@@ -95,6 +95,28 @@ export function publishAfterRoundDetailChanged(
   }).catch((e) => logPublishError("round-detail-updated", e));
 }
 
+/**
+ * In-app toast when a player RSVPs to a round the host created.
+ */
+export function publishRsvpToast(input: {
+  hostId: string;
+  inviteToken: string;
+  roundTitle: string;
+  guestName: string;
+  guestAvatar: string | null;
+  spotStatus: "confirmed" | "requested" | "declined";
+}): void {
+  void publishParfadeMessage(parfadeUserInboxChannel(input.hostId), {
+    v: 1,
+    type: "rsvp-toast",
+    inviteToken: input.inviteToken,
+    roundTitle: input.roundTitle,
+    guestName: input.guestName,
+    guestAvatar: input.guestAvatar ?? undefined,
+    spotStatus: input.spotStatus,
+  }).catch((e) => logPublishError("rsvp-toast", e));
+}
+
 const CHAT_TOAST_PREVIEW_MAX = 100;
 
 /** In-app mustard dot + open notifications list refresh (follow / RSVP / invite rows). */
@@ -116,6 +138,7 @@ export function publishGroupChatToastFanout(input: {
   inviteToken: string;
   senderUserId: string;
   senderName: string;
+  senderAvatar: string | null;
   messageBody: string;
   courseName: string | null;
   planningLocation: string | null;
@@ -152,6 +175,7 @@ export function publishGroupChatToastFanout(input: {
         inviteToken: token,
         roundTitle,
         senderLabel,
+        senderAvatar: input.senderAvatar ?? undefined,
         bodyPreview,
       }).catch((e) => logPublishError(`group-chat-toast ${uid}`, e));
     }

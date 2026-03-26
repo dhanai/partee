@@ -10,6 +10,7 @@ import {
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { getViewerFollowedIds, scoreAnnouncement } from "@/lib/feed-scoring";
 
 type Ctx = { params: { groupId: string } };
 
@@ -173,16 +174,40 @@ export async function GET(req: Request, { params }: Ctx) {
       });
     }
 
-    // ── Sort & paginate ─────────────────────────────────────────
-    items.sort((a, b) => {
-      const pinA = a.type === "announcement" && a.isPinned ? 1 : 0;
-      const pinB = b.type === "announcement" && b.isPinned ? 1 : 0;
+    // ── Score announcements & sort ─────────────────────────────
+    const followedIds = await getViewerFollowedIds(viewer.id);
+
+    const scoredItems = items.map((item) => {
+      if (item.type !== "announcement") return { item, _score: 0 };
+      return {
+        item,
+        _score: scoreAnnouncement({
+          likeCount: item.likeCount,
+          commentCount: item.commentCount,
+          createdAt: item.createdAt,
+          authorId: item.user.id,
+          followedIds,
+        }),
+      };
+    });
+
+    scoredItems.sort((a, b) => {
+      const pinA = a.item.type === "announcement" && a.item.isPinned ? 1 : 0;
+      const pinB = b.item.type === "announcement" && b.item.isPinned ? 1 : 0;
       if (pinA !== pinB) return pinB - pinA;
 
-      const dateA = a.type === "member_joined" ? a.joinedAt : a.createdAt;
-      const dateB = b.type === "member_joined" ? b.joinedAt : b.createdAt;
+      const bothAnnouncements = a.item.type === "announcement" && b.item.type === "announcement";
+      if (bothAnnouncements && (a._score > 0 || b._score > 0)) {
+        if (a._score !== b._score) return b._score - a._score;
+      }
+
+      const dateA = a.item.type === "member_joined" ? a.item.joinedAt : a.item.createdAt;
+      const dateB = b.item.type === "member_joined" ? b.item.joinedAt : b.item.createdAt;
       return new Date(dateB).getTime() - new Date(dateA).getTime();
     });
+
+    items.length = 0;
+    for (const s of scoredItems) items.push(s.item);
 
     const page = items.slice(0, pageSize);
 

@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, ilike, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
   conversations,
   conversationParticipants,
+  groupAnnouncements,
   groupMembers,
   groups,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { getViewerFollowedIds, scoreDiscoverGroup } from "@/lib/feed-scoring";
 
 type GroupRole = "owner" | "admin" | "member";
 type GroupListItem = {
@@ -95,14 +97,66 @@ export async function GET(req: Request) {
       : [];
     const discoverCountMap = new Map(discoverCounts.map((r) => [r.groupId, Number(r.count)]));
 
-    const discoverGroups: GroupListItem[] = discoverRows.map((g) => ({
-      id: g.id,
-      name: g.name,
-      imageUrl: g.imageUrl,
-      heroImageUrl: g.heroImageUrl,
-      memberCount: discoverCountMap.get(g.id) ?? 0,
-      myRole: null,
-    }));
+    // Score discover groups by social affinity + activity + size
+    const followedIds = await getViewerFollowedIds(viewer.id);
+
+    let followerOverlapMap = new Map<string, number>();
+    let recentActivityMap = new Map<string, number>();
+
+    if (discoverGroupIds.length > 0) {
+      const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+
+      const [overlapRows, activityRows] = await Promise.all([
+        followedIds.size > 0
+          ? db
+              .select({
+                groupId: groupMembers.groupId,
+                count: count().as("count"),
+              })
+              .from(groupMembers)
+              .where(
+                and(
+                  inArray(groupMembers.groupId, discoverGroupIds),
+                  inArray(groupMembers.userId, [...followedIds]),
+                ),
+              )
+              .groupBy(groupMembers.groupId)
+          : Promise.resolve([]),
+        db
+          .select({
+            groupId: groupAnnouncements.groupId,
+            count: count().as("count"),
+          })
+          .from(groupAnnouncements)
+          .where(
+            and(
+              inArray(groupAnnouncements.groupId, discoverGroupIds),
+              gte(groupAnnouncements.createdAt, twoWeeksAgo),
+            ),
+          )
+          .groupBy(groupAnnouncements.groupId),
+      ]);
+
+      followerOverlapMap = new Map(overlapRows.map((r) => [r.groupId, Number(r.count)]));
+      recentActivityMap = new Map(activityRows.map((r) => [r.groupId, Number(r.count)]));
+    }
+
+    const discoverGroups: GroupListItem[] = discoverRows
+      .map((g) => ({
+        id: g.id,
+        name: g.name,
+        imageUrl: g.imageUrl,
+        heroImageUrl: g.heroImageUrl,
+        memberCount: discoverCountMap.get(g.id) ?? 0,
+        myRole: null as GroupRole | null,
+        _score: scoreDiscoverGroup({
+          memberCount: discoverCountMap.get(g.id) ?? 0,
+          followerOverlap: followerOverlapMap.get(g.id) ?? 0,
+          recentActivityCount: recentActivityMap.get(g.id) ?? 0,
+        }),
+      }))
+      .sort((a, b) => b._score - a._score)
+      .map(({ _score, ...rest }) => rest);
 
     let searchGroups: GroupListItem[] = [];
     if (searchQuery.length >= 2) {

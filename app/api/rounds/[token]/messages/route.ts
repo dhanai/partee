@@ -311,6 +311,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       inviteToken: round.inviteToken,
       senderUserId: viewer.id,
       senderName: viewer.name,
+      senderAvatar: viewer.avatar,
       messageBody: parsed.body,
       courseName: round.courseName,
       planningLocation: round.planningLocation,

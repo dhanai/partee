@@ -10,7 +10,17 @@ export type ParfadeRealtimeMessageV1 =
       inviteToken: string;
       roundTitle: string;
       senderLabel: string;
+      senderAvatar?: string;
       bodyPreview: string;
+    }
+  | {
+      v: 1;
+      type: "rsvp-toast";
+      inviteToken: string;
+      roundTitle: string;
+      guestName: string;
+      guestAvatar?: string;
+      spotStatus: "confirmed" | "requested" | "declined";
     }
   | {
       v: 1;

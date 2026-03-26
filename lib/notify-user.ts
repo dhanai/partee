@@ -1,6 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { inAppNotifications, users } from "@/db/schema";
+import { conversationParticipants, inAppNotifications, users } from "@/db/schema";
 import { listRoundChatPushRecipientUserIds } from "@/lib/round-chat-access";
 import {
   buildHostRsvpNotificationCopy,
@@ -272,6 +272,57 @@ export async function notifyRoundChatMessagePushes(input: {
       title,
       body,
       data,
+    })),
+  );
+}
+
+const DM_PREVIEW_MAX = 140;
+
+export async function notifyConversationMessage(input: {
+  conversationId: string;
+  senderUserId: string;
+  senderName: string;
+  messageBody: string;
+}): Promise<void> {
+  const recipientRows = await db
+    .select({ userId: conversationParticipants.userId })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, input.conversationId),
+        ne(conversationParticipants.userId, input.senderUserId),
+      ),
+    );
+
+  const recipientIds = recipientRows.map((r) => r.userId);
+  if (recipientIds.length === 0) return;
+
+  const tokenRows = await db
+    .select({ token: users.expoPushToken })
+    .from(users)
+    .where(inArray(users.id, recipientIds));
+
+  const tokens = tokenRows
+    .map((r) => r.token?.trim())
+    .filter((t): t is string => Boolean(t));
+
+  if (tokens.length === 0) return;
+
+  const who = formatInviterFirstLastInitial(input.senderName);
+  const raw = input.messageBody.trim();
+  const preview =
+    raw.length > DM_PREVIEW_MAX ? `${raw.slice(0, DM_PREVIEW_MAX - 1)}…` : raw;
+
+  await sendExpoPushMessages(
+    tokens.map((to) => ({
+      to,
+      sound: "default" as const,
+      title: who,
+      body: preview,
+      data: {
+        type: "conversation_message",
+        conversationId: input.conversationId,
+      },
     })),
   );
 }

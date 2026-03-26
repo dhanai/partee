@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { publishConversationMessage } from "@/lib/conversation-ably";
+import { notifyConversationMessage } from "@/lib/notify-user";
 
 type RouteContext = { params: { id: string } };
 
@@ -200,6 +201,13 @@ export async function POST(req: Request, { params }: RouteContext) {
       senderName: viewer.name,
       body: parsed.body,
     }).catch((err) => console.error("[POST messages] ably publish", err));
+
+    void notifyConversationMessage({
+      conversationId,
+      senderUserId: viewer.id,
+      senderName: viewer.name,
+      messageBody: parsed.body,
+    }).catch((err) => console.error("[POST messages] push notify", err));
 
     let parentPreview: { body: string; senderName: string } | null = null;
     if (inserted.parentId) {

@@ -5,7 +5,11 @@ import { db } from "@/db";
 import { rounds, spots } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { recordHostRoundRsvpAndMaybePush } from "@/lib/notify-user";
-import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
+import {
+  publishAfterRoundDetailChanged,
+  publishRsvpToast,
+} from "@/lib/parfade-ably-publish";
+import { formatChatPushTitleLine } from "@/lib/round-invite-push-message";
 import { delay } from "@/lib/utils";
 
 const joinSchema = z.object({
@@ -97,6 +101,22 @@ export async function POST(req: Request, { params }: RouteContext) {
             spotStatus: targetStatus,
           }).catch((err) => console.error("[join] host RSVP notify", err));
           publishAfterRoundDetailChanged(params.token, "join");
+          if (round.hostId !== user.id) {
+            publishRsvpToast({
+              hostId: round.hostId,
+              inviteToken: round.inviteToken,
+              roundTitle: formatChatPushTitleLine({
+                courseName: round.courseName,
+                planningLocation: round.planningLocation,
+                mode: round.mode,
+                teeTime: round.teeTime,
+                targetDate: round.targetDate,
+              }),
+              guestName: user.name,
+              guestAvatar: user.avatar,
+              spotStatus: targetStatus,
+            });
+          }
           return NextResponse.json({
             ok: true,
             status: targetStatus,
@@ -124,6 +144,22 @@ export async function POST(req: Request, { params }: RouteContext) {
             spotStatus: targetStatus,
           }).catch((err) => console.error("[join] host RSVP notify", err));
           publishAfterRoundDetailChanged(params.token, "join");
+          if (round.hostId !== user.id) {
+            publishRsvpToast({
+              hostId: round.hostId,
+              inviteToken: round.inviteToken,
+              roundTitle: formatChatPushTitleLine({
+                courseName: round.courseName,
+                planningLocation: round.planningLocation,
+                mode: round.mode,
+                teeTime: round.teeTime,
+                targetDate: round.targetDate,
+              }),
+              guestName: user.name,
+              guestAvatar: user.avatar,
+              spotStatus: targetStatus,
+            });
+          }
           return NextResponse.json({
             ok: true,
             status: targetStatus,
