@@ -1,20 +1,20 @@
 import { useAuth } from "@clerk/clerk-expo";
-import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   LayoutAnimation,
-  Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
   type ScrollViewProps,
 } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
+import { useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ChatScrollView, { ChatFreezeContext } from "../../../components/chat-scroll-view";
 import { ChatBubbleRow } from "../../../components/chat-bubble-row";
@@ -494,14 +494,25 @@ export default function ConversationChatScreen() {
   }, [invertedItems]);
 
   const [chatFreeze, setChatFreeze] = useState(false);
+  const kbVisible = useRef(false);
+  const kbWasOpen = useRef(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardWillShow", () => { kbVisible.current = true; });
+    const hideSub = Keyboard.addListener("keyboardWillHide", () => { kbVisible.current = false; });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   const handleContextMenuOpen = useCallback(() => {
+    kbWasOpen.current = kbVisible.current;
     setChatFreeze(true);
   }, []);
 
   const handleContextMenuClose = useCallback(() => {
     setChatFreeze(false);
-    composerRef.current?.focus();
+    if (kbWasOpen.current) {
+      composerRef.current?.focus();
+    }
   }, []);
 
   const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
@@ -568,11 +579,29 @@ export default function ConversationChatScreen() {
     [insets.bottom],
   );
 
+  const extraContentPadding = useSharedValue(0);
+  const composerBaseHeight = useRef(0);
+
+  const onComposerLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const h = e.nativeEvent.layout.height;
+      if (composerBaseHeight.current === 0) {
+        composerBaseHeight.current = h;
+        return;
+      }
+      extraContentPadding.value = withTiming(
+        Math.max(h - composerBaseHeight.current, 0),
+        { duration: 250 },
+      );
+    },
+    [extraContentPadding],
+  );
+
   const renderChatScroll = useCallback(
     (props: ScrollViewProps) => (
-      <ChatScrollView {...props} inverted />
+      <ChatScrollView {...props} inverted extraContentPadding={extraContentPadding} />
     ),
-    [],
+    [extraContentPadding],
   );
 
   const ItemSeparator = useCallback(() => <View style={cStyles.separator} />, []);
@@ -622,7 +651,7 @@ export default function ConversationChatScreen() {
       {error ? <Text style={cStyles.errorText}>{error}</Text> : null}
 
       <KeyboardStickyView offset={stickyOffset}>
-        <View style={[cStyles.composerWrap, { paddingBottom: insets.bottom + 8 }]}>
+        <View style={[cStyles.composerWrap, { paddingBottom: insets.bottom + 8 }]} onLayout={onComposerLayout}>
           <TypingIndicator names={typingNames} />
           <RoundGroupChatComposer
             ref={composerRef}
@@ -667,7 +696,7 @@ const cStyles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingTop: INPUT_HEIGHT + MARGIN,
+    paddingTop: MARGIN,
   },
   separator: {
     height: 6,
@@ -680,9 +709,7 @@ const cStyles = StyleSheet.create({
     color: colors.danger,
     fontSize: 12,
   },
-  composerWrap: {
-    backgroundColor: "#fff",
-  },
+  composerWrap: {},
   composerRow: {
     flexDirection: "row",
     gap: GROUP_CHAT_COMPOSER_GAP,
