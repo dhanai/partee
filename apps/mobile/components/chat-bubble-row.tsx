@@ -11,7 +11,6 @@ import {
   Keyboard,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -598,24 +597,12 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     </View>
   );
 
-  const bubbleContent = isMine ? (
+  const bubbleInnerContent = (
     <>
-      <View style={legacyStyles.bubbleRowFlex} />
-      <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColMine]}>
-        {replyPreview}
-        {messageBody}
-        {reactionChips}
-      </View>
-    </>
-  ) : (
-    <>
-      {showAvatar ? avatarEl : avatarSpacer}
-      <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColTheirs]}>
-        {replyPreview}
-        {emojiOnly && showName ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
-        {messageBody}
-        {reactionChips}
-      </View>
+      {replyPreview}
+      {emojiOnly && showName && !isMine ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
+      {messageBody}
+      {reactionChips}
     </>
   );
 
@@ -628,8 +615,29 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
         </Animated.View>
       ) : null}
       <GestureDetector gesture={composed}>
-        <Animated.View style={[legacyStyles.bubbleRow, groupStyle === "middle" || groupStyle === "bottom" ? styles.groupedRow : null, animatedStyle]}>
-          {bubbleContent}
+        <Animated.View
+          style={[
+            legacyStyles.bubbleRow,
+            groupStyle === "middle" || groupStyle === "bottom" ? styles.groupedRow : null,
+            animatedStyle,
+            pickerVisible && styles.hiddenBubble,
+          ]}
+        >
+          {isMine ? (
+            <>
+              <View style={legacyStyles.bubbleRowFlex} />
+              <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColMine]}>
+                {bubbleInnerContent}
+              </View>
+            </>
+          ) : (
+            <>
+              {showAvatar ? avatarEl : avatarSpacer}
+              <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColTheirs]}>
+                {bubbleInnerContent}
+              </View>
+            </>
+          )}
         </Animated.View>
       </GestureDetector>
 
@@ -649,92 +657,107 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       <Modal
         visible={pickerVisible}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={closePicker}
         statusBarTranslucent
       >
         <Pressable style={styles.overlay} onPress={closePicker}>
-          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
           {bubbleLayout ? (() => {
             const screen = Dimensions.get("window");
             const PICKER_H = 54;
             const GAP = 8;
-            const actionCount = 1 + (onReply ? 1 : 0) + (isMine && onDelete ? 1 : 0);
+            const actionCount = (bodyText ? 1 : 0) + (onReply ? 1 : 0) + (isMine && onDelete ? 1 : 0);
             const MENU_H = actionCount * 48;
-            const totalH = PICKER_H + GAP + bubbleLayout.height + GAP + MENU_H;
-            const idealTop = bubbleLayout.y - PICKER_H - GAP;
-            const maxTop = screen.height - totalH - 40;
-            const spacerH = Math.max(40, Math.min(idealTop, maxTop));
+
+            let bubbleTop = bubbleLayout.y;
+            const bottomEdge = bubbleTop + bubbleLayout.height + GAP + MENU_H;
+            if (bottomEdge > screen.height - 40) {
+              bubbleTop = screen.height - 40 - bubbleLayout.height - GAP - MENU_H;
+            }
+            if (bubbleTop - GAP - PICKER_H < 40) {
+              bubbleTop = 40 + PICKER_H + GAP;
+            }
+
             return (
-            <ScrollView
-              style={styles.overlayScroll}
-              contentContainerStyle={styles.overlayScrollContent}
-              bounces={false}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={{ height: spacerH }} />
+              <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+                {/* Reaction picker above bubble */}
+                <View
+                  style={[
+                    styles.pickerPill,
+                    {
+                      position: "absolute",
+                      top: bubbleTop - GAP - PICKER_H,
+                      left: isMine ? undefined : bubbleLayout.x,
+                      right: isMine ? screen.width - bubbleLayout.x - bubbleLayout.width : undefined,
+                    },
+                  ]}
+                >
+                  {REACTION_EMOJIS.map((e) => (
+                    <Pressable
+                      key={e.key}
+                      style={[styles.pickerItem, myCurrentEmoji === e.key && styles.pickerItemActive]}
+                      onPress={() => handlePickReaction(e.key)}
+                    >
+                      <Text style={styles.pickerEmoji}>{e.display}</Text>
+                    </Pressable>
+                  ))}
+                </View>
 
-              {/* Reaction picker — directly above the bubble */}
-              <View style={[styles.pickerPill, isMine ? styles.pickerAlignRight : styles.pickerAlignLeft]}>
-                {REACTION_EMOJIS.map((e) => (
-                  <Pressable
-                    key={e.key}
-                    style={[styles.pickerItem, myCurrentEmoji === e.key && styles.pickerItemActive]}
-                    onPress={() => handlePickReaction(e.key)}
-                  >
-                    <Text style={styles.pickerEmoji}>{e.display}</Text>
-                  </Pressable>
-                ))}
-              </View>
+                {/* Plucked bubble at exact position */}
+                <View
+                  style={[
+                    isMine ? styles.bubbleColMine : styles.bubbleColTheirs,
+                    {
+                      position: "absolute",
+                      top: bubbleTop,
+                      left: bubbleLayout.x,
+                      width: bubbleLayout.width,
+                    },
+                  ]}
+                  pointerEvents="none"
+                >
+                  {bubbleInnerContent}
+                </View>
 
-              {/* Focused message bubble */}
-              <View style={[styles.focusedBubbleRow, isMine ? styles.focusedBubbleRight : styles.focusedBubbleLeft]}>
-                {hasImages ? (
-                  <ImageMosaic urls={imageUrls} radii={{ borderTopLeftRadius: RADIUS, borderTopRightRadius: RADIUS, borderBottomLeftRadius: RADIUS, borderBottomRightRadius: RADIUS }} />
-                ) : (
-                  <View style={[
-                    legacyStyles.bubble,
-                    isMine ? legacyStyles.bubbleMine : legacyStyles.bubbleTheirs,
-                    { borderRadius: RADIUS, maxWidth: Dimensions.get("window").width * 0.75 },
-                  ]}>
-                    {!isMine && showName ? (
-                      <Text style={legacyStyles.bubbleName}>{m.user.name}</Text>
-                    ) : null}
-                    <Text style={[legacyStyles.bubbleBody, isMine ? legacyStyles.bubbleBodyMine : null]}>
-                      {bodyText}
-                    </Text>
-                  </View>
-                )}
+                {/* Context menu below bubble */}
+                <View
+                  style={[
+                    styles.contextActions,
+                    {
+                      position: "absolute",
+                      top: bubbleTop + bubbleLayout.height + GAP,
+                      left: isMine ? undefined : bubbleLayout.x,
+                      right: isMine ? screen.width - bubbleLayout.x - bubbleLayout.width : undefined,
+                    },
+                  ]}
+                >
+                  {bodyText ? (
+                    <Pressable style={styles.contextAction} onPress={handleCopy}>
+                      <Ionicons name="copy-outline" size={18} color={colors.text} />
+                      <Text style={styles.contextActionText}>Copy</Text>
+                    </Pressable>
+                  ) : null}
+                  {onReply ? (
+                    <Pressable
+                      style={styles.contextAction}
+                      onPress={() => {
+                        closePicker();
+                        triggerReply();
+                      }}
+                    >
+                      <Ionicons name="arrow-undo-outline" size={18} color={colors.text} />
+                      <Text style={styles.contextActionText}>Reply</Text>
+                    </Pressable>
+                  ) : null}
+                  {isMine && onDelete ? (
+                    <Pressable style={styles.contextAction} onPress={handleDeletePress}>
+                      <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                      <Text style={[styles.contextActionText, { color: colors.danger }]}>Delete</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
-
-              {/* Context menu actions — directly below the bubble */}
-              <View style={[styles.contextActions, isMine ? styles.contextAlignRight : styles.contextAlignLeft]}>
-                {bodyText ? (
-                  <Pressable style={styles.contextAction} onPress={handleCopy}>
-                    <Ionicons name="copy-outline" size={18} color={colors.text} />
-                    <Text style={styles.contextActionText}>Copy</Text>
-                  </Pressable>
-                ) : null}
-                {onReply ? (
-                  <Pressable
-                    style={styles.contextAction}
-                    onPress={() => {
-                      closePicker();
-                      triggerReply();
-                    }}
-                  >
-                    <Ionicons name="arrow-undo-outline" size={18} color={colors.text} />
-                    <Text style={styles.contextActionText}>Reply</Text>
-                  </Pressable>
-                ) : null}
-                {isMine && onDelete ? (
-                  <Pressable style={styles.contextAction} onPress={handleDeletePress}>
-                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                    <Text style={[styles.contextActionText, { color: colors.danger }]}>Delete</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </ScrollView>
             );
           })() : null}
         </Pressable>
@@ -765,6 +788,9 @@ const styles = StyleSheet.create({
   },
   replyIconRight: {
     right: 4,
+  },
+  hiddenBubble: {
+    opacity: 0,
   },
   groupedRow: {},
   avatarSpacer: {
@@ -867,14 +893,6 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
   },
-  overlayScroll: {
-    flex: 1,
-  },
-  overlayScrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 40,
-    gap: 8,
-  },
   pickerPill: {
     flexDirection: "row",
     backgroundColor: "#fff",
@@ -889,12 +907,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  pickerAlignRight: {
-    alignSelf: "flex-end",
-  },
-  pickerAlignLeft: {
-    alignSelf: "flex-start",
-  },
   pickerItem: {
     width: 42,
     height: 42,
@@ -907,15 +919,6 @@ const styles = StyleSheet.create({
   },
   pickerEmoji: {
     fontSize: 26,
-  },
-  focusedBubbleRow: {
-    flexDirection: "row",
-  },
-  focusedBubbleRight: {
-    justifyContent: "flex-end",
-  },
-  focusedBubbleLeft: {
-    justifyContent: "flex-start",
   },
   contextActions: {
     backgroundColor: "#fff",
