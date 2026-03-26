@@ -156,7 +156,8 @@ export async function GET(req: Request) {
         }),
       }))
       .sort((a, b) => b._score - a._score)
-      .map(({ _score: _s, ...rest }) => rest);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      .map(({ _score, ...rest }) => rest);
 
     let searchGroups: GroupListItem[] = [];
     if (searchQuery.length >= 2) {
