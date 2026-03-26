@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  LayoutAnimation,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +17,11 @@ import { GROUP_CHAT_COMPOSER_GAP } from "../lib/group-chat-layout-constants";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
 import { ChatBubbleRow } from "./chat-bubble-row";
+import { ChatDateSeparator } from "./chat-date-separator";
+import { ChatScrollToBottom } from "./chat-scroll-to-bottom";
+import { ChatTimestamp } from "./chat-timestamp";
+import { buildChatItems, chatItemKey, type ChatListItem } from "../lib/build-chat-items";
+import { getGroupStyle } from "../lib/chat-group-styles";
 import { RoundGroupChatComposer, type ReplyTarget } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
 
@@ -76,6 +82,8 @@ export function RoundGroupChatPoll({
   inviteTokenRef.current = inviteToken;
   const [viewerId, setViewerId] = useState<string | null>(() => getCachedMeProfile()?.id ?? null);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
   const loadGenRef = useRef(0);
   const prevMessageCountRef = useRef(0);
 
@@ -218,6 +226,7 @@ export function RoundGroupChatPoll({
         : null;
       setReplyTo(null);
 
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       const optimistic: ChatMessage = {
         id: tempId,
         body: trimmed,
@@ -343,22 +352,39 @@ export function RoundGroupChatPoll({
     router.push({ pathname: "/profile/[userId]", params: { userId: user.id, userName: user.name, userAvatar: user.avatar ?? "" } });
   }, [router]);
 
-  const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  type ListItem = ChatListItem<ChatMessage>;
+  const invertedItems = useMemo(() => buildChatItems(messages), [messages]);
   const renderItem = useCallback(
-    ({ item }: { item: ChatMessage }) => (
-      <ChatBubbleRow message={item} isMine={resolveMine(item)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
-    ),
+    ({ item }: { item: ListItem }) => {
+      if (item.type === "date") return <ChatDateSeparator date={item.date} />;
+      if (item.type === "timestamp") return <ChatTimestamp date={item.date} />;
+      return (
+        <ChatBubbleRow message={item.data} isMine={resolveMine(item.data)} groupStyle={item.groupStyle} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
+      );
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [viewerId, handleReaction, handleReply, handleAvatarPress],
   );
   const renderBubbleInline = useCallback(
-    (m: ChatMessage) => (
-      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
-    ),
+    (m: ChatMessage, index: number, arr: ChatMessage[]) => {
+      const prev = arr[index - 1];
+      const next = arr[index + 1];
+      const gs = getGroupStyle(m, prev, next);
+      return (
+        <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} groupStyle={gs} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
+      );
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [viewerId, handleReaction, handleReply, handleAvatarPress],
   );
-  const keyExtractor = useCallback((m: ChatMessage) => m.id, []);
+  const keyExtractor = useCallback((item: ListItem) => chatItemKey(item), []);
+
+  const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
+    setShowScrollBtn(e.nativeEvent.contentOffset.y > 300);
+  }, []);
+  const scrollToBottom = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
 
   // ─── Fullscreen: inverted FlatList, keyboard-aware composer ───
   if (isFullscreen) {
@@ -368,22 +394,28 @@ export function RoundGroupChatPoll({
         behavior="padding"
         keyboardVerticalOffset={headerHeight}
       >
-        <FlatList
-          data={invertedMessages}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          inverted
-          contentContainerStyle={styles.invertedListContent}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="interactive"
-          ListEmptyComponent={
-            loading ? null : (
-              <View style={styles.emptyInverted}>
-                <Text style={styles.empty}>No messages yet. Say hi!</Text>
-              </View>
-            )
-          }
-        />
+        <View style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={invertedItems}
+            renderItem={renderItem as any}
+            keyExtractor={keyExtractor}
+            inverted
+            contentContainerStyle={styles.invertedListContent}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="interactive"
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
+            ListEmptyComponent={
+              loading ? null : (
+                <View style={styles.emptyInverted}>
+                  <Text style={styles.empty}>No messages yet. Say hi!</Text>
+                </View>
+              )
+            }
+          />
+          <ChatScrollToBottom visible={showScrollBtn} onPress={scrollToBottom} />
+        </View>
 
         {loadError ? <Text style={styles.errorInline}>{loadError}</Text> : null}
 
@@ -465,14 +497,12 @@ const styles = StyleSheet.create({
   },
   avatarInitial: { fontSize: 11, fontWeight: "700", color: colors.fairway },
   bubble: {
-    borderRadius: 14,
-    paddingHorizontal: 10,
+    borderRadius: 18,
+    paddingHorizontal: 12,
     paddingVertical: 8,
   },
   bubbleTheirs: {
     backgroundColor: "#f1efea",
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   bubbleMine: { backgroundColor: colors.fairway },
   bubbleName: { fontSize: 11, fontWeight: "700", color: colors.muted, marginBottom: 2 },

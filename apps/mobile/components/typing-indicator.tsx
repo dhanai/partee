@@ -1,75 +1,44 @@
-import { memo, useEffect, useRef } from "react";
-import { Animated, StyleSheet, Text, View } from "react-native";
+import { memo, useEffect } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { colors } from "../lib/theme";
+
+const DOT_SIZE = 6;
+const DURATION = 1400;
+const HALF = DURATION / 2;
+
+function AnimatedDot({ offset }: { offset: number }) {
+  const opacity = useSharedValue(0.3);
+
+  useEffect(() => {
+    const startDelay = HALF - offset;
+    opacity.value = withSequence(
+      withTiming(0.3, { duration: startDelay, easing: Easing.linear }),
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: HALF, easing: Easing.linear }),
+          withTiming(0.3, { duration: HALF, easing: Easing.linear }),
+        ),
+        -1,
+      ),
+    );
+  }, [offset, opacity]);
+
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return <Animated.View style={[styles.dot, style]} />;
+}
 
 type Props = {
   names: string[];
 };
-
-function TypingDots() {
-  const dot1 = useRef(new Animated.Value(0)).current;
-  const dot2 = useRef(new Animated.Value(0)).current;
-  const dot3 = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const animate = (dot: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(dot, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.timing(dot, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-
-    const a1 = animate(dot1, 0);
-    const a2 = animate(dot2, 150);
-    const a3 = animate(dot3, 300);
-    a1.start();
-    a2.start();
-    a3.start();
-
-    return () => {
-      a1.stop();
-      a2.stop();
-      a3.stop();
-    };
-  }, [dot1, dot2, dot3]);
-
-  return (
-    <View style={styles.dotsRow}>
-      {[dot1, dot2, dot3].map((dot, i) => (
-        <Animated.View
-          key={i}
-          style={[
-            styles.dot,
-            {
-              opacity: dot.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.3, 1],
-              }),
-              transform: [
-                {
-                  translateY: dot.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -3],
-                  }),
-                },
-              ],
-            },
-          ]}
-        />
-      ))}
-    </View>
-  );
-}
 
 export const TypingIndicator = memo(function TypingIndicator({ names }: Props) {
   if (names.length === 0) return null;
@@ -83,8 +52,12 @@ export const TypingIndicator = memo(function TypingIndicator({ names }: Props) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.bubble}>
+        <AnimatedDot offset={0} />
+        <AnimatedDot offset={DURATION / 3} />
+        <AnimatedDot offset={(DURATION / 3) * 2} />
+      </View>
       <Text style={styles.label}>{label}</Text>
-      <TypingDots />
     </View>
   );
 });
@@ -93,24 +66,28 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 4,
+  },
+  bubble: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#f1efea",
+    borderRadius: 14,
+    borderBottomLeftRadius: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  dot: {
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_SIZE / 2,
+    backgroundColor: colors.muted,
   },
   label: {
     fontSize: 12,
     color: colors.muted,
-    fontStyle: "italic",
-  },
-  dotsRow: {
-    flexDirection: "row",
-    gap: 3,
-    alignItems: "center",
-  },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.muted,
   },
 });

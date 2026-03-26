@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  LayoutAnimation,
   ScrollView,
   Text,
   View,
@@ -20,6 +21,11 @@ import { parseParfadeRealtimeMessage } from "../lib/parfade-ably-messages";
 import { getCachedMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
 import { ChatBubbleRow } from "./chat-bubble-row";
+import { ChatDateSeparator } from "./chat-date-separator";
+import { ChatScrollToBottom } from "./chat-scroll-to-bottom";
+import { ChatTimestamp } from "./chat-timestamp";
+import { buildChatItems, chatItemKey, type ChatListItem } from "../lib/build-chat-items";
+import { getGroupStyle } from "../lib/chat-group-styles";
 import { RoundGroupChatComposer } from "./round-group-chat-composer";
 import { RoundDetailSection } from "./round-detail-section";
 import { type ReplyTarget } from "./round-group-chat-composer";
@@ -85,6 +91,8 @@ export function RoundGroupChatConnected({
   inviteTokenRef.current = inviteToken;
   const [viewerId, setViewerId] = useState<string | null>(() => getCachedMeProfile()?.id ?? null);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
   const viewerIdRef = useRef<string | null>(viewerId);
   viewerIdRef.current = viewerId;
   const loadGenRef = useRef(0);
@@ -299,6 +307,7 @@ export function RoundGroupChatConnected({
         : null;
       setReplyTo(null);
 
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       const optimistic: ChatMessage = {
         id: tempId,
         body: trimmed,
@@ -439,22 +448,39 @@ export function RoundGroupChatConnected({
     router.push({ pathname: "/profile/[userId]", params: { userId: user.id, userName: user.name, userAvatar: user.avatar ?? "" } });
   }, [router]);
 
-  const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  type ListItem = ChatListItem<ChatMessage>;
+  const invertedItems = useMemo(() => buildChatItems(messages), [messages]);
   const renderItem = useCallback(
-    ({ item }: { item: ChatMessage }) => (
-      <ChatBubbleRow message={item} isMine={resolveMine(item)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
-    ),
+    ({ item }: { item: ListItem }) => {
+      if (item.type === "date") return <ChatDateSeparator date={item.date} />;
+      if (item.type === "timestamp") return <ChatTimestamp date={item.date} />;
+      return (
+        <ChatBubbleRow message={item.data} isMine={resolveMine(item.data)} groupStyle={item.groupStyle} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
+      );
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [viewerId, handleReaction, handleReply, handleAvatarPress],
   );
   const renderBubbleInline = useCallback(
-    (m: ChatMessage) => (
-      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
-    ),
+    (m: ChatMessage, index: number, arr: ChatMessage[]) => {
+      const prev = arr[index - 1];
+      const next = arr[index + 1];
+      const gs = getGroupStyle(m, prev, next);
+      return (
+        <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} groupStyle={gs} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
+      );
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [viewerId, handleReaction, handleReply, handleAvatarPress],
   );
-  const keyExtractor = useCallback((m: ChatMessage) => m.id, []);
+  const keyExtractor = useCallback((item: ListItem) => chatItemKey(item), []);
+
+  const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
+    setShowScrollBtn(e.nativeEvent.contentOffset.y > 300);
+  }, []);
+  const scrollToBottom = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
 
   // ─── Fullscreen: inverted FlatList, keyboard-aware composer ───
   if (isFullscreen) {
@@ -464,22 +490,28 @@ export function RoundGroupChatConnected({
         behavior="padding"
         keyboardVerticalOffset={headerHeight}
       >
-        <FlatList
-          data={invertedMessages}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          inverted
-          contentContainerStyle={styles.invertedListContent}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="interactive"
-          ListEmptyComponent={
-            loading ? null : (
-              <View style={styles.emptyInverted}>
-                <Text style={styles.empty}>No messages yet. Say hi!</Text>
-              </View>
-            )
-          }
-        />
+        <View style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={invertedItems}
+            renderItem={renderItem as any}
+            keyExtractor={keyExtractor}
+            inverted
+            contentContainerStyle={styles.invertedListContent}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="interactive"
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
+            ListEmptyComponent={
+              loading ? null : (
+                <View style={styles.emptyInverted}>
+                  <Text style={styles.empty}>No messages yet. Say hi!</Text>
+                </View>
+              )
+            }
+          />
+          <ChatScrollToBottom visible={showScrollBtn} onPress={scrollToBottom} />
+        </View>
 
         {loadError ? <Text style={styles.errorInline}>{loadError}</Text> : null}
 

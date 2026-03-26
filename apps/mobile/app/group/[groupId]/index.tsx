@@ -8,19 +8,21 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Keyboard,
   Platform,
   Pressable,
   RefreshControl,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput } from "../../../components/animated-bottom-sheet-frame";
+import { OverflowMenuSheet, type OverflowMenuItem } from "../../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../../components/report-sheet";
-import { apiDelete, apiGet, apiPatch, apiPost, apiBaseUrl } from "../../../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiBaseUrl, publicWebOrigin } from "../../../lib/api";
 import { hapticLight } from "../../../lib/haptics";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
 import { compressImageToJpegUriForUpload, compressImageToMaxBytes } from "../../../lib/compress-image-for-upload";
@@ -115,10 +117,19 @@ export default function GroupLandingScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
 
-  const bootstrap = computeBootstrapGroup(groupId, hintName, hintImage, hintHero, hintMembers, hintRole);
+  const [bootstrap] = useState(() => computeBootstrapGroup(groupId, hintName, hintImage, hintHero, hintMembers, hintRole));
   const [group, setGroup] = useState<GroupDetail | null>(bootstrap);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(!bootstrap);
+
+  const [prevGroupId, setPrevGroupId] = useState(groupId);
+  if (groupId !== prevGroupId) {
+    setPrevGroupId(groupId);
+    const next = computeBootstrapGroup(groupId, hintName, hintImage, hintHero, hintMembers, hintRole);
+    setGroup(next);
+    setLoading(!next);
+    setActivity([]);
+  }
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -139,6 +150,7 @@ export default function GroupLandingScreen() {
 
   const [overflowItem, setOverflowItem] = useState<ActivityItem | null>(null);
   const [reportItem, setReportItem] = useState<ActivityItem | null>(null);
+  const [groupOverflowOpen, setGroupOverflowOpen] = useState(false);
 
   // Comments bottom sheet
   const [commentSheetItem, setCommentSheetItem] = useState<ActivityItem | null>(null);
@@ -217,12 +229,15 @@ export default function GroupLandingScreen() {
     }
   }, [groupId, nextCursor, loadingMore]);
 
-  const isFirstLoad = useRef(true);
+  const didInitialLoad = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      const silent = isFirstLoad.current && !!bootstrap;
-      isFirstLoad.current = false;
-      void load({ silent });
+      if (didInitialLoad.current) {
+        void load({ silent: true });
+      } else {
+        didInitialLoad.current = true;
+        void load({ silent: !!bootstrap });
+      }
     }, [load]),
   );
 
@@ -234,27 +249,21 @@ export default function GroupLandingScreen() {
 
   useEffect(() => {
     if (!group) return;
-    const isAdmin = group.myRole === "owner" || group.myRole === "admin";
     navigation.setOptions({
       title: group.name,
-      headerRight: () =>
-        isAdmin ? (
-          <Pressable
-            onPress={() =>
-              router.push({
-                pathname: "/group/[groupId]/settings",
-                params: { groupId: group.id },
-              })
-            }
-            hitSlop={8}
-            accessibilityLabel="Group settings"
-          >
-            <Ionicons name="settings-outline" size={22} color={colors.fairway} />
-          </Pressable>
-        ) : null,
+      headerRight: () => (
+        <Pressable
+          onPress={() => setGroupOverflowOpen(true)}
+          hitSlop={8}
+          accessibilityLabel="Group options"
+          style={{ paddingHorizontal: 8 }}
+        >
+          <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
+        </Pressable>
+      ),
       headerRightContainerStyle: { paddingRight: 12 },
     });
-  }, [navigation, router, group]);
+  }, [navigation, group]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -672,7 +681,7 @@ export default function GroupLandingScreen() {
         disabled={!isAdmin || uploadingImage === "hero"}
       >
         {group.heroImageUrl ? (
-          <Image source={{ uri: group.heroImageUrl }} style={styles.heroBannerImage} />
+          <Image source={group.heroImageUrl} style={styles.heroBannerImage} contentFit="cover" transition={0} />
         ) : (
           <View style={styles.heroBannerFallback}>
             {isAdmin ? (
@@ -703,7 +712,7 @@ export default function GroupLandingScreen() {
           disabled={!isAdmin || uploadingImage === "profile"}
         >
           {group.imageUrl ? (
-            <Image source={{ uri: group.imageUrl }} style={styles.profileImage} />
+            <Image source={group.imageUrl} style={styles.profileImage} contentFit="cover" transition={0} />
           ) : (
             <View style={[styles.profileImage, styles.profileImageFallback]}>
               <Ionicons name="people" size={28} color={colors.muted} />
@@ -741,7 +750,11 @@ export default function GroupLandingScreen() {
       ) : null}
 
       {/* Join button for non-members */}
-      {!isMember && group.joinPolicy !== "invite_only" ? (
+      {!isMember && group.joinPolicy === "invite_only" ? (
+        <Text style={styles.inviteOnlyNote}>
+          This group is invite only. Ask a member to invite you.
+        </Text>
+      ) : !isMember ? (
         <Pressable style={styles.joinBtn} onPress={handleJoin}>
           <Text style={styles.joinBtnText}>
             {group.joinPolicy === "approval" ? "Request to Join" : "Join Group"}
@@ -791,7 +804,7 @@ export default function GroupLandingScreen() {
       {isMember ? (
         <Pressable style={styles.composerRow} onPress={openNewAnnouncement}>
           {meAvatar ? (
-            <Image source={{ uri: meAvatar }} style={styles.composerAvatar} />
+            <Image source={meAvatar} style={styles.composerAvatar} transition={0} />
           ) : (
             <View style={[styles.composerAvatar, styles.composerAvatarFallback]}>
               <Ionicons name="person" size={16} color={colors.muted} />
@@ -834,7 +847,7 @@ export default function GroupLandingScreen() {
                 <View style={styles.postHeader}>
                   <Pressable style={styles.postAuthorTap} onPress={() => goToProfile(item.user)}>
                     {item.user.avatar ? (
-                      <Image source={{ uri: item.user.avatar }} style={styles.postAvatar} />
+                      <Image source={item.user.avatar} style={styles.postAvatar} transition={0} />
                     ) : (
                       <View style={[styles.postAvatar, styles.postAvatarFallback]}>
                         <Ionicons name="person" size={16} color={colors.muted} />
@@ -859,9 +872,10 @@ export default function GroupLandingScreen() {
                 <Text style={styles.postBody}>{item.body}</Text>
                 {item.imageUrl ? (
                   <Image
-                    source={{ uri: item.imageUrl }}
+                    source={item.imageUrl}
                     style={styles.postImage}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    transition={0}
                   />
                 ) : null}
                 <View style={styles.postFooter}>
@@ -907,8 +921,9 @@ export default function GroupLandingScreen() {
                 <Pressable onPress={() => goToProfile(item.user)}>
                   {item.user.avatar ? (
                     <Image
-                      source={{ uri: item.user.avatar }}
+                      source={item.user.avatar}
                       style={styles.activityAvatar}
+                      transition={0}
                     />
                   ) : (
                     <View style={[styles.activityAvatar, styles.activityAvatarFallback]}>
@@ -935,8 +950,9 @@ export default function GroupLandingScreen() {
               <Pressable style={styles.activityRow} onPress={() => goToProfile(item.user)}>
                 {item.user.avatar ? (
                   <Image
-                    source={{ uri: item.user.avatar }}
+                    source={item.user.avatar}
                     style={styles.activityAvatar}
+                    transition={0}
                   />
                 ) : (
                   <View style={[styles.activityAvatar, styles.activityAvatarFallback]}>
@@ -1005,7 +1021,7 @@ export default function GroupLandingScreen() {
         />
         {postImageUri ? (
           <View style={styles.sheetImagePreviewWrap}>
-            <Image source={{ uri: postImageUri }} style={styles.sheetImagePreview} />
+            <Image source={postImageUri} style={styles.sheetImagePreview} transition={0} />
             <Pressable
               style={styles.sheetImageRemove}
               onPress={() => setPostImageUri(null)}
@@ -1056,62 +1072,77 @@ export default function GroupLandingScreen() {
       </AnimatedBottomSheetFrame>
 
       {/* Overflow action sheet for post */}
-      <AnimatedBottomSheetFrame
+      <OverflowMenuSheet
         visible={!!overflowItem}
         onClose={() => setOverflowItem(null)}
-        sheetStyle={styles.overflowSheet}
-      >
-        {overflowItem ? (
-          <View style={styles.overflowActions}>
-            {(overflowItem.user.id === meId || isAdmin) ? (
-              <Pressable
-                style={styles.overflowRow}
-                onPress={() => openEditAnnouncement(overflowItem)}
-              >
-                <Ionicons name="create-outline" size={20} color={colors.text} />
-                <Text style={styles.overflowRowText}>Edit post</Text>
-              </Pressable>
-            ) : null}
-            {isAdmin ? (
-              <Pressable
-                style={styles.overflowRow}
-                onPress={() => void handleTogglePin(overflowItem)}
-              >
-                <Ionicons
-                  name={overflowItem.isPinned ? "pin-outline" : "pin"}
-                  size={20}
-                  color={colors.text}
-                />
-                <Text style={styles.overflowRowText}>
-                  {overflowItem.isPinned ? "Unpin post" : "Pin to top"}
-                </Text>
-              </Pressable>
-            ) : null}
-            {(overflowItem.user.id === meId || isAdmin) ? (
-              <Pressable
-                style={styles.overflowRow}
-                onPress={() => handleDeleteAnnouncement(overflowItem)}
-              >
-                <Ionicons name="trash-outline" size={20} color={colors.danger} />
-                <Text style={[styles.overflowRowText, { color: colors.danger }]}>Delete post</Text>
-              </Pressable>
-            ) : null}
-            {overflowItem.user.id !== meId ? (
-              <Pressable
-                style={styles.overflowRow}
-                onPress={() => {
-                  const reportItem = overflowItem;
-                  setOverflowItem(null);
-                  setTimeout(() => setReportItem(reportItem), 350);
-                }}
-              >
-                <Ionicons name="flag-outline" size={20} color={colors.danger} />
-                <Text style={[styles.overflowRowText, { color: colors.danger }]}>Report post</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-      </AnimatedBottomSheetFrame>
+        items={overflowItem ? [
+          ...((overflowItem.user.id === meId || isAdmin) ? [{
+            key: "edit",
+            label: "Edit post",
+            icon: "create-outline" as const,
+            onPress: () => openEditAnnouncement(overflowItem),
+          }] : []),
+          ...(isAdmin ? [{
+            key: "pin",
+            label: overflowItem.isPinned ? "Unpin post" : "Pin to top",
+            icon: (overflowItem.isPinned ? "pin-outline" : "pin") as const,
+            onPress: () => void handleTogglePin(overflowItem),
+          }] : []),
+          ...((overflowItem.user.id === meId || isAdmin) ? [{
+            key: "delete",
+            label: "Delete post",
+            icon: "trash-outline" as const,
+            destructive: true,
+            onPress: () => handleDeleteAnnouncement(overflowItem),
+          }] : []),
+          ...(overflowItem.user.id !== meId ? [{
+            key: "report",
+            label: "Report post",
+            icon: "flag-outline" as const,
+            destructive: true,
+            onPress: () => {
+              const item = overflowItem;
+              setTimeout(() => setReportItem(item), 350);
+            },
+          }] : []),
+        ] : []}
+      />
+
+      {/* Group overflow sheet */}
+      <OverflowMenuSheet
+        visible={groupOverflowOpen}
+        onClose={() => setGroupOverflowOpen(false)}
+        items={[
+          {
+            key: "share",
+            label: "Share group",
+            icon: "share-outline" as const,
+            onPress: () => {
+              if (!group) return;
+              const url = `${publicWebOrigin}/groups/${group.id}`;
+              void Share.share({
+                message: `Check out ${group.name} on Parfade: ${url}`,
+              });
+            },
+          },
+          ...(isAdmin
+            ? [
+                {
+                  key: "settings",
+                  label: "Group settings",
+                  icon: "settings-outline" as const,
+                  onPress: () => {
+                    if (!group) return;
+                    router.push({
+                      pathname: "/group/[groupId]/settings" as const,
+                      params: { groupId: group.id },
+                    });
+                  },
+                },
+              ]
+            : []),
+        ]}
+      />
 
       {/* Comments bottom sheet (Instagram-style) */}
       <AnimatedBottomSheetFrame
@@ -1148,7 +1179,7 @@ export default function GroupLandingScreen() {
               <View key={comment.id} style={styles.commentRow}>
                 <Pressable onPress={() => goToProfile(comment.user)}>
                   {comment.user.avatar ? (
-                    <Image source={{ uri: comment.user.avatar }} style={styles.commentAvatar} />
+                    <Image source={comment.user.avatar} style={styles.commentAvatar} transition={0} />
                   ) : (
                     <View style={[styles.commentAvatar, styles.commentAvatarFallback]}>
                       <Ionicons name="person" size={12} color={colors.muted} />
@@ -1178,7 +1209,7 @@ export default function GroupLandingScreen() {
         </BottomSheetScrollView>
         <View style={styles.commentInputRow}>
           {meAvatar ? (
-            <Image source={{ uri: meAvatar }} style={styles.commentInputAvatar} />
+            <Image source={meAvatar} style={styles.commentInputAvatar} transition={0} />
           ) : (
             <View style={[styles.commentInputAvatar, styles.commentAvatarFallback]}>
               <Ionicons name="person" size={12} color={colors.muted} />
@@ -1260,7 +1291,6 @@ const styles = StyleSheet.create({
   heroBannerImage: {
     width: "100%",
     height: "100%",
-    resizeMode: "cover",
   },
   heroBannerFallback: {
     flex: 1,
@@ -1366,6 +1396,14 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   joinBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  inviteOnlyNote: {
+    color: colors.muted,
+    fontSize: 14,
+    textAlign: "center",
+    marginTop: 14,
+    marginHorizontal: 16,
+    lineHeight: 20,
+  },
 
   // ── Quick actions (grid) ───────────────────────────────────
   actionsGrid: {
@@ -1743,25 +1781,4 @@ const styles = StyleSheet.create({
   },
   sheetPostDisabled: { opacity: 0.5 },
   sheetPostText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-
-  // ── Overflow action sheet ─────────────────────────────────
-  overflowSheet: {
-    paddingHorizontal: 8,
-  },
-  overflowActions: {
-    gap: 2,
-  },
-  overflowRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-  },
-  overflowRowText: {
-    color: colors.text,
-    fontWeight: "600",
-    fontSize: 16,
-  },
 });

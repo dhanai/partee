@@ -210,7 +210,7 @@ export default function MyRoundsScreen() {
     useCallback(() => {
       roundsListFocusCountRef.current += 1;
       if (roundsListFocusCountRef.current > 1) {
-        void loadTabRoundsRef.current(activeTabRef.current, { reset: true });
+        void loadTabRoundsRef.current(activeTabRef.current, { reset: true, silent: true });
       }
     }, []),
   );
@@ -282,8 +282,9 @@ export default function MyRoundsScreen() {
   }, [navigation, router, showNotificationBadge, hasAnyUnreadChat]);
 
   const loadTabRounds = useCallback(
-    async (tab: MineTab, options?: { reset?: boolean }) => {
+    async (tab: MineTab, options?: { reset?: boolean; silent?: boolean }) => {
       const reset = options?.reset ?? false;
+      const silent = options?.silent ?? false;
       const cursor =
         tab === "hosting" ? hostingCursor : tab === "joined" ? joinedCursor : invitedCursor;
       const hasMore =
@@ -295,7 +296,9 @@ export default function MyRoundsScreen() {
       const seq = fetchSeqRef.current[tab];
       try {
         setError(null);
-        if (reset && existingCount === 0) {
+        if (silent) {
+          // no spinners
+        } else if (reset && existingCount === 0) {
           setLoadingMore(false);
           setLoading(true);
         } else {

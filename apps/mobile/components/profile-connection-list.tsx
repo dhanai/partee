@@ -11,7 +11,6 @@ import {
 } from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image, ImagePrefetch } from "expo-image";
 import { apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { prefetchPublicProfile } from "../lib/public-profile-cache";
 import { colors } from "../lib/theme";
@@ -92,9 +92,15 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
     }
   }, [ownerUserId, kind]);
 
+  const didInitialLoad = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      void load();
+      if (didInitialLoad.current) {
+        void load({ silent: true });
+      } else {
+        didInitialLoad.current = true;
+        void load();
+      }
     }, [load]),
   );
 
@@ -195,7 +201,10 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
                 <View key={u.id} style={styles.row}>
                   <Pressable
                     style={styles.rowMain}
-                    onPressIn={() => prefetchPublicProfile(u.id, () => getTokenRef.current())}
+                    onPressIn={() => {
+                      prefetchPublicProfile(u.id, () => getTokenRef.current());
+                      if (u.avatar) Image.prefetch(toAbsoluteUrl(u.avatar));
+                    }}
                     onPress={() =>
                       router.push({
                         pathname: "/profile/[userId]",
@@ -208,7 +217,7 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
                     }
                   >
                     {u.avatar ? (
-                      <Image source={{ uri: toAbsoluteUrl(u.avatar) }} style={styles.avatar} />
+                      <Image source={toAbsoluteUrl(u.avatar)} style={styles.avatar} />
                     ) : (
                       <View style={[styles.avatar, styles.avatarFallback]}>
                         <Text style={styles.avatarInitial}>

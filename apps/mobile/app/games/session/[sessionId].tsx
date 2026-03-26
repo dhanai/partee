@@ -26,7 +26,7 @@ import {
   HoleCompletionAvatars,
   StandingAvatar,
 } from "../../../components/games/hole-completion-avatars";
-import { RoundOverflowMenuSheet } from "../../../components/round-overflow-menu-sheet";
+import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { SkinsHoleEditor, type SkinsPayload } from "../../../components/games/skins-hole-editor";
 import { WolfRecapFunBlock } from "../../../components/games/wolf-recap-fun-block";
 import { WolfHoleEditor, type WolfPayload } from "../../../components/games/wolf-hole-editor";
@@ -182,7 +182,7 @@ export default function GameSessionScreen() {
           hitSlop={12}
           onPress={() => setGameMenuOpen(true)}
         >
-          <Ionicons name="ellipsis-vertical" size={22} color={colors.text} />
+          <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
         </Pressable>
       ),
     });
@@ -715,13 +715,14 @@ export default function GameSessionScreen() {
           </ScrollView>
         </AnimatedBottomSheetFrame>
 
-        <RoundOverflowMenuSheet
+        <OverflowMenuSheet
           visible={gameMenuOpen}
           onClose={() => setGameMenuOpen(false)}
           items={[
             {
               key: "settings",
               label: "Game settings",
+              icon: "settings-outline" as const,
               onPress: () => {
                 if (!sessionId) return;
                 router.push({
@@ -733,6 +734,7 @@ export default function GameSessionScreen() {
             {
               key: "delete",
               label: "Delete game",
+              icon: "trash-outline" as const,
               destructive: true,
               onPress: () => {
                 if (!deleteBusy) confirmDeleteGame();

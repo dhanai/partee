@@ -17,6 +17,9 @@ import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-co
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatBubbleRow } from "../../../components/chat-bubble-row";
 import { ChatDateSeparator } from "../../../components/chat-date-separator";
+import { ChatScrollToBottom } from "../../../components/chat-scroll-to-bottom";
+import { ChatTimestamp } from "../../../components/chat-timestamp";
+import { buildChatItems, chatItemKey, type ChatListItem } from "../../../lib/build-chat-items";
 import { RoundGroupChatComposer } from "../../../components/round-group-chat-composer";
 import { TypingIndicator } from "../../../components/typing-indicator";
 import { apiGet, apiPost, apiDelete } from "../../../lib/api";
@@ -60,6 +63,10 @@ export default function ConversationChatScreen() {
     () => getCachedMeProfile()?.id ?? null,
   );
   const [replyTo, setReplyTo] = useState<ConversationMessage | null>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
   const msgsRef = useRef<ConversationMessage[]>([]);
   msgsRef.current = msgs;
   const prevMsgCountRef = useRef(msgs.length);
@@ -91,6 +98,7 @@ export default function ConversationChatScreen() {
         authToken,
       );
       setViewerId(data.viewerId || getCachedMeProfile()?.id || null);
+      setHasMore(data.hasMore);
       setMsgs((prev) => {
         const merged = mergeMessages(prev, data.messages);
         void setCachedMessages(conversationId, merged);
@@ -103,6 +111,32 @@ export default function ConversationChatScreen() {
       setLoading(false);
     }
   }, [conversationId]);
+
+  const fetchOlderMessages = useCallback(async () => {
+    if (!conversationId || !hasMore || loadingOlder) return;
+    const oldest = msgsRef.current.length > 0
+      ? [...msgsRef.current].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0]
+      : null;
+    if (!oldest) return;
+    setLoadingOlder(true);
+    try {
+      const authToken = await getTokenRef.current();
+      const data = await apiGet<MessagesResponse>(
+        `/api/conversations/${conversationId}/messages?before=${oldest.id}`,
+        authToken,
+      );
+      setHasMore(data.hasMore);
+      setMsgs((prev) => {
+        const merged = mergeMessages(prev, data.messages);
+        void setCachedMessages(conversationId, merged);
+        return merged;
+      });
+    } catch {
+      /* silent — user can retry by scrolling again */
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [conversationId, hasMore, loadingOlder]);
 
   useEffect(() => {
     void fetchMessages();
@@ -155,6 +189,7 @@ export default function ConversationChatScreen() {
         user: { id: me?.id ?? "", name: me?.name ?? "You", avatar: me?.avatar ?? null },
         reactions: {},
       };
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setMsgs((prev) => [...prev, optimistic]);
 
       try {
@@ -258,26 +293,18 @@ export default function ConversationChatScreen() {
     [viewerId],
   );
 
-  type ListItem =
-    | { type: "message"; data: ConversationMessage }
-    | { type: "date"; date: string };
+  type ListItem = ChatListItem<ConversationMessage>;
 
-  const invertedItems = useMemo(() => {
-    const items: ListItem[] = [];
-    const sorted = [...msgs].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
-    let lastDateStr = "";
-    for (const m of sorted) {
-      const dayStr = new Date(m.createdAt).toDateString();
-      if (dayStr !== lastDateStr) {
-        items.push({ type: "date", date: m.createdAt });
-        lastDateStr = dayStr;
+  const invertedItems = useMemo(() => buildChatItems(msgs), [msgs]);
+
+  const lastOwnMessageId = useMemo(() => {
+    for (const item of invertedItems) {
+      if (item.type === "message" && resolveMine(item.data)) {
+        return item.data.id;
       }
-      items.push({ type: "message", data: m });
     }
-    return items.reverse();
-  }, [msgs]);
+    return null;
+  }, [invertedItems, resolveMine]);
 
   const handleReply = useCallback((msg: ConversationMessage) => {
     setReplyTo(msg);
@@ -287,15 +314,24 @@ export default function ConversationChatScreen() {
     router.push({ pathname: "/profile/[userId]", params: { userId: user.id, userName: user.name, userAvatar: user.avatar ?? "" } });
   }, [router]);
 
+  const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
+    setShowScrollBtn(e.nativeEvent.contentOffset.y > 300);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
+
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
-      if (item.type === "date") {
-        return <ChatDateSeparator date={item.date} />;
-      }
+      if (item.type === "date") return <ChatDateSeparator date={item.date} />;
+      if (item.type === "timestamp") return <ChatTimestamp date={item.date} />;
       return (
         <ChatBubbleRow
           message={item.data}
           isMine={resolveMine(item.data)}
+          groupStyle={item.groupStyle}
+          showStatus={item.data.id === lastOwnMessageId}
           conversationId={conversationId}
           viewerId={viewerId}
           onReaction={handleReaction}
@@ -304,11 +340,10 @@ export default function ConversationChatScreen() {
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress],
+    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, lastOwnMessageId],
   );
   const keyExtractor = useCallback(
-    (item: ListItem) =>
-      item.type === "date" ? `date-${item.date}` : item.data.id,
+    (item: ListItem) => chatItemKey(item),
     [],
   );
 
@@ -328,26 +363,41 @@ export default function ConversationChatScreen() {
       behavior="padding"
       keyboardVerticalOffset={headerHeight}
     >
-      <FlatList
-        data={invertedItems}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        inverted
-        contentContainerStyle={cStyles.listContent}
-        keyboardShouldPersistTaps="always"
-        keyboardDismissMode="interactive"
-        ListEmptyComponent={
-          loading ? (
-            <View style={cStyles.emptyInverted}>
-              <ActivityIndicator size="small" color={colors.muted} />
-            </View>
-          ) : (
-            <View style={cStyles.emptyInverted}>
-              <Text style={cStyles.emptyText}>No messages yet. Say hi!</Text>
-            </View>
-          )
-        }
-      />
+      <View style={cStyles.listWrap}>
+        <FlatList
+          ref={flatListRef}
+          data={invertedItems}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          inverted
+          contentContainerStyle={cStyles.listContent}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="interactive"
+          onScroll={handleScroll}
+          scrollEventThrottle={100}
+          onEndReached={hasMore ? fetchOlderMessages : undefined}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={
+            loadingOlder ? (
+              <View style={cStyles.paginationLoader}>
+                <ActivityIndicator size="small" color={colors.muted} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            loading ? (
+              <View style={cStyles.emptyInverted}>
+                <ActivityIndicator size="small" color={colors.muted} />
+              </View>
+            ) : (
+              <View style={cStyles.emptyInverted}>
+                <Text style={cStyles.emptyText}>No messages yet. Say hi!</Text>
+              </View>
+            )
+          }
+        />
+        <ChatScrollToBottom visible={showScrollBtn} onPress={scrollToBottom} />
+      </View>
 
       {error ? <Text style={cStyles.errorText}>{error}</Text> : null}
 
@@ -381,9 +431,16 @@ const cStyles = StyleSheet.create({
     fontSize: 13,
     textAlign: "center",
   },
+  listWrap: {
+    flex: 1,
+  },
   listContent: {
     gap: 10,
     paddingTop: GROUP_CHAT_COMPOSER_GAP,
+  },
+  paginationLoader: {
+    paddingVertical: 12,
+    alignItems: "center",
   },
   errorText: {
     color: colors.danger,

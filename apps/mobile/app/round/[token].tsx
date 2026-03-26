@@ -8,7 +8,6 @@ import {
   Alert,
   Share,
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -19,6 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { useAblyChatMounted } from "../../lib/ably-chat-context";
 import { ParfadeRoundDetailLiveRefresh } from "../../components/parfade-round-detail-live-refresh";
 import { RoundCoverImage } from "../../components/round-cover-image";
@@ -51,7 +51,7 @@ function groupChatPreviewSubtitle(last: RoundDetails["lastChatMessage"]): string
   return `${formatInviterFirstLastInitial(last.senderName)}: ${cut}`;
 }
 import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
-import { RoundOverflowMenuSheet } from "../../components/round-overflow-menu-sheet";
+import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
@@ -241,7 +241,7 @@ export default function RoundDetailsScreen() {
           hitSlop={12}
           onPress={() => setRoundMenuOpen(true)}
         >
-          <Ionicons name="ellipsis-vertical" size={22} color={colors.text} />
+          <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
         </Pressable>
       ),
     });
@@ -638,7 +638,7 @@ export default function RoundDetailsScreen() {
                 }
               >
                 {player.avatar ? (
-                  <Image source={{ uri: toAbsoluteUrl(player.avatar) }} style={styles.declinedAvatar} />
+                  <Image source={toAbsoluteUrl(player.avatar)} style={styles.declinedAvatar} transition={0} />
                 ) : (
                   <View style={[styles.declinedAvatar, styles.claimedThumbFallback]}>
                     <Text style={styles.claimedThumbInitial}>
@@ -881,7 +881,7 @@ export default function RoundDetailsScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <RoundOverflowMenuSheet
+      <OverflowMenuSheet
         visible={roundMenuOpen}
         onClose={() => setRoundMenuOpen(false)}
         items={
@@ -890,11 +890,13 @@ export default function RoundDetailsScreen() {
                 {
                   key: "share",
                   label: "Share invite link",
+                  icon: "share-outline" as const,
                   onPress: () => void shareInviteLink(),
                 },
                 {
                   key: "calendar",
                   label: "Add to calendar",
+                  icon: "calendar-outline" as const,
                   onPress: () => {
                     void presentAddRoundToCalendar(round);
                   },
@@ -902,6 +904,7 @@ export default function RoundDetailsScreen() {
                 {
                   key: "edit",
                   label: "Edit round",
+                  icon: "create-outline" as const,
                   onPress: () => {
                     router.push({
                       pathname: "/round/[token]/edit",
@@ -912,6 +915,7 @@ export default function RoundDetailsScreen() {
                 {
                   key: "delete",
                   label: "Delete round",
+                  icon: "trash-outline" as const,
                   onPress: () => confirmDeleteRound(),
                   destructive: true,
                 },
@@ -920,11 +924,13 @@ export default function RoundDetailsScreen() {
                 {
                   key: "share",
                   label: "Share invite link",
+                  icon: "share-outline" as const,
                   onPress: () => void shareInviteLink(),
                 },
                 {
                   key: "calendar",
                   label: "Add to calendar",
+                  icon: "calendar-outline" as const,
                   onPress: () => {
                     void presentAddRoundToCalendar(round);
                   },
@@ -932,6 +938,7 @@ export default function RoundDetailsScreen() {
                 {
                   key: "unclaim",
                   label: "Unclaim spot",
+                  icon: "close-circle-outline" as const,
                   onPress: () => {
                     void rsvp("decline");
                   },

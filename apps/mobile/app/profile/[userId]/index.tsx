@@ -5,7 +5,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -15,8 +14,9 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
+import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { ParfadeProfileLiveRefresh } from "../../../components/parfade-profile-live-refresh";
 import { ProfileStatCategoryCards } from "../../../components/profile-stat-category-cards";
 import { ReportSheet } from "../../../components/report-sheet";
@@ -99,16 +99,30 @@ export default function PublicProfileScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const ablyChatMounted = useAblyChatMounted();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !computeBootstrapProfile(userId, userName, userAvatar),
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(
+    () => computeBootstrapProfile(userId, userName, userAvatar),
+  );
   const [groupedStats, setGroupedStats] = useState<ProfileStatsGrouped | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [blocked, setBlocked] = useState(false);
+
+  const [prevUserId, setPrevUserId] = useState(userId);
+  if (userId !== prevUserId) {
+    setPrevUserId(userId);
+    const next = computeBootstrapProfile(userId, userName, userAvatar);
+    setProfile(next);
+    setLoading(!next);
+    setGroupedStats(null);
+    setError(null);
+  }
 
   const avatarSize = Math.round(Math.min(windowWidth - 48, 340) * 0.75);
 
@@ -152,15 +166,9 @@ export default function PublicProfileScreen() {
   }, [loadProfile]);
 
   useEffect(() => {
-    if (!userId) {
-      setProfile(null);
-      setLoading(true);
-      return;
-    }
-    const next = computeBootstrapProfile(userId, userName, userAvatar);
-    setProfile(next);
-    setLoading(!next);
-    void loadProfile({ silent: Boolean(next) });
+    if (!userId) return;
+    const hasBootstrap = Boolean(computeBootstrapProfile(userId, userName, userAvatar));
+    void loadProfile({ silent: hasBootstrap });
   }, [userId, userName, userAvatar, loadProfile]);
 
   useLayoutEffect(() => {
@@ -319,8 +327,12 @@ export default function PublicProfileScreen() {
         <View style={[styles.avatarClip, { width: avatarSize, height: avatarSize }]}>
           {profile.user.avatar ? (
             <Image
-              source={{ uri: toAbsoluteUrl(profile.user.avatar) }}
+              source={toAbsoluteUrl(profile.user.avatar)}
               style={[styles.avatarImage, { width: avatarSize, height: avatarSize }]}
+              contentFit="cover"
+              transition={0}
+              priority="high"
+              cachePolicy="memory-disk"
               accessibilityLabel="Profile photo"
             />
           ) : (
@@ -399,81 +411,66 @@ export default function PublicProfileScreen() {
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </ScrollView>
 
-    <AnimatedBottomSheetFrame
+    <OverflowMenuSheet
       visible={overflowOpen}
       onClose={() => setOverflowOpen(false)}
-      sheetStyle={styles.overflowSheet}
-    >
-      <Pressable
-        style={styles.overflowRow}
-        onPress={() => {
-          setOverflowOpen(false);
-          setTimeout(() => setReportOpen(true), 350);
-        }}
-      >
-        <Ionicons name="flag-outline" size={20} color={colors.danger} />
-        <Text style={[styles.overflowRowText, { color: colors.danger }]}>
-          Report {profile?.user.name?.split(" ")[0] ?? "user"}
-        </Text>
-      </Pressable>
-      <Pressable
-        style={styles.overflowRow}
-        onPress={() => {
-          setOverflowOpen(false);
-          const name = profile?.user.name?.split(" ")[0] ?? "this user";
-          if (blocked) {
-            Alert.alert(`Unblock ${name}?`, "You will be able to see their content again.", [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Unblock",
-                onPress: async () => {
-                  try {
-                    const token = await getTokenRef.current();
-                    await apiDelete(`/api/users/${userId}/block`, token);
-                    setBlocked(false);
-                    hapticSuccess();
-                  } catch {
-                    Alert.alert("Error", "Unable to unblock.");
-                  }
+      items={[
+        {
+          key: "report",
+          label: `Report ${profile?.user.name?.split(" ")[0] ?? "user"}`,
+          icon: "flag-outline" as const,
+          destructive: true,
+          onPress: () => {
+            setTimeout(() => setReportOpen(true), 350);
+          },
+        },
+        {
+          key: "block",
+          label: `${blocked ? "Unblock" : "Block"} ${profile?.user.name?.split(" ")[0] ?? "user"}`,
+          icon: (blocked ? "person-add-outline" : "ban-outline") as const,
+          destructive: !blocked,
+          onPress: () => {
+            const name = profile?.user.name?.split(" ")[0] ?? "this user";
+            if (blocked) {
+              Alert.alert(`Unblock ${name}?`, "You will be able to see their content again.", [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Unblock",
+                  onPress: async () => {
+                    try {
+                      const token = await getTokenRef.current();
+                      await apiDelete(`/api/users/${userId}/block`, token);
+                      setBlocked(false);
+                      hapticSuccess();
+                    } catch {
+                      Alert.alert("Error", "Unable to unblock.");
+                    }
+                  },
                 },
-              },
-            ]);
-          } else {
-            Alert.alert(`Block ${name}?`, "They won't be able to see your profile or interact with you.", [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Block",
-                style: "destructive",
-                onPress: async () => {
-                  try {
-                    const token = await getTokenRef.current();
-                    await apiPost(`/api/users/${userId}/block`, {}, token);
-                    setBlocked(true);
-                    hapticSuccess();
-                  } catch {
-                    Alert.alert("Error", "Unable to block.");
-                  }
+              ]);
+            } else {
+              Alert.alert(`Block ${name}?`, "They won't be able to see your profile or interact with you.", [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Block",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      const token = await getTokenRef.current();
+                      await apiPost(`/api/users/${userId}/block`, {}, token);
+                      setBlocked(true);
+                      hapticSuccess();
+                    } catch {
+                      Alert.alert("Error", "Unable to block.");
+                    }
+                  },
                 },
-              },
-            ]);
-          }
-        }}
-      >
-        <Ionicons
-          name={blocked ? "person-add-outline" : "ban-outline"}
-          size={20}
-          color={blocked ? colors.fairway : colors.danger}
-        />
-        <Text
-          style={[
-            styles.overflowRowText,
-            { color: blocked ? colors.fairway : colors.danger },
-          ]}
-        >
-          {blocked ? "Unblock" : "Block"} {profile?.user.name?.split(" ")[0] ?? "user"}
-        </Text>
-      </Pressable>
-    </AnimatedBottomSheetFrame>
+              ]);
+            }
+          },
+        },
+      ]}
+    />
 
     {userId ? (
       <ReportSheet
@@ -519,7 +516,6 @@ const styles = StyleSheet.create({
   },
   avatarImage: {
     borderRadius: AVATAR_RADIUS,
-    resizeMode: "cover",
   },
   avatarPlaceholder: {
     borderRadius: AVATAR_RADIUS,
@@ -582,14 +578,4 @@ const styles = StyleSheet.create({
   },
   errorText: { color: colors.danger, marginTop: 12, textAlign: "center" },
   disabledButton: { opacity: 0.6 },
-  overflowSheet: { paddingHorizontal: 16, gap: 4 },
-  overflowRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  overflowRowText: { fontSize: 16, fontWeight: "600" },
 });

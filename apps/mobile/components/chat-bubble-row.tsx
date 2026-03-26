@@ -1,24 +1,29 @@
 import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { memo, useCallback, useRef, useState } from "react";
 import {
+  Alert,
+  Dimensions,
   Image,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
-  type LayoutRectangle,
 } from "react-native";
+import Autolink from "react-native-autolink";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  Easing,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
+  withSpring,
 } from "react-native-reanimated";
 import { toAbsoluteUrl } from "../lib/api";
+import type { GroupStyle } from "../lib/chat-group-styles";
 import { colors } from "../lib/theme";
 import { type ChatMessage, roundGroupChatStyles as legacyStyles } from "./round-group-chat-poll";
 
@@ -40,46 +45,69 @@ type EnhancedMessage = ChatMessage & {
 type Props = {
   message: EnhancedMessage;
   isMine: boolean;
+  groupStyle?: GroupStyle;
+  showStatus?: boolean;
   conversationId?: string;
   viewerId?: string | null;
   onReaction?: (messageId: string, emoji: string, action: "add" | "remove") => void;
   onReply?: (message: EnhancedMessage) => void;
+  onDelete?: (messageId: string) => void;
   onAvatarPress?: (user: { id: string; name: string; avatar: string | null }) => void;
 };
-
-function formatTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
-  }
-}
 
 function emojiDisplay(key: string): string {
   return REACTION_EMOJIS.find((e) => e.key === key)?.display ?? key;
 }
 
 const SWIPE_THRESHOLD = 50;
-const PICKER_ITEM_SIZE = 44;
-const PICKER_PADDING = 8;
-const PICKER_GAP = 4;
-const PICKER_WIDTH =
-  REACTION_EMOJIS.length * PICKER_ITEM_SIZE +
-  (REACTION_EMOJIS.length - 1) * PICKER_GAP +
-  PICKER_PADDING * 2;
+
+function areBubblePropsEqual(prev: Props, next: Props): boolean {
+  if (prev.isMine !== next.isMine) return false;
+  if (prev.groupStyle !== next.groupStyle) return false;
+  if (prev.showStatus !== next.showStatus) return false;
+  if (prev.viewerId !== next.viewerId) return false;
+  if (prev.conversationId !== next.conversationId) return false;
+
+  const pm = prev.message;
+  const nm = next.message;
+  if (pm.id !== nm.id) return false;
+  if (pm.body !== nm.body) return false;
+  if (pm.user.id !== nm.user.id) return false;
+  if (pm.user.name !== nm.user.name) return false;
+  if (pm.user.avatar !== nm.user.avatar) return false;
+  if (pm.parentId !== nm.parentId) return false;
+  if (pm.parentPreview?.body !== nm.parentPreview?.body) return false;
+  if (pm.parentPreview?.senderName !== nm.parentPreview?.senderName) return false;
+
+  const pr = pm.reactions;
+  const nr = nm.reactions;
+  if (pr !== nr) {
+    if (!pr || !nr) return false;
+    const pk = Object.keys(pr);
+    const nk = Object.keys(nr);
+    if (pk.length !== nk.length) return false;
+    for (const k of pk) {
+      if (pr[k].count !== nr[k]?.count) return false;
+    }
+  }
+
+  return true;
+}
 
 export const ChatBubbleRow = memo(function ChatBubbleRow({
   message: m,
   isMine,
+  groupStyle = "single",
+  showStatus,
   conversationId,
   viewerId,
   onReaction,
   onReply,
+  onDelete,
   onAvatarPress,
 }: Props) {
+  const showAvatar = groupStyle === "single" || groupStyle === "bottom";
+  const showName = !isMine && (groupStyle === "single" || groupStyle === "top");
   const [pickerVisible, setPickerVisible] = useState(false);
   const [bubbleLayout, setBubbleLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const bubbleRef = useRef<View>(null);
@@ -118,6 +146,24 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     onReply?.(m);
   }, [m, onReply]);
 
+  const handleCopy = useCallback(() => {
+    void Clipboard.setStringAsync(m.body);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPickerVisible(false);
+  }, [m.body]);
+
+  const handleDeletePress = useCallback(() => {
+    setPickerVisible(false);
+    Alert.alert("Delete Message", "Are you sure you want to delete this message?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => onDelete?.(m.id),
+      },
+    ]);
+  }, [m.id, onDelete]);
+
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
     .onEnd(() => {
@@ -138,9 +184,14 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       runOnJS(showPicker)();
     });
 
+  const [swiping, setSwiping] = useState(false);
+
   const panGesture = Gesture.Pan()
     .activeOffsetX(isMine ? -20 : 20)
     .failOffsetY([-10, 10])
+    .onStart(() => {
+      runOnJS(setSwiping)(true);
+    })
     .onUpdate((e) => {
       if (isMine) {
         if (e.translationX < 0) {
@@ -157,7 +208,13 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       if (distance > SWIPE_THRESHOLD && onReply) {
         runOnJS(triggerReply)();
       }
-      translateX.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.quad) });
+      translateX.value = withSpring(0, {
+        damping: 30,
+        stiffness: 600,
+        overshootClamping: true,
+      }, () => {
+        runOnJS(setSwiping)(false);
+      });
     });
 
   const composed = Gesture.Race(panGesture, Gesture.Simultaneous(longPress, tapGestures));
@@ -253,32 +310,54 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     </View>
   ) : null;
 
+  const avatarSpacer = <View style={styles.avatarSpacer} />;
+
+  const RADIUS = 18;
+  const GROUPED_RADIUS = 4;
+  const TAIL_RADIUS = 2;
+  const hasTail = groupStyle === "single" || groupStyle === "bottom";
+  const isGroupedTop = groupStyle === "middle" || groupStyle === "bottom";
+  const bubbleRadii = {
+    borderTopLeftRadius: isMine ? RADIUS : (isGroupedTop ? GROUPED_RADIUS : RADIUS),
+    borderTopRightRadius: isMine ? (isGroupedTop ? GROUPED_RADIUS : RADIUS) : RADIUS,
+    borderBottomLeftRadius: isMine ? RADIUS : (hasTail ? TAIL_RADIUS : GROUPED_RADIUS),
+    borderBottomRightRadius: isMine ? (hasTail ? TAIL_RADIUS : GROUPED_RADIUS) : RADIUS,
+  };
+
   const bubbleContent = isMine ? (
     <>
       <View style={legacyStyles.bubbleRowFlex} />
-      <View ref={bubbleRef} style={styles.bubbleCol}>
-        <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, m.parentPreview ? styles.bubbleWithReply : null]}>
-          {replyPreview}
-          <Text style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}>
-            {m.body}
-          </Text>
-          <Text style={[legacyStyles.bubbleTime, legacyStyles.bubbleTimeMine]}>
-            {formatTime(m.createdAt)}
-          </Text>
+      <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColMine]}>
+        {replyPreview}
+        <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, bubbleRadii]}>
+          <Autolink
+            text={m.body}
+            style={[legacyStyles.bubbleBody, legacyStyles.bubbleBodyMine]}
+            linkStyle={styles.linkMine}
+            url
+            email
+            phone
+          />
         </View>
         {reactionChips}
       </View>
-      {avatarEl}
+      {showAvatar ? avatarEl : avatarSpacer}
     </>
   ) : (
     <>
-      {avatarEl}
-      <View ref={bubbleRef} style={styles.bubbleCol}>
-        <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, m.parentPreview ? styles.bubbleWithReply : null]}>
-          {replyPreview}
-          <Text style={legacyStyles.bubbleName}>{m.user.name}</Text>
-          <Text style={legacyStyles.bubbleBody}>{m.body}</Text>
-          <Text style={legacyStyles.bubbleTime}>{formatTime(m.createdAt)}</Text>
+      {showAvatar ? avatarEl : avatarSpacer}
+      <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColTheirs]}>
+        {replyPreview}
+        <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, bubbleRadii]}>
+          {showName ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
+          <Autolink
+            text={m.body}
+            style={legacyStyles.bubbleBody}
+            linkStyle={styles.linkTheirs}
+            url
+            email
+            phone
+          />
         </View>
         {reactionChips}
       </View>
@@ -287,54 +366,120 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   return (
     <View style={styles.swipeContainer}>
-      <Animated.View style={[styles.replyIconWrap, isMine ? styles.replyIconRight : styles.replyIconLeft, replyIconStyle]}>
-        <Ionicons name="arrow-undo" size={18} color={colors.muted} />
-      </Animated.View>
+      {swiping ? (
+        <Animated.View style={[styles.replyIconWrap, isMine ? styles.replyIconRight : styles.replyIconLeft, replyIconStyle]}>
+          <Ionicons name="arrow-undo" size={18} color={colors.muted} />
+        </Animated.View>
+      ) : null}
       <GestureDetector gesture={composed}>
-        <Animated.View style={[legacyStyles.bubbleRow, animatedStyle]}>
+        <Animated.View style={[legacyStyles.bubbleRow, groupStyle === "middle" || groupStyle === "bottom" ? styles.groupedRow : null, animatedStyle]}>
           {bubbleContent}
         </Animated.View>
       </GestureDetector>
+
+      {showStatus && isMine ? (
+        <View style={styles.statusRow}>
+          <Ionicons
+            name={m.id.startsWith("optimistic-") ? "time-outline" : "checkmark"}
+            size={14}
+            color={colors.muted}
+          />
+          <Text style={styles.statusText}>
+            {m.id.startsWith("optimistic-") ? "Sending" : "Sent"}
+          </Text>
+        </View>
+      ) : null}
 
       <Modal
         visible={pickerVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setPickerVisible(false)}
+        statusBarTranslucent
       >
-        <Pressable
-          style={styles.pickerOverlay}
-          onPress={() => setPickerVisible(false)}
-        >
-          {bubbleLayout ? (
-            <View
-              style={[
-                styles.pickerPill,
-                {
-                  position: "absolute",
-                  top: bubbleLayout.y - 52,
-                  left: isMine
-                    ? bubbleLayout.x + bubbleLayout.width - PICKER_WIDTH
-                    : bubbleLayout.x,
-                },
-              ]}
+        <Pressable style={styles.overlay} onPress={() => setPickerVisible(false)}>
+          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+          {bubbleLayout ? (() => {
+            const screen = Dimensions.get("window");
+            const PICKER_H = 54;
+            const GAP = 8;
+            const actionCount = 1 + (onReply ? 1 : 0) + (isMine && onDelete ? 1 : 0);
+            const MENU_H = actionCount * 48;
+            const totalH = PICKER_H + GAP + bubbleLayout.height + GAP + MENU_H;
+            const idealTop = bubbleLayout.y - PICKER_H - GAP;
+            const maxTop = screen.height - totalH - 40;
+            const spacerH = Math.max(40, Math.min(idealTop, maxTop));
+            return (
+            <ScrollView
+              style={styles.overlayScroll}
+              contentContainerStyle={styles.overlayScrollContent}
+              bounces={false}
+              showsVerticalScrollIndicator={false}
             >
-              {REACTION_EMOJIS.map((e) => (
-                <Pressable
-                  key={e.key}
-                  style={styles.pickerItem}
-                  onPress={() => handlePickReaction(e.key)}
-                >
-                  <Text style={styles.pickerEmoji}>{e.display}</Text>
+              <View style={{ height: spacerH }} />
+
+              {/* Reaction picker — directly above the bubble */}
+              <View style={[styles.pickerPill, isMine ? styles.pickerAlignRight : styles.pickerAlignLeft]}>
+                {REACTION_EMOJIS.map((e) => (
+                  <Pressable
+                    key={e.key}
+                    style={[styles.pickerItem, myCurrentEmoji === e.key && styles.pickerItemActive]}
+                    onPress={() => handlePickReaction(e.key)}
+                  >
+                    <Text style={styles.pickerEmoji}>{e.display}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {/* Focused message bubble */}
+              <View style={[styles.focusedBubbleRow, isMine ? styles.focusedBubbleRight : styles.focusedBubbleLeft]}>
+                <View style={[
+                  legacyStyles.bubble,
+                  isMine ? legacyStyles.bubbleMine : legacyStyles.bubbleTheirs,
+                  { borderRadius: RADIUS, maxWidth: Dimensions.get("window").width * 0.75 },
+                ]}>
+                  {!isMine && showName ? (
+                    <Text style={legacyStyles.bubbleName}>{m.user.name}</Text>
+                  ) : null}
+                  <Text style={[legacyStyles.bubbleBody, isMine ? legacyStyles.bubbleBodyMine : null]}>
+                    {m.body}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Context menu actions — directly below the bubble */}
+              <View style={[styles.contextActions, isMine ? styles.contextAlignRight : styles.contextAlignLeft]}>
+                <Pressable style={styles.contextAction} onPress={handleCopy}>
+                  <Ionicons name="copy-outline" size={18} color={colors.text} />
+                  <Text style={styles.contextActionText}>Copy</Text>
                 </Pressable>
-              ))}
-            </View>
-          ) : null}
+                {onReply ? (
+                  <Pressable
+                    style={styles.contextAction}
+                    onPress={() => {
+                      setPickerVisible(false);
+                      triggerReply();
+                    }}
+                  >
+                    <Ionicons name="arrow-undo-outline" size={18} color={colors.text} />
+                    <Text style={styles.contextActionText}>Reply</Text>
+                  </Pressable>
+                ) : null}
+                {isMine && onDelete ? (
+                  <Pressable style={styles.contextAction} onPress={handleDeletePress}>
+                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                    <Text style={[styles.contextActionText, { color: colors.danger }]}>Delete</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </ScrollView>
+            );
+          })() : null}
         </Pressable>
       </Modal>
     </View>
   );
-});
+}, areBubblePropsEqual);
 
 const styles = StyleSheet.create({
   swipeContainer: {
@@ -354,16 +499,29 @@ const styles = StyleSheet.create({
   replyIconRight: {
     right: 4,
   },
+  groupedRow: {
+    marginTop: -6,
+  },
+  avatarSpacer: {
+    width: 28,
+  },
   bubbleCol: {
     flexShrink: 1,
     maxWidth: "78%",
+  },
+  bubbleColMine: {
+    alignItems: "flex-end",
+  },
+  bubbleColTheirs: {
+    alignItems: "flex-start",
   },
   reactionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 4,
-    marginTop: 4,
+    marginTop: -8,
     paddingHorizontal: 4,
+    zIndex: 1,
   },
   reactionChip: {
     flexDirection: "row",
@@ -388,24 +546,20 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontWeight: "600",
   },
-  bubbleWithReply: {
-    paddingTop: 4,
-    paddingHorizontal: 4,
-  },
   replyPreview: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 10,
-    gap: 6,
+    marginBottom: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    gap: 8,
   },
   replyPreviewTheirs: {
-    backgroundColor: "rgba(0,0,0,0.05)",
+    backgroundColor: "#eae8e3",
   },
   replyPreviewMine: {
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "#3a6b4a",
   },
   replyBar: {
     width: 3,
@@ -415,54 +569,129 @@ const styles = StyleSheet.create({
     minHeight: 20,
   },
   replyBarMine: {
-    backgroundColor: "rgba(255,255,255,0.6)",
+    backgroundColor: "rgba(255,255,255,0.5)",
   },
   replyTextCol: {
-    flex: 1,
+    flexShrink: 1,
     gap: 1,
   },
   replySender: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
-    color: colors.fairway,
+    color: colors.text,
   },
   replySenderMine: {
-    color: "rgba(255,255,255,0.85)",
+    color: "rgba(255,255,255,0.9)",
   },
   replyBody: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.muted,
   },
   replyBodyMine: {
-    color: "rgba(255,255,255,0.7)",
+    color: "rgba(255,255,255,0.65)",
   },
-  pickerOverlay: {
+  overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    justifyContent: "center",
-    alignItems: "center",
+  },
+  overlayScroll: {
+    flex: 1,
+  },
+  overlayScrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 40,
+    gap: 8,
   },
   pickerPill: {
     flexDirection: "row",
     backgroundColor: "#fff",
-    borderRadius: 28,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    gap: 4,
+    borderRadius: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    gap: 2,
+    alignSelf: "flex-start",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
     elevation: 8,
   },
+  pickerAlignRight: {
+    alignSelf: "flex-end",
+  },
+  pickerAlignLeft: {
+    alignSelf: "flex-start",
+  },
   pickerItem: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
   },
+  pickerItemActive: {
+    backgroundColor: colors.fairwaySoft,
+  },
   pickerEmoji: {
-    fontSize: 24,
+    fontSize: 26,
+  },
+  focusedBubbleRow: {
+    flexDirection: "row",
+  },
+  focusedBubbleRight: {
+    justifyContent: "flex-end",
+  },
+  focusedBubbleLeft: {
+    justifyContent: "flex-start",
+  },
+  contextActions: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    overflow: "hidden",
+    alignSelf: "flex-start",
+    minWidth: 200,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  contextAlignRight: {
+    alignSelf: "flex-end",
+  },
+  contextAlignLeft: {
+    alignSelf: "flex-start",
+  },
+  contextAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  contextActionText: {
+    fontSize: 16,
+    color: colors.text,
+  },
+  linkTheirs: {
+    color: colors.fairway,
+    textDecorationLine: "underline",
+  },
+  linkMine: {
+    color: "#fff",
+    textDecorationLine: "underline",
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 3,
+    paddingRight: 44,
+    marginTop: 2,
+  },
+  statusText: {
+    fontSize: 11,
+    color: colors.muted,
   },
 });

@@ -1,4 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,6 +31,7 @@ type Props = {
   styles: GroupChatComposerStyles;
   sendBusy: boolean;
   onSend: (text: string) => Promise<boolean>;
+  onImagePicked?: (uri: string) => void;
   onComposerFocus?: () => void;
   onTyping?: () => void;
   replyTo?: ReplyTarget | null;
@@ -39,6 +42,7 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
   styles: s,
   sendBusy,
   onSend,
+  onImagePicked,
   onComposerFocus,
   onTyping,
   replyTo,
@@ -68,6 +72,20 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
     if (!ok) setDraft(text);
   }, [draft, sendBusy, onSend]);
 
+  const handlePickImage = useCallback(async () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: false,
+    });
+    if (!result.canceled && result.assets[0]) {
+      onImagePicked?.(result.assets[0].uri);
+    }
+  }, [onImagePicked]);
+
   return (
     <View>
       {replyTo ? (
@@ -87,12 +105,22 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
         </View>
       ) : null}
       <View style={s.composerRow}>
+        {onImagePicked ? (
+          <Pressable
+            style={composerBtnStyles.plusBtn}
+            onPress={() => void handlePickImage()}
+            hitSlop={6}
+            accessibilityLabel="Add photo"
+          >
+            <Ionicons name="add-circle" size={28} color={colors.fairway} />
+          </Pressable>
+        ) : null}
         <TextInput
           ref={inputRef}
           value={draft}
           onChangeText={handleChangeText}
           onFocus={() => onComposerFocus?.()}
-          placeholder="Message the group…"
+          placeholder="Message…"
           placeholderTextColor={colors.muted}
           style={s.input}
           multiline
@@ -100,7 +128,7 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
           maxLength={2000}
         />
         <Pressable
-          style={[s.sendBtn, sendBusy && s.sendBtnDisabled]}
+          style={[s.sendBtn, (sendBusy || !draft.trim()) && s.sendBtnDisabled]}
           onPress={() => void submit()}
           disabled={sendBusy || !draft.trim()}
           accessibilityLabel="Send message"
@@ -108,12 +136,20 @@ export const RoundGroupChatComposer = memo(function RoundGroupChatComposer({
           {sendBusy ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <Ionicons name="send" size={18} color="#fff" />
+            <Ionicons name="arrow-up" size={20} color="#fff" />
           )}
         </Pressable>
       </View>
     </View>
   );
+});
+
+const composerBtnStyles = StyleSheet.create({
+  plusBtn: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingBottom: 2,
+  },
 });
 
 const replyStyles = StyleSheet.create({
