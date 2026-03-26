@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -94,6 +95,7 @@ export default function PublicProfileScreen() {
   const getTokenRef = useRef(getToken);
   const ablyChatMounted = useAblyChatMounted();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
@@ -238,9 +240,13 @@ export default function PublicProfileScreen() {
     const uid = Array.isArray(userId) ? userId[0] : userId;
     if (!uid) return;
     const profileUrl = `${publicWebOrigin}/profile/${uid}`;
-    await Share.share({
-      message: `Check out ${profile.user.name}'s profile on Parfade: ${profileUrl}`,
-    });
+    try {
+      await Share.share({
+        message: `Check out ${profile.user.name}'s profile on Parfade: ${profileUrl}`,
+      });
+    } catch {
+      /* user cancelled or share unavailable */
+    }
   }
 
   function followButtonText() {
@@ -273,7 +279,20 @@ export default function PublicProfileScreen() {
       {ablyChatMounted && userId ? (
         <ParfadeProfileLiveRefresh profileUserId={userId} onProfileMaybeUpdated={onRemoteProfileUpdate} />
       ) : null}
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void loadProfile({ silent: true }).finally(() => setRefreshing(false));
+            }}
+            tintColor={colors.fairway}
+          />
+        }
+      >
       <View style={[styles.avatarShadowOuter, { width: avatarSize, height: avatarSize }]}>
         <View style={[styles.avatarClip, { width: avatarSize, height: avatarSize }]}>
           {profile.user.avatar ? (

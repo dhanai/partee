@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AnimatedBottomSheetFrame } from "./animated-bottom-sheet-frame";
 import { colors } from "../lib/theme";
 
 type DatePickerModalProps = {
@@ -82,83 +83,76 @@ export function DatePickerModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
-          <Text style={styles.modalTitle}>{title}</Text>
-          <View style={styles.monthNavRow}>
-            <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(-1)}>
-              <Ionicons name="chevron-back" size={16} color={colors.fairway} />
-            </Pressable>
-            <Text style={styles.monthLabel}>{monthLabel}</Text>
-            <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(1)}>
-              <Ionicons name="chevron-forward" size={16} color={colors.fairway} />
-            </Pressable>
-          </View>
-          <View style={styles.weekHeader}>
-            {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
-              <Text key={`${d}-${idx}`} style={styles.weekHeaderText}>
-                {d}
-              </Text>
-            ))}
-          </View>
-          <View style={styles.calendarGrid}>
-            {dayCells.map((dayNum, idx) => {
-              if (dayNum === null) return <View key={`empty-${idx}`} style={styles.dayCell} />;
-              const dayDate = new Date(
-                calendarMonth.getFullYear(),
-                calendarMonth.getMonth(),
-                dayNum,
-              );
-              const isDisabled =
-                minDay ? startOfDay(dayDate).getTime() < minDay.getTime() : false;
-              const selected = selectedDate ? isSameDay(dayDate, selectedDate) : false;
-              return (
-                <Pressable
-                  key={`day-${calendarMonth.getFullYear()}-${calendarMonth.getMonth()}-${dayNum}-${idx}`}
-                  style={[styles.dayCell, isDisabled && styles.dayDisabled]}
-                  onPress={() => {
-                    if (isDisabled) return;
-                    onSelectDate(startOfDay(dayDate));
-                    onClose();
-                  }}
-                  disabled={isDisabled}
-                >
-                  <View style={[styles.dayPill, selected && styles.dayPillSelected]}>
-                    <Text
-                      style={[
-                        styles.dayText,
-                        selected && styles.dayTextSelected,
-                        isDisabled && styles.dayTextDisabled,
-                      ]}
-                    >
-                      {dayNum}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Pressable style={styles.modalDoneBtn} onPress={onClose}>
-            <Text style={styles.modalDoneText}>Done</Text>
-          </Pressable>
+    <AnimatedBottomSheetFrame
+      visible={visible}
+      onClose={onClose}
+      sheetStyle={styles.sheet}
+    >
+      <Text style={styles.modalTitle}>{title}</Text>
+      <View style={styles.monthNavRow}>
+        <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(-1)}>
+          <Ionicons name="chevron-back" size={16} color={colors.fairway} />
         </Pressable>
+        <Text style={styles.monthLabel}>{monthLabel}</Text>
+        <Pressable style={styles.monthNavBtn} onPress={() => shiftMonth(1)}>
+          <Ionicons name="chevron-forward" size={16} color={colors.fairway} />
+        </Pressable>
+      </View>
+      <View style={styles.weekHeader}>
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
+          <Text key={`${d}-${idx}`} style={styles.weekHeaderText}>
+            {d}
+          </Text>
+        ))}
+      </View>
+      <View style={styles.calendarGrid}>
+        {dayCells.map((dayNum, idx) => {
+          if (dayNum === null) return <View key={`empty-${idx}`} style={styles.dayCell} />;
+          const dayDate = new Date(
+            calendarMonth.getFullYear(),
+            calendarMonth.getMonth(),
+            dayNum,
+          );
+          const isDisabled =
+            minDay ? startOfDay(dayDate).getTime() < minDay.getTime() : false;
+          const selected = selectedDate ? isSameDay(dayDate, selectedDate) : false;
+          return (
+            <Pressable
+              key={`day-${calendarMonth.getFullYear()}-${calendarMonth.getMonth()}-${dayNum}-${idx}`}
+              style={[styles.dayCell, isDisabled && styles.dayDisabled]}
+              onPress={() => {
+                if (isDisabled) return;
+                onSelectDate(startOfDay(dayDate));
+                onClose();
+              }}
+              disabled={isDisabled}
+            >
+              <View style={[styles.dayPill, selected && styles.dayPillSelected]}>
+                <Text
+                  style={[
+                    styles.dayText,
+                    selected && styles.dayTextSelected,
+                    isDisabled && styles.dayTextDisabled,
+                  ]}
+                >
+                  {dayNum}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Pressable style={styles.modalDoneBtn} onPress={onClose}>
+        <Text style={styles.modalDoneText}>Done</Text>
       </Pressable>
-    </Modal>
+    </AnimatedBottomSheetFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
+  sheet: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
     gap: 8,
   },
   modalTitle: { fontSize: 16, fontWeight: "700", color: colors.text },

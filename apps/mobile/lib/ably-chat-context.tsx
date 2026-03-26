@@ -86,7 +86,7 @@ export function AblyChatProviders({ children }: { children: ReactNode }) {
 
     setRealtime(client);
     return () => {
-      client.close();
+      try { client.close(); } catch { /* unmount tear-down */ }
     };
   }, [isLoaded, userId]);
 

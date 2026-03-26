@@ -11,10 +11,9 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
-import { AnimatedBottomSheetFrame } from "../../components/animated-bottom-sheet-frame";
+import { AnimatedBottomSheetFrame, BottomSheetTextInput } from "../../components/animated-bottom-sheet-frame";
 import { DiscoverHouseAdRow } from "../../components/discover-house-ad-row";
 import { DiscoverNativeAdRow } from "../../components/discover-native-ad-row";
 import { HeaderProfileIcon } from "../../components/header-profile-icon";
@@ -730,7 +729,7 @@ export default function DiscoverScreen() {
         </Pressable>
 
         <View style={styles.locationInputRow}>
-          <TextInput
+          <BottomSheetTextInput
             value={locationQuery}
             onChangeText={setLocationQuery}
             onFocus={() => locationResults.length > 0 && setShowLocationResults(true)}

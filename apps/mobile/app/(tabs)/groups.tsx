@@ -13,12 +13,14 @@ import {
   View,
 } from "react-native";
 import { apiGet } from "../../lib/api";
+import { PressableOpacity } from "../../components/pressable-opacity";
 import { colors } from "../../lib/theme";
 
 type GroupListItem = {
   id: string;
   name: string;
   imageUrl: string | null;
+  heroImageUrl: string | null;
   memberCount: number;
   myRole: "owner" | "admin" | "member";
 };
@@ -34,6 +36,7 @@ export default function GroupsScreen() {
   const getTokenRef = useRef(getToken);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [myGroups, setMyGroups] = useState<GroupListItem[]>([]);
   const [discoverGroups, setDiscoverGroups] = useState<GroupListItem[]>([]);
 
@@ -43,18 +46,21 @@ export default function GroupsScreen() {
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
+    setError(null);
     try {
       const token = await getTokenRef.current();
       const data = await apiGet<GroupsResponse>("/api/groups", token);
       setMyGroups(data.myGroups);
       setDiscoverGroups(data.discoverGroups);
     } catch {
-      // ignore — show empty state
+      if (myGroups.length === 0 && discoverGroups.length === 0) {
+        setError("Unable to load groups. Pull to retry.");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [myGroups.length, discoverGroups.length]);
 
   useEffect(() => {
     void load();
@@ -91,6 +97,11 @@ export default function GroupsScreen() {
     data.push({ type: "empty" });
   }
 
+  if (error && data.length === 1 && data[0].type === "empty") {
+    data.length = 0;
+    data.push({ type: "empty" });
+  }
+
   return (
     <View style={styles.root}>
       <FlatList
@@ -111,7 +122,13 @@ export default function GroupsScreen() {
             return <Text style={styles.sectionTitle}>{item.title}</Text>;
           }
           if (item.type === "empty") {
-            return (
+            return error ? (
+              <View style={styles.emptyWrap}>
+                <Ionicons name="cloud-offline-outline" size={48} color={colors.border} />
+                <Text style={styles.emptyTitle}>Something went wrong</Text>
+                <Text style={styles.emptySub}>{error}</Text>
+              </View>
+            ) : (
               <View style={styles.emptyWrap}>
                 <Ionicons
                   name="people-outline"
@@ -134,12 +151,19 @@ export default function GroupsScreen() {
           }
           const g = item.group;
           return (
-            <Pressable
+            <PressableOpacity
               style={styles.groupCard}
               onPress={() =>
                 router.push({
                   pathname: "/group/[groupId]",
-                  params: { groupId: g.id },
+                  params: {
+                    groupId: g.id,
+                    hintName: g.name,
+                    hintImage: g.imageUrl ?? "",
+                    hintHero: g.heroImageUrl ?? "",
+                    hintMembers: String(g.memberCount),
+                    hintRole: g.myRole,
+                  },
                 })
               }
             >
@@ -170,7 +194,7 @@ export default function GroupsScreen() {
                 size={16}
                 color={colors.muted}
               />
-            </Pressable>
+            </PressableOpacity>
           );
         }}
       />

@@ -77,21 +77,19 @@ export function RoundListCard({
     mode === "planning" ? planningWindowTheme(preferredTimeWindow) : null;
 
   return (
-    <View
-      style={[styles.card, mode === "planning" && styles.planningCard, planningTheme?.card]}
+    <Pressable
+      style={({ pressed }) => [
+        styles.card,
+        mode === "planning" && styles.planningCard,
+        planningTheme?.card,
+        pressed && { opacity: 0.85 },
+      ]}
+      unstable_pressDelay={delayPressIn}
+      android_ripple={delayPressIn != null && delayPressIn > 0 ? null : undefined}
+      onPressIn={onCardPressIn}
+      onPress={onPress}
     >
-      {/*
-        Full cardBody is tappable via a rear Pressable. Foreground uses pointerEvents so
-        taps pass through image/text/empty spots to open the round; avatar Pressables stay interactive.
-      */}
       <View style={styles.cardBody}>
-        <Pressable
-          style={StyleSheet.absoluteFillObject}
-          unstable_pressDelay={delayPressIn}
-          android_ripple={delayPressIn != null && delayPressIn > 0 ? null : undefined}
-          onPressIn={onCardPressIn}
-          onPress={onPress}
-        />
         <View style={styles.cardForeground} pointerEvents="box-none">
           <View style={styles.cardPressInner} pointerEvents="none">
             {mode === "scheduled" ? (
@@ -148,7 +146,7 @@ export function RoundListCard({
         </View>
       </View>
       {footer}
-    </View>
+    </Pressable>
   );
 }
 

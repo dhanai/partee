@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { AnimatedBottomSheetFrame } from "./animated-bottom-sheet-frame";
 import { colors } from "../lib/theme";
 
 type TimePickerModalProps = {
@@ -28,68 +29,60 @@ export function TimePickerModal({
     }
   }, [visible, value]);
 
-  if (!visible) return null;
-
-  if (Platform.OS === "ios") {
+  if (Platform.OS !== "ios") {
+    if (!visible) return null;
     return (
-      <Modal visible transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={onClose}>
-          <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
-            <Text style={styles.modalTitle}>{title}</Text>
-            <DateTimePicker
-              value={draftValue}
-              mode="time"
-              display="spinner"
-              onChange={(_event: DateTimePickerEvent, selected?: Date) => {
-                if (selected) setDraftValue(selected);
-              }}
-            />
-            <View style={styles.actionsRow}>
-              <Pressable style={[styles.button, styles.secondaryButton]} onPress={onClose}>
-                <Text style={styles.secondaryText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.button, styles.primaryButton]}
-                onPress={() => {
-                  onChange(draftValue);
-                  onClose();
-                }}
-              >
-                <Text style={styles.primaryText}>Done</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <DateTimePicker
+        value={value}
+        mode="time"
+        display="default"
+        onChange={(event: DateTimePickerEvent, selected?: Date) => {
+          onClose();
+          if (event.type === "set" && selected) {
+            onChange(selected);
+          }
+        }}
+      />
     );
   }
 
   return (
-    <DateTimePicker
-      value={value}
-      mode="time"
-      display="default"
-      onChange={(event: DateTimePickerEvent, selected?: Date) => {
-        onClose();
-        if (event.type === "set" && selected) {
-          onChange(selected);
-        }
-      }}
-    />
+    <AnimatedBottomSheetFrame
+      visible={visible}
+      onClose={onClose}
+      sheetStyle={styles.sheet}
+    >
+      <Text style={styles.modalTitle}>{title}</Text>
+      <DateTimePicker
+        value={draftValue}
+        mode="time"
+        display="spinner"
+        onChange={(_event: DateTimePickerEvent, selected?: Date) => {
+          if (selected) setDraftValue(selected);
+        }}
+      />
+      <View style={styles.actionsRow}>
+        <Pressable style={[styles.button, styles.secondaryButton]} onPress={onClose}>
+          <Text style={styles.secondaryText}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.button, styles.primaryButton]}
+          onPress={() => {
+            onChange(draftValue);
+            onClose();
+          }}
+        >
+          <Text style={styles.primaryText}>Done</Text>
+        </Pressable>
+      </View>
+    </AnimatedBottomSheetFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
+  sheet: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
     gap: 12,
   },
   modalTitle: { fontSize: 16, fontWeight: "700", color: colors.text },

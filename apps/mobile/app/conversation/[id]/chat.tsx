@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   LayoutAnimation,
   Platform,
@@ -330,7 +331,11 @@ export default function ConversationChatScreen() {
         keyboardShouldPersistTaps="always"
         keyboardDismissMode="interactive"
         ListEmptyComponent={
-          loading ? null : (
+          loading ? (
+            <View style={cStyles.emptyInverted}>
+              <ActivityIndicator size="small" color={colors.muted} />
+            </View>
+          ) : (
             <View style={cStyles.emptyInverted}>
               <Text style={cStyles.emptyText}>No messages yet. Say hi!</Text>
             </View>

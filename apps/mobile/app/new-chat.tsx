@@ -148,6 +148,7 @@ export default function NewChatScreen() {
             keyExtractor={(f) => f.id}
             renderItem={renderItem}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
           />
         )}
       </View>

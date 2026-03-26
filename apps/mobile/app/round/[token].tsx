@@ -1,7 +1,7 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,11 +23,9 @@ import { useAblyChatMounted } from "../../lib/ably-chat-context";
 import { ParfadeRoundDetailLiveRefresh } from "../../components/parfade-round-detail-live-refresh";
 import { RoundCoverImage } from "../../components/round-cover-image";
 import { apiDelete, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../lib/api";
-import {
-  getInviteSelection,
-  InviteSelectionUser,
-  setInviteSelection,
-} from "../../lib/invite-selection-store";
+import { hapticSuccess, hapticWarning, hapticLight } from "../../lib/haptics";
+import type { InviteSelectionUser } from "../../lib/invite-selection-store";
+import { InviteFriendsSheet } from "../../components/invite-friends-sheet";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
 import {
   computeBootstrapRound,
@@ -96,6 +95,7 @@ export default function RoundDetailsScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const isFirstFocusRef = useRef(true);
   const [busy, setBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -118,11 +118,13 @@ export default function RoundDetailsScreen() {
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const debouncedFinalizeQuery = useDebounce(finalizeQuery, 320);
-  const [selectedFriends, setSelectedFriends] = useState<InviteSelectionUser[]>([]);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [finalizeExpanded, setFinalizeExpanded] = useState(true);
-  const [inviteExpanded, setInviteExpanded] = useState(false);
-  const inviteFlowKeyRef = useRef(`round-${Math.random().toString(36).slice(2, 10)}`);
+  const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
+  const confirmedPlayerIds = useMemo(
+    () => new Set(round?.confirmedPlayers.map((p) => p.id) ?? []),
+    [round],
+  );
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -289,18 +291,6 @@ export default function RoundDetailsScreen() {
     };
   }, [debouncedFinalizeQuery, finalizeCourse]);
 
-  useFocusEffect(
-    useCallback(() => {
-      const flowKey = inviteFlowKeyRef.current;
-      const raw = getInviteSelection(flowKey);
-      if (!round) {
-        setSelectedFriends(raw);
-        return;
-      }
-      const confirmedIds = new Set(round.confirmedPlayers.map((player) => player.id));
-      setSelectedFriends(raw.filter((user) => !confirmedIds.has(user.id)));
-    }, [round]),
-  );
 
   function startOfDay(date: Date) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -393,6 +383,7 @@ export default function RoundDetailsScreen() {
       const refreshed = await fetchRoundDetailsAndCache(token, authToken);
       setRound(refreshed);
 
+      hapticSuccess();
       if (result.status === "requested") {
         setMessage("Join request submitted.");
       } else if (result.status === "declined" || action === "decline") {
@@ -467,8 +458,8 @@ export default function RoundDetailsScreen() {
     }
   }
 
-  async function sendInvites() {
-    if (!token || selectedFriends.length === 0) return;
+  async function sendInvites(users: InviteSelectionUser[]) {
+    if (!token || users.length === 0) return;
     setInviteBusy(true);
     setError(null);
     setMessage(null);
@@ -476,7 +467,7 @@ export default function RoundDetailsScreen() {
       const authToken = await getTokenRef.current();
       const response = await apiPost<{ invitedCount: number; skippedCount: number }>(
         `/api/rounds/${token}/invites`,
-        { inviteeUserIds: selectedFriends.map((friend) => friend.id) },
+        { inviteeUserIds: users.map((u) => u.id) },
         authToken,
       );
       setMessage(
@@ -484,8 +475,6 @@ export default function RoundDetailsScreen() {
           ? `Invite blast sent to ${response.invitedCount} golfer${response.invitedCount === 1 ? "" : "s"}.`
           : "No new invites were sent.",
       );
-      setSelectedFriends([]);
-      setInviteSelection(inviteFlowKeyRef.current, []);
     } catch (inviteError) {
       setError(inviteError instanceof Error ? inviteError.message : "Unable to send invites.");
     } finally {
@@ -523,15 +512,7 @@ export default function RoundDetailsScreen() {
       round.currentUserSpotStatus === "invited" ||
       round.currentUserSpotStatus === "declined");
   function openInviteFriends() {
-    if (!round) return;
-    const flowKey = inviteFlowKeyRef.current;
-    const confirmedIds = new Set(round.confirmedPlayers.map((player) => player.id));
-    const filtered = selectedFriends.filter((user) => !confirmedIds.has(user.id));
-    setInviteSelection(flowKey, filtered);
-    router.push({
-      pathname: "/invite-friends",
-      params: { flowKey, excludeIds: JSON.stringify(Array.from(confirmedIds)) },
-    });
+    setInviteSheetOpen(true);
   }
 
   /** Stack header + extra slack so KAV padding clears the keyboard under the composer. */
@@ -552,6 +533,16 @@ export default function RoundDetailsScreen() {
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
           keyboardDismissMode="interactive"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void loadRound({ silent: true }).finally(() => setRefreshing(false));
+              }}
+              tintColor={colors.fairway}
+            />
+          }
         >
       {round.mode === "scheduled" ? (
         <>
@@ -865,65 +856,11 @@ export default function RoundDetailsScreen() {
       {canInviteUsers ? (
         <RoundDetailSection
           title="Invite players"
-          hint="Choose friends or share a link."
+          hint="Choose friends to invite."
           icon="person-add-outline"
-          expanded={inviteExpanded}
-          onToggle={() => setInviteExpanded((e) => !e)}
-        >
-          <Pressable style={[btn.button, btn.secondaryButton]} onPress={openInviteFriends}>
-            <Text style={btn.secondaryText}>Select friends</Text>
-          </Pressable>
-          {selectedFriends.map((friend) => (
-            <View key={friend.id} style={styles.selectedRow}>
-              <View style={styles.selectedInfo}>
-                {friend.avatar ? (
-                  <Image
-                    source={{ uri: toAbsoluteUrl(friend.avatar) }}
-                    style={styles.selectedAvatar}
-                  />
-                ) : (
-                  <View style={[styles.selectedAvatar, styles.selectedAvatarFallback]}>
-                    <Text style={styles.selectedAvatarInitial}>
-                      {friend.name.trim().charAt(0).toUpperCase() || "?"}
-                    </Text>
-                  </View>
-                )}
-                <Text style={styles.selectedText} numberOfLines={1}>
-                  {friend.name}
-                </Text>
-              </View>
-              <Pressable
-                style={styles.selectedRemoveBtn}
-                onPress={() =>
-                  setSelectedFriends((prev) => prev.filter((user) => user.id !== friend.id))
-                }
-              >
-                <Ionicons name="trash-outline" size={16} color={colors.danger} />
-              </Pressable>
-            </View>
-          ))}
-          <View style={btn.actions}>
-            <Pressable
-              style={[
-                btn.button,
-                btn.primaryButton,
-                (inviteBusy || selectedFriends.length === 0) && styles.disabledButton,
-              ]}
-              onPress={() => void sendInvites()}
-              disabled={inviteBusy || selectedFriends.length === 0}
-            >
-              <Text style={btn.primaryText}>
-                {inviteBusy ? "Sending..." : "Send invites"}
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[btn.button, btn.secondaryButton]}
-              onPress={() => void shareInviteLink()}
-            >
-              <Text style={btn.secondaryText}>Share link</Text>
-            </Pressable>
-          </View>
-        </RoundDetailSection>
+          expanded={false}
+          onToggle={openInviteFriends}
+        />
       ) : null}
       <DatePickerModal
         visible={calendarOpen}
@@ -951,6 +888,11 @@ export default function RoundDetailsScreen() {
           round.isHost
             ? [
                 {
+                  key: "share",
+                  label: "Share invite link",
+                  onPress: () => void shareInviteLink(),
+                },
+                {
                   key: "calendar",
                   label: "Add to calendar",
                   onPress: () => {
@@ -976,6 +918,11 @@ export default function RoundDetailsScreen() {
               ]
             : [
                 {
+                  key: "share",
+                  label: "Share invite link",
+                  onPress: () => void shareInviteLink(),
+                },
+                {
                   key: "calendar",
                   label: "Add to calendar",
                   onPress: () => {
@@ -991,6 +938,17 @@ export default function RoundDetailsScreen() {
                 },
               ]
         }
+      />
+
+      <InviteFriendsSheet
+        visible={inviteSheetOpen}
+        onClose={() => setInviteSheetOpen(false)}
+        onConfirm={(users) => {
+          setInviteSheetOpen(false);
+          void sendInvites(users);
+        }}
+        confirmLabel="Send invites"
+        excludeIds={confirmedPlayerIds}
       />
     </View>
   );
@@ -1065,48 +1023,6 @@ const styles = StyleSheet.create({
   chatPreviewTextCol: { flex: 1, minWidth: 0, gap: 4 },
   chatPreviewTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
   chatPreviewSubtitle: { fontSize: 13, color: colors.muted, lineHeight: 18 },
-  selectedRow: {
-    backgroundColor: colors.fairwaySoft,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  selectedInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-    minWidth: 0,
-  },
-  selectedAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-  },
-  selectedAvatarFallback: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  selectedAvatarInitial: {
-    color: colors.fairway,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  selectedText: { color: colors.text, fontWeight: "600", flexShrink: 1 },
-  selectedRemoveBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   disabledButton: { opacity: 0.5 },
   errorText: {
     color: colors.danger,

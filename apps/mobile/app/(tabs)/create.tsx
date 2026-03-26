@@ -1,5 +1,5 @@
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, {
@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,14 +19,11 @@ import {
   View,
 } from "react-native";
 import { apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
-import {
-  clearInviteSelection,
-  getInviteSelection,
-  setInviteSelection,
-  InviteSelectionUser,
-} from "../../lib/invite-selection-store";
+import { hapticSuccess, hapticError } from "../../lib/haptics";
+import type { InviteSelectionUser } from "../../lib/invite-selection-store";
 import { colors } from "../../lib/theme";
 import { DatePickerModal } from "../../components/date-picker-modal";
+import { InviteFriendsSheet } from "../../components/invite-friends-sheet";
 import { PlanningTimeWindowChips } from "../../components/planning-time-window-chips";
 import { TimePickerModal } from "../../components/time-picker-modal";
 
@@ -135,7 +133,7 @@ export default function CreateScreen() {
   const [eventDeadlineTimePickerOpen, setEventDeadlineTimePickerOpen] = useState(false);
   const debouncedCourseQuery = useDebounce(query, 320);
   const debouncedPlanningLocation = useDebounce(planningLocation, 320);
-  const inviteFlowKeyRef = useRef(`create-${Math.random().toString(36).slice(2, 10)}`);
+  const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
   const prevSessionRef = useRef<string | null>(null);
   const [myGroups, setMyGroups] = useState<MyGroupOption[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
@@ -156,8 +154,6 @@ export default function CreateScreen() {
     if (prev === session) return;
     prevSessionRef.current = session;
 
-    clearInviteSelection(inviteFlowKeyRef.current);
-    inviteFlowKeyRef.current = `create-${Math.random().toString(36).slice(2, 10)}`;
     setSelectedFriends([]);
 
     setTargetDate(null);
@@ -347,12 +343,6 @@ export default function CreateScreen() {
     };
   }, [debouncedCourseQuery, isScheduledRound, selectedCourse]);
 
-  useFocusEffect(
-    useCallback(() => {
-      const flowKey = inviteFlowKeyRef.current;
-      setSelectedFriends(getInviteSelection(flowKey));
-    }, []),
-  );
 
   useEffect(() => {
     let active = true;
@@ -458,6 +448,7 @@ export default function CreateScreen() {
         },
         token,
       );
+      hapticSuccess();
       setSuccess(
         json.invitedCount > 0
           ? `Round created. Invite blast sent to ${json.invitedCount} golfers.`
@@ -472,6 +463,7 @@ export default function CreateScreen() {
         },
       });
     } catch (submitError) {
+      hapticError();
       setError(submitError instanceof Error ? submitError.message : "Create failed.");
     } finally {
       setSubmitting(false);
@@ -479,12 +471,7 @@ export default function CreateScreen() {
   }
 
   function openInviteFriends() {
-    const flowKey = inviteFlowKeyRef.current;
-    setInviteSelection(flowKey, selectedFriends);
-    router.push({
-      pathname: "/invite-friends",
-      params: { flowKey },
-    });
+    setInviteSheetOpen(true);
   }
 
   return (
@@ -492,6 +479,8 @@ export default function CreateScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
     >
       <Text style={styles.title}>
         {createType === "planning"
@@ -808,73 +797,87 @@ export default function CreateScreen() {
               </Pressable>
             </View>
 
-            <Text style={styles.label}>Invite friends or select group</Text>
-            <Pressable style={styles.secondaryButton} onPress={openInviteFriends}>
-              <Text style={styles.secondaryButtonText}>Select friends</Text>
-            </Pressable>
+            <Text style={styles.label}>
+              {selectedGroupId ? "Post to group" : "Invite friends"}
+            </Text>
 
-            {myGroups.length > 0 ? (
+            {!selectedGroupId ? (
+              <>
+                <Pressable style={styles.secondaryButton} onPress={openInviteFriends}>
+                  <Text style={styles.secondaryButtonText}>
+                    {selectedFriends.length > 0
+                      ? `${selectedFriends.length} friend${selectedFriends.length === 1 ? "" : "s"} selected`
+                      : "Select friends"}
+                  </Text>
+                </Pressable>
+                {selectedFriends.map((friend) => (
+                  <View key={friend.id} style={styles.selectedRow}>
+                    <View style={styles.selectedInfo}>
+                      {friend.avatar ? (
+                        <Image
+                          source={{ uri: toAbsoluteUrl(friend.avatar) }}
+                          style={styles.selectedAvatar}
+                        />
+                      ) : (
+                        <View style={[styles.selectedAvatar, styles.selectedAvatarFallback]}>
+                          <Text style={styles.selectedAvatarInitial}>
+                            {friend.name.trim().charAt(0).toUpperCase() || "?"}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={styles.selectedText} numberOfLines={1}>
+                        {friend.name}
+                      </Text>
+                    </View>
+                    <Pressable
+                      style={styles.selectedRemoveBtn}
+                      onPress={() =>
+                        setSelectedFriends((prev) => prev.filter((user) => user.id !== friend.id))
+                      }
+                    >
+                      <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                    </Pressable>
+                  </View>
+                ))}
+              </>
+            ) : (
+              <View style={styles.groupChipRow}>
+                <Pressable
+                  style={[styles.groupChip, styles.groupChipActive]}
+                  onPress={() => setSelectedGroupId(null)}
+                >
+                  <Text style={styles.groupChipTextActive}>
+                    {myGroups.find((g) => g.id === selectedGroupId)?.name ?? "Group"}
+                  </Text>
+                  <Ionicons name="close-circle" size={16} color="#fff" />
+                </Pressable>
+              </View>
+            )}
+
+            {!selectedGroupId && myGroups.length > 0 && selectedFriends.length === 0 ? (
               <View style={styles.groupPickerWrap}>
                 <Text style={styles.groupPickerOr}>or post to a group</Text>
                 <View style={styles.groupChipRow}>
-                  {selectedGroupId ? (
+                  {myGroups.map((g) => (
                     <Pressable
-                      style={[styles.groupChip, styles.groupChipActive]}
-                      onPress={() => setSelectedGroupId(null)}
+                      key={g.id}
+                      style={styles.groupChip}
+                      onPress={() => {
+                        setSelectedGroupId(g.id);
+                        setSelectedFriends([]);
+                      }}
                     >
-                      <Text style={styles.groupChipTextActive}>
-                        {myGroups.find((g) => g.id === selectedGroupId)?.name ?? "Group"}
-                      </Text>
-                      <Ionicons name="close-circle" size={16} color="#fff" />
+                      {g.imageUrl ? (
+                        <Image source={{ uri: g.imageUrl }} style={styles.groupChipAvatar} />
+                      ) : (
+                        <Ionicons name="people" size={14} color={colors.muted} />
+                      )}
+                      <Text style={styles.groupChipText}>{g.name}</Text>
                     </Pressable>
-                  ) : (
-                    myGroups.map((g) => (
-                      <Pressable
-                        key={g.id}
-                        style={styles.groupChip}
-                        onPress={() => setSelectedGroupId(g.id)}
-                      >
-                        {g.imageUrl ? (
-                          <Image source={{ uri: g.imageUrl }} style={styles.groupChipAvatar} />
-                        ) : (
-                          <Ionicons name="people" size={14} color={colors.muted} />
-                        )}
-                        <Text style={styles.groupChipText}>{g.name}</Text>
-                      </Pressable>
-                    ))
-                  )}
+                  ))}
                 </View>
               </View>
             ) : null}
-            {selectedFriends.map((friend) => (
-              <View key={friend.id} style={styles.selectedRow}>
-                <View style={styles.selectedInfo}>
-                  {friend.avatar ? (
-                    <Image
-                      source={{ uri: toAbsoluteUrl(friend.avatar) }}
-                      style={styles.selectedAvatar}
-                    />
-                  ) : (
-                    <View style={[styles.selectedAvatar, styles.selectedAvatarFallback]}>
-                      <Text style={styles.selectedAvatarInitial}>
-                        {friend.name.trim().charAt(0).toUpperCase() || "?"}
-                      </Text>
-                    </View>
-                  )}
-                  <Text style={styles.selectedText} numberOfLines={1}>
-                    {friend.name}
-                  </Text>
-                </View>
-                <Pressable
-                  style={styles.selectedRemoveBtn}
-                  onPress={() =>
-                    setSelectedFriends((prev) => prev.filter((user) => user.id !== friend.id))
-                  }
-                >
-                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                </Pressable>
-              </View>
-            ))}
           </>
         ) : null}
 
@@ -967,6 +970,18 @@ export default function CreateScreen() {
           }}
         />
       )}
+
+      <InviteFriendsSheet
+        visible={inviteSheetOpen}
+        onClose={() => setInviteSheetOpen(false)}
+        onConfirm={(users) => {
+          setSelectedFriends(users);
+          if (users.length > 0) setSelectedGroupId(null);
+          setInviteSheetOpen(false);
+        }}
+        confirmLabel="Add friends"
+        initialSelected={selectedFriends}
+      />
     </ScrollView>
   );
 }

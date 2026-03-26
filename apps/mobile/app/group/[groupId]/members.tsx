@@ -1,5 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigation } from "@react-navigation/native";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -13,7 +14,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { apiDelete, apiGet } from "../../../lib/api";
+import { InviteFriendsSheet } from "../../../components/invite-friends-sheet";
+import { apiDelete, apiGet, apiPost } from "../../../lib/api";
 import { colors } from "../../../lib/theme";
 
 type Member = {
@@ -28,6 +30,7 @@ type Member = {
 export default function GroupMembersScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
 
@@ -85,12 +88,27 @@ export default function GroupMembersScreen() {
     [groupId],
   );
 
-  const handleInvite = useCallback(() => {
-    router.push({
-      pathname: "/invite-friends",
-      params: { groupId },
+  const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
+
+  const existingMemberIds = useMemo(
+    () => new Set(members.map((m) => m.userId)),
+    [members],
+  );
+
+  useLayoutEffect(() => {
+    if (!isAdmin) return;
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => setInviteSheetOpen(true)}
+          hitSlop={8}
+          style={styles.headerBtn}
+        >
+          <Ionicons name="person-add-outline" size={22} color={colors.fairway} />
+        </Pressable>
+      ),
     });
-  }, [router, groupId]);
+  }, [navigation, isAdmin]);
 
   if (loading) {
     return (
@@ -119,14 +137,6 @@ export default function GroupMembersScreen() {
           />
         }
         contentContainerStyle={styles.list}
-        ListHeaderComponent={
-          isAdmin ? (
-            <Pressable style={styles.inviteBtn} onPress={handleInvite}>
-              <Ionicons name="person-add-outline" size={18} color={colors.fairway} />
-              <Text style={styles.inviteBtnText}>Invite people</Text>
-            </Pressable>
-          ) : null
-        }
         renderItem={({ item }) => (
           <View style={styles.memberRow}>
             {item.avatar ? (
@@ -141,7 +151,11 @@ export default function GroupMembersScreen() {
               onPress={() =>
                 router.push({
                   pathname: "/profile/[userId]",
-                  params: { userId: item.userId },
+                  params: {
+                    userId: item.userId,
+                    userName: item.name,
+                    userAvatar: item.avatar ?? "",
+                  },
                 })
               }
             >
@@ -161,6 +175,28 @@ export default function GroupMembersScreen() {
           </View>
         )}
       />
+
+      <InviteFriendsSheet
+        visible={inviteSheetOpen}
+        onClose={() => setInviteSheetOpen(false)}
+        onConfirm={async (users) => {
+          setInviteSheetOpen(false);
+          if (users.length === 0) return;
+          try {
+            const token = await getTokenRef.current();
+            await apiPost(
+              `/api/groups/${groupId}/members`,
+              { userIds: users.map((u) => u.id) },
+              token,
+            );
+            void load();
+          } catch (e) {
+            Alert.alert("Error", e instanceof Error ? e.message : "Unable to invite.");
+          }
+        }}
+        confirmLabel="Invite to group"
+        excludeIds={existingMemberIds}
+      />
     </View>
   );
 }
@@ -174,16 +210,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   list: { paddingBottom: 40 },
-  inviteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  inviteBtnText: { color: colors.fairway, fontWeight: "600", fontSize: 15 },
+  headerBtn: { marginRight: 4 },
   memberRow: {
     flexDirection: "row",
     alignItems: "center",

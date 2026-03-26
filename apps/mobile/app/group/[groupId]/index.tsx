@@ -1,5 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput } from "../../../components/animated-bottom-sheet-frame";
 import { apiDelete, apiGet, apiPatch, apiPost, apiBaseUrl } from "../../../lib/api";
+import { hapticLight } from "../../../lib/haptics";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
 import { compressImageToJpegUriForUpload, compressImageToMaxBytes } from "../../../lib/compress-image-for-upload";
 import { colors } from "../../../lib/theme";
@@ -64,17 +65,63 @@ type CommentItem = {
 const MAX_IMG_BYTES = 3 * 1024 * 1024;
 const COMMENT_SNAP_POINTS = ["55%"] as const;
 
+function computeBootstrapGroup(
+  groupId: string,
+  hintName?: string | string[],
+  hintImage?: string | string[],
+  hintHero?: string | string[],
+  hintMembers?: string | string[],
+  hintRole?: string | string[],
+): GroupDetail | null {
+  const name = typeof hintName === "string" ? hintName.trim() : "";
+  if (!name) return null;
+  const imageUrl = typeof hintImage === "string" && hintImage ? hintImage : null;
+  const heroImageUrl = typeof hintHero === "string" && hintHero ? hintHero : null;
+  const memberCount = typeof hintMembers === "string" ? Number(hintMembers) || 0 : 0;
+  const role = typeof hintRole === "string" ? hintRole : null;
+  return {
+    id: groupId,
+    name,
+    description: null,
+    imageUrl,
+    heroImageUrl,
+    joinPolicy: "approval",
+    createdBy: "",
+    memberCount,
+    myRole: (role as GroupDetail["myRole"]) ?? null,
+    conversationId: null,
+  };
+}
+
 export default function GroupLandingScreen() {
-  const { groupId } = useLocalSearchParams<{ groupId: string }>();
+  const {
+    groupId,
+    hintName,
+    hintImage,
+    hintHero,
+    hintMembers,
+    hintRole,
+  } = useLocalSearchParams<{
+    groupId: string;
+    hintName?: string;
+    hintImage?: string;
+    hintHero?: string;
+    hintMembers?: string;
+    hintRole?: string;
+  }>();
   const router = useRouter();
   const navigation = useNavigation();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
 
-  const [group, setGroup] = useState<GroupDetail | null>(null);
+  const bootstrap = computeBootstrapGroup(groupId, hintName, hintImage, hintHero, hintMembers, hintRole);
+  const [group, setGroup] = useState<GroupDetail | null>(bootstrap);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!bootstrap);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Announcement bottom sheet
   const [showAnnounceSheet, setShowAnnounceSheet] = useState(false);
@@ -122,16 +169,23 @@ export default function GroupLandingScreen() {
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!opts?.silent) setLoading(true);
+      setLoadError(null);
       try {
         const token = await getTokenRef.current();
         const [groupData, activityData] = await Promise.all([
           apiGet<{ group: GroupDetail }>(`/api/groups/${groupId}`, token),
-          apiGet<{ activity: ActivityItem[] }>(`/api/groups/${groupId}/activity`, token),
+          apiGet<{ activity: ActivityItem[]; nextCursor: string | null }>(
+            `/api/groups/${groupId}/activity`,
+            token,
+          ),
         ]);
         setGroup(groupData.group);
         setActivity(activityData.activity);
-      } catch {
-        // ignore
+        setNextCursor(activityData.nextCursor);
+      } catch (e) {
+        if (!group) {
+          setLoadError(e instanceof Error ? e.message : "Unable to load group.");
+        }
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -140,11 +194,42 @@ export default function GroupLandingScreen() {
     [groupId],
   );
 
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const token = await getTokenRef.current();
+      const data = await apiGet<{ activity: ActivityItem[]; nextCursor: string | null }>(
+        `/api/groups/${groupId}/activity?cursor=${encodeURIComponent(nextCursor)}`,
+        token,
+      );
+      setActivity((prev) => {
+        const existing = new Set(prev.map((i) => i.id));
+        const fresh = data.activity.filter((i) => !existing.has(i.id));
+        return [...prev, ...fresh];
+      });
+      setNextCursor(data.nextCursor);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [groupId, nextCursor, loadingMore]);
+
+  const isFirstLoad = useRef(true);
   useFocusEffect(
     useCallback(() => {
-      void load();
+      const silent = isFirstLoad.current && !!bootstrap;
+      isFirstLoad.current = false;
+      void load({ silent });
     }, [load]),
   );
+
+  useLayoutEffect(() => {
+    if (bootstrap?.name) {
+      navigation.setOptions({ title: bootstrap.name });
+    }
+  }, []);
 
   useEffect(() => {
     if (!group) return;
@@ -398,6 +483,7 @@ export default function GroupLandingScreen() {
 
   const handleToggleLike = useCallback(
     async (item: ActivityItem) => {
+      hapticLight();
       const id = rawAnnouncementId(item);
       const wasLiked = item.viewerLiked ?? false;
       setActivity((prev) =>
@@ -557,7 +643,9 @@ export default function GroupLandingScreen() {
   if (!group) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>Group not found.</Text>
+        <Text style={styles.errorText}>
+          {loadError ?? "Group not found."}
+        </Text>
       </View>
     );
   }
@@ -865,6 +953,15 @@ export default function GroupLandingScreen() {
               <Text style={styles.emptyActivityText}>
                 No activity yet. Create a round or start a chat!
               </Text>
+            </View>
+          ) : null
+        }
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.4}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadingMoreWrap}>
+              <ActivityIndicator size="small" color={colors.muted} />
             </View>
           ) : null
         }
@@ -1533,6 +1630,10 @@ const styles = StyleSheet.create({
   activityText: { color: colors.text, fontSize: 14 },
   activityTime: { color: colors.muted, fontSize: 12 },
   bold: { fontWeight: "600" },
+  loadingMoreWrap: {
+    paddingVertical: 20,
+    alignItems: "center",
+  },
   emptyActivity: {
     alignItems: "center",
     paddingTop: 40,
