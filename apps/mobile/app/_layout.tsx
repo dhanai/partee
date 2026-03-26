@@ -241,6 +241,13 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="search-groups"
+              options={{
+                title: "Search Groups",
+                headerBackTitle: "Groups",
+              }}
+            />
+            <Stack.Screen
               name="create-group"
               options={{
                 title: "Create Group",

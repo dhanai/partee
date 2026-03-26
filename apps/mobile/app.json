@@ -26,7 +26,7 @@
         "NSCalendarsFullAccessUsageDescription": "Parfade can add rounds you host or join to your calendar when you tap Add to calendar.",
         "NSRemindersUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar.",
         "NSRemindersFullAccessUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar.",
-        "NSPhotoLibraryUsageDescription": "Parfade uses your photo library to let you upload a profile picture or group cover photo."
+        "NSPhotoLibraryUsageDescription": "Parfade uses your photo library to let you upload a profile picture, group cover photo, or photos for posts."
       },
       "buildNumber": "36"
     },
@@ -60,7 +60,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Parfade uses your photo library to let you upload a profile picture or group cover photo."
+          "photosPermission": "Parfade uses your photo library to let you upload a profile picture, group cover photo, or photos for posts."
         }
       ],
       [

@@ -129,22 +129,33 @@ export default function RoundResultsScreen() {
             ]}
           >
             <Text style={[styles.rank, rank <= 3 && styles.rankTop]}>{rank}</Text>
-            {p.avatar ? (
-              <Image source={{ uri: toAbsoluteUrl(p.avatar) }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
-                <Text style={styles.avatarInitial}>{fn.charAt(0).toUpperCase()}</Text>
+            <Pressable
+              style={styles.rowTap}
+              disabled={p.isGuest}
+              onPress={() =>
+                router.push({
+                  pathname: "/profile/[userId]",
+                  params: { userId: p.userId, userName: p.name, userAvatar: p.avatar ?? "" },
+                })
+              }
+            >
+              {p.avatar ? (
+                <Image source={{ uri: toAbsoluteUrl(p.avatar) }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback]}>
+                  <Text style={styles.avatarInitial}>{fn.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={styles.rowBody}>
+                <Text style={styles.rowName} numberOfLines={1}>
+                  {fn}
+                  {p.isGuest ? <Text style={styles.guestTag}> · guest</Text> : null}
+                </Text>
+                <Text style={styles.rowFullName} numberOfLines={1}>
+                  {p.name}
+                </Text>
               </View>
-            )}
-            <View style={styles.rowBody}>
-              <Text style={styles.rowName} numberOfLines={1}>
-                {fn}
-                {p.isGuest ? <Text style={styles.guestTag}> · guest</Text> : null}
-              </Text>
-              <Text style={styles.rowFullName} numberOfLines={1}>
-                {p.name}
-              </Text>
-            </View>
+            </Pressable>
             <Text style={styles.pts}>
               {p.wolfPoints > 0 ? `+${p.wolfPoints}` : p.wolfPoints}
             </Text>
@@ -255,6 +266,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarInitial: { fontSize: 18, fontWeight: "800", color: colors.fairway },
+  rowTap: { flexDirection: "row", alignItems: "center", flex: 1, gap: 10 },
   rowBody: { flex: 1, minWidth: 0 },
   rowName: { fontSize: 17, fontWeight: "800", color: colors.text },
   rowFullName: { fontSize: 12, color: colors.muted, marginTop: 2 },

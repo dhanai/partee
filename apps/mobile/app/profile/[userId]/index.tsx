@@ -4,6 +4,7 @@ import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   RefreshControl,
@@ -14,8 +15,12 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
 import { ParfadeProfileLiveRefresh } from "../../../components/parfade-profile-live-refresh";
 import { ProfileStatCategoryCards } from "../../../components/profile-stat-category-cards";
+import { ReportSheet } from "../../../components/report-sheet";
+import { hapticSuccess } from "../../../lib/haptics";
 import { claimRsvpButtonStyles as btn } from "../../../lib/claim-rsvp-button-styles";
 import { formatProfileNavTitle } from "../../../lib/format-profile-nav-title";
 import { useAblyChatMounted } from "../../../lib/ably-chat-context";
@@ -101,6 +106,9 @@ export default function PublicProfileScreen() {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [groupedStats, setGroupedStats] = useState<ProfileStatsGrouped | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [blocked, setBlocked] = useState(false);
 
   const avatarSize = Math.round(Math.min(windowWidth - 48, 340) * 0.75);
 
@@ -157,8 +165,22 @@ export default function PublicProfileScreen() {
 
   useLayoutEffect(() => {
     const title = loading ? "Profile" : formatProfileNavTitle(profile?.user.name ?? "");
-    navigation.setOptions({ title });
-  }, [navigation, loading, profile?.user.name]);
+    const isSelf = profile?.user.relationship === "self";
+    navigation.setOptions({
+      title,
+      headerRight: isSelf
+        ? undefined
+        : () => (
+            <Pressable
+              onPress={() => setOverflowOpen(true)}
+              hitSlop={8}
+              style={{ paddingHorizontal: 8 }}
+            >
+              <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
+            </Pressable>
+          ),
+    });
+  }, [navigation, loading, profile?.user.relationship, profile?.user.name]);
 
   const initials = useMemo(() => {
     const name = profile?.user.name ?? "";
@@ -376,6 +398,93 @@ export default function PublicProfileScreen() {
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </ScrollView>
+
+    <AnimatedBottomSheetFrame
+      visible={overflowOpen}
+      onClose={() => setOverflowOpen(false)}
+      sheetStyle={styles.overflowSheet}
+    >
+      <Pressable
+        style={styles.overflowRow}
+        onPress={() => {
+          setOverflowOpen(false);
+          setTimeout(() => setReportOpen(true), 350);
+        }}
+      >
+        <Ionicons name="flag-outline" size={20} color={colors.danger} />
+        <Text style={[styles.overflowRowText, { color: colors.danger }]}>
+          Report {profile?.user.name?.split(" ")[0] ?? "user"}
+        </Text>
+      </Pressable>
+      <Pressable
+        style={styles.overflowRow}
+        onPress={() => {
+          setOverflowOpen(false);
+          const name = profile?.user.name?.split(" ")[0] ?? "this user";
+          if (blocked) {
+            Alert.alert(`Unblock ${name}?`, "You will be able to see their content again.", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Unblock",
+                onPress: async () => {
+                  try {
+                    const token = await getTokenRef.current();
+                    await apiDelete(`/api/users/${userId}/block`, token);
+                    setBlocked(false);
+                    hapticSuccess();
+                  } catch {
+                    Alert.alert("Error", "Unable to unblock.");
+                  }
+                },
+              },
+            ]);
+          } else {
+            Alert.alert(`Block ${name}?`, "They won't be able to see your profile or interact with you.", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Block",
+                style: "destructive",
+                onPress: async () => {
+                  try {
+                    const token = await getTokenRef.current();
+                    await apiPost(`/api/users/${userId}/block`, {}, token);
+                    setBlocked(true);
+                    hapticSuccess();
+                  } catch {
+                    Alert.alert("Error", "Unable to block.");
+                  }
+                },
+              },
+            ]);
+          }
+        }}
+      >
+        <Ionicons
+          name={blocked ? "person-add-outline" : "ban-outline"}
+          size={20}
+          color={blocked ? colors.fairway : colors.danger}
+        />
+        <Text
+          style={[
+            styles.overflowRowText,
+            { color: blocked ? colors.fairway : colors.danger },
+          ]}
+        >
+          {blocked ? "Unblock" : "Block"} {profile?.user.name?.split(" ")[0] ?? "user"}
+        </Text>
+      </Pressable>
+    </AnimatedBottomSheetFrame>
+
+    {userId ? (
+      <ReportSheet
+        visible={reportOpen}
+        onClose={() => setReportOpen(false)}
+        contentType="user"
+        contentId={userId}
+        targetUserId={userId}
+        targetLabel={profile?.user.name ?? "this user"}
+      />
+    ) : null}
     </>
   );
 }
@@ -473,4 +582,14 @@ const styles = StyleSheet.create({
   },
   errorText: { color: colors.danger, marginTop: 12, textAlign: "center" },
   disabledButton: { opacity: 0.6 },
+  overflowSheet: { paddingHorizontal: 16, gap: 4 },
+  overflowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  overflowRowText: { fontSize: 16, fontWeight: "600" },
 });

@@ -145,4 +145,14 @@ export const authFormStyles = StyleSheet.create({
     minHeight: 78,
     marginTop: 4,
   },
+  legalText: {
+    color: colors.muted,
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  legalLink: {
+    color: colors.fairway,
+    fontWeight: "600",
+  },
 });

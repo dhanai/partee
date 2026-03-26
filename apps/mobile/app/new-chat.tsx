@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  InteractionManager,
   Pressable,
   StyleSheet,
   Text,
@@ -31,10 +32,18 @@ export default function NewChatScreen() {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
+  const searchInputRef = useRef<TextInput>(null);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState<string | null>(null);
+
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      searchInputRef.current?.focus();
+    });
+    return () => task.cancel();
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -120,12 +129,12 @@ export default function NewChatScreen() {
         <View style={styles.searchRow}>
           <Ionicons name="search" size={18} color={colors.muted} />
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             placeholder="Search friends…"
             placeholderTextColor={colors.muted}
             value={search}
             onChangeText={setSearch}
-            autoFocus
           />
         </View>
 

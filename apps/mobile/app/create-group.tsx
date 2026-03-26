@@ -1,10 +1,11 @@
 import { useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
   Alert,
+  InteractionManager,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -19,7 +20,7 @@ import { colors } from "../lib/theme";
 
 const JOIN_POLICIES = [
   { value: "public" as const, label: "Public", desc: "Anyone can join" },
-  { value: "approval" as const, label: "Approval", desc: "Admin must approve" },
+  { value: "approval" as const, label: "Private", desc: "Admin must approve" },
   { value: "invite_only" as const, label: "Invite only", desc: "Members by invitation" },
 ];
 
@@ -27,8 +28,16 @@ export default function CreateGroupScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
+  const nameInputRef = useRef<TextInput>(null);
 
   const [name, setName] = useState("");
+
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      nameInputRef.current?.focus();
+    });
+    return () => task.cancel();
+  }, []);
   const [description, setDescription] = useState("");
   const [joinPolicy, setJoinPolicy] = useState<"public" | "approval" | "invite_only">("public");
   const [submitting, setSubmitting] = useState(false);
@@ -70,13 +79,13 @@ export default function CreateGroupScreen() {
       >
         <Text style={styles.label}>Group name</Text>
         <TextInput
+          ref={nameInputRef}
           style={styles.input}
           value={name}
           onChangeText={setName}
           placeholder="e.g. Saturday Golf Crew"
           placeholderTextColor={colors.muted}
           maxLength={100}
-          autoFocus
         />
 
         <Text style={styles.label}>Description (optional)</Text>

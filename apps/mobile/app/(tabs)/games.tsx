@@ -122,7 +122,7 @@ export default function GamesScreen() {
     >
       <Text style={styles.heading}>Games</Text>
       <Text style={styles.subheading}>
-        Side games with your group — start Skins, Wolf, or pick up where you left off.
+        Side games with your group.
       </Text>
 
       {roundInviteToken ? (

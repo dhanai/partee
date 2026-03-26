@@ -176,8 +176,6 @@ export default function TabsLayout() {
                 color={color}
               />
             ),
-            headerRight: () => <HeaderProfileIcon />,
-            headerRightContainerStyle: { paddingRight: 12 },
           }}
         />
         <Tabs.Screen

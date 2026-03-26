@@ -27,6 +27,7 @@ import { AppleLogo } from "../../components/apple-logo";
 import { AuthLandingBackground } from "../../components/auth-landing-background";
 import { GoogleLogo } from "../../components/google-logo";
 import { ParfadeLogo } from "../../components/parfade-logo";
+import { publicWebOrigin } from "../../lib/api";
 import { AUTH_LOGO_EXTRA_TOP, authFormStyles } from "../../lib/auth-form-styles";
 import { BOTTOM_SHEET_EASING, bottomSheetOpenAnimation } from "../../lib/bottom-sheet-presets";
 import { colors } from "../../lib/theme";
@@ -791,6 +792,25 @@ function SignUpFields({
         </>
       )}
       {error ? <Text style={authFormStyles.error}>{error}</Text> : null}
+      {step === "create" ? (
+        <Text style={authFormStyles.legalText}>
+          By signing up, you agree to our{" "}
+          <Text
+            style={authFormStyles.legalLink}
+            onPress={() => void Linking.openURL(`${publicWebOrigin}/privacy`)}
+          >
+            Privacy Policy
+          </Text>{" "}
+          and{" "}
+          <Text
+            style={authFormStyles.legalLink}
+            onPress={() => void Linking.openURL(`${publicWebOrigin}/terms`)}
+          >
+            Terms of Service
+          </Text>
+          .
+        </Text>
+      ) : null}
       <Pressable style={authFormStyles.switchRow} onPress={handleGoSignIn}>
         <Text style={authFormStyles.switchText}>Already have an account? Sign in</Text>
       </Pressable>

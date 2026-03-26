@@ -139,15 +139,8 @@ export default function GroupMembersScreen() {
         contentContainerStyle={styles.list}
         renderItem={({ item }) => (
           <View style={styles.memberRow}>
-            {item.avatar ? (
-              <Image source={{ uri: item.avatar }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
-                <Ionicons name="person" size={18} color={colors.muted} />
-              </View>
-            )}
             <Pressable
-              style={styles.memberInfo}
+              style={styles.memberTap}
               onPress={() =>
                 router.push({
                   pathname: "/profile/[userId]",
@@ -159,10 +152,19 @@ export default function GroupMembersScreen() {
                 })
               }
             >
-              <Text style={styles.memberName}>{item.name}</Text>
-              {item.role !== "member" ? (
-                <Text style={styles.memberRole}>{roleLabel(item.role)}</Text>
-              ) : null}
+              {item.avatar ? (
+                <Image source={{ uri: item.avatar }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback]}>
+                  <Ionicons name="person" size={18} color={colors.muted} />
+                </View>
+              )}
+              <View style={styles.memberInfo}>
+                <Text style={styles.memberName}>{item.name}</Text>
+                {item.role !== "member" ? (
+                  <Text style={styles.memberRole}>{roleLabel(item.role)}</Text>
+                ) : null}
+              </View>
             </Pressable>
             {isAdmin && item.role === "member" ? (
               <Pressable
@@ -216,6 +218,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
+    gap: 12,
+  },
+  memberTap: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
     gap: 12,
   },
   avatar: { width: 42, height: 42, borderRadius: 21 },

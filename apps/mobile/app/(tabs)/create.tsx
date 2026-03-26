@@ -483,22 +483,12 @@ export default function CreateScreen() {
       automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
     >
       <Text style={styles.title}>
-        {createType === "planning"
-          ? "Planning Round"
-          : createType === "scheduled"
-            ? "Scheduled Tee Time"
-            : createType === "tournament"
-              ? "Tournament"
-              : "Event"}
+        {createType === "planning" ? "Planning Round" : "Scheduled Tee Time"}
       </Text>
       <Text style={styles.copy}>
         {createType === "planning"
           ? "Find players first. Lock details later."
-          : createType === "scheduled"
-            ? "Set it up. Blast invites. Tee off."
-            : createType === "tournament"
-              ? "Tournament details UI is ready. Persistence is next."
-              : "Broad event flow for meetups, markets, and more."}
+          : "Set it up. Blast invites. Tee off."}
       </Text>
 
       <View style={styles.card}>
@@ -639,106 +629,7 @@ export default function CreateScreen() {
               </Pressable>
             </View>
           </>
-        ) : (
-          <>
-            <Text style={styles.label}>Image</Text>
-            {eventImageUri ? <Image source={{ uri: eventImageUri }} style={styles.cover} /> : null}
-            <Pressable style={styles.secondaryButton} onPress={() => void pickEventImage()}>
-              <Text style={styles.secondaryButtonText}>
-                {eventImageUri ? "Change image" : "Add image"}
-              </Text>
-            </Pressable>
-
-            <Text style={styles.label}>Title</Text>
-            <TextInput
-              value={eventTitle}
-              onChangeText={setEventTitle}
-              placeholder={createType === "tournament" ? "Tournament title" : "Event title"}
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-            />
-
-            <Text style={styles.label}>Details</Text>
-            <TextInput
-              value={eventDetails}
-              onChangeText={setEventDetails}
-              placeholder="What this is about..."
-              placeholderTextColor={colors.muted}
-              style={[styles.input, styles.multilineInput]}
-              multiline
-            />
-
-            <Text style={styles.label}>Location</Text>
-            <TextInput
-              value={eventLocation}
-              onChangeText={setEventLocation}
-              placeholder="City, venue, or address"
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-            />
-
-            <Text style={styles.label}>Date & time</Text>
-            <View style={styles.row}>
-              <Pressable
-                style={[styles.datePickerBtn, styles.flex1]}
-                onPress={() => setEventDatePickerOpen(true)}
-              >
-                <Text style={[styles.datePickerText, !eventDate && styles.datePickerPlaceholder]}>
-                  {formatDateLabel(eventDate)}
-                </Text>
-                <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
-              </Pressable>
-              <Pressable
-                style={[styles.datePickerBtn, styles.flex1]}
-                onPress={() => setEventTimePickerOpen(true)}
-              >
-                <Text style={styles.datePickerText}>{formatTimeLabel(eventTime)}</Text>
-                <Ionicons name="time-outline" size={18} color={colors.fairway} />
-              </Pressable>
-            </View>
-
-            <Text style={styles.label}>Cost (optional)</Text>
-            <TextInput
-              value={eventCost}
-              onChangeText={setEventCost}
-              placeholder="$0 or $25"
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-            />
-
-            <Text style={styles.label}>RSVP deadline (optional)</Text>
-            <View style={styles.row}>
-              <Pressable
-                style={[styles.datePickerBtn, styles.flex1]}
-                onPress={() => setEventDeadlineDatePickerOpen(true)}
-              >
-                <Text
-                  style={[
-                    styles.datePickerText,
-                    !eventRsvpDeadlineDate && styles.datePickerPlaceholder,
-                  ]}
-                >
-                  {formatDateLabel(eventRsvpDeadlineDate)}
-                </Text>
-                <Ionicons name="calendar-outline" size={18} color={colors.fairway} />
-              </Pressable>
-              <Pressable
-                style={[styles.datePickerBtn, styles.flex1]}
-                onPress={() => setEventDeadlineTimePickerOpen(true)}
-              >
-                <Text style={styles.datePickerText}>{formatTimeLabel(eventRsvpDeadlineTime)}</Text>
-                <Ionicons name="time-outline" size={18} color={colors.fairway} />
-              </Pressable>
-            </View>
-            <Text style={styles.loadingHint}>
-              RSVP defaults: Yes/No for most types, Yes/No/Maybe for events.
-            </Text>
-
-            <Text style={styles.loadingHint}>
-              Save/publish for {createType} will be wired next.
-            </Text>
-          </>
-        )}
+        ) : null}
 
         {isRoundType ? (
           <>
@@ -891,13 +782,7 @@ export default function CreateScreen() {
           disabled={!canSubmit}
         >
           <Text style={styles.primaryButtonText}>
-            {isRoundType
-              ? submitting
-                ? "Creating..."
-                : "Create round"
-              : createType === "tournament"
-                ? "Create tournament (coming soon)"
-                : "Create event (coming soon)"}
+            {submitting ? "Creating..." : "Create round"}
           </Text>
         </Pressable>
       </View>

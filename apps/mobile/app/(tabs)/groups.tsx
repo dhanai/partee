@@ -1,9 +1,11 @@
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   Pressable,
@@ -12,8 +14,9 @@ import {
   Text,
   View,
 } from "react-native";
-import { apiGet } from "../../lib/api";
+import { HeaderProfileIcon } from "../../components/header-profile-icon";
 import { PressableOpacity } from "../../components/pressable-opacity";
+import { apiGet } from "../../lib/api";
 import { colors } from "../../lib/theme";
 
 type GroupListItem = {
@@ -22,15 +25,19 @@ type GroupListItem = {
   imageUrl: string | null;
   heroImageUrl: string | null;
   memberCount: number;
-  myRole: "owner" | "admin" | "member";
+  myRole: "owner" | "admin" | "member" | null;
 };
 
 type GroupsResponse = {
   myGroups: GroupListItem[];
   discoverGroups: GroupListItem[];
+  searchGroups?: GroupListItem[];
 };
 
+type GroupTab = "mine" | "discover";
+
 export default function GroupsScreen() {
+  const navigation = useNavigation();
   const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
@@ -39,10 +46,60 @@ export default function GroupsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [myGroups, setMyGroups] = useState<GroupListItem[]>([]);
   const [discoverGroups, setDiscoverGroups] = useState<GroupListItem[]>([]);
+  const [activeTab, setActiveTab] = useState<GroupTab>("mine");
+
+  const [tabMetrics, setTabMetrics] = useState<{
+    mine: { x: number; width: number } | null;
+    discover: { x: number; width: number } | null;
+  }>({ mine: null, discover: null });
+  const underlineX = useRef(new Animated.Value(0)).current;
+  const underlineW = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRightContainerStyle: { paddingRight: 12 },
+      headerRight: () => (
+        <View style={styles.headerRightRow}>
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={() => router.push("/create-group")}
+            accessibilityLabel="Create a group"
+          >
+            <Ionicons name="add" size={18} color={colors.fairway} />
+          </Pressable>
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={() => router.push("/search-groups")}
+            accessibilityLabel="Search groups"
+          >
+            <Ionicons name="search-outline" size={17} color={colors.fairway} />
+          </Pressable>
+          <HeaderProfileIcon />
+        </View>
+      ),
+    });
+  }, [navigation, router]);
+
+  useEffect(() => {
+    const metric = tabMetrics[activeTab];
+    if (!metric) return;
+    Animated.parallel([
+      Animated.timing(underlineX, {
+        toValue: metric.x,
+        duration: 200,
+        useNativeDriver: false,
+      }),
+      Animated.timing(underlineW, {
+        toValue: metric.width,
+        duration: 200,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [activeTab, tabMetrics, underlineW, underlineX]);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -62,14 +119,68 @@ export default function GroupsScreen() {
     }
   }, [myGroups.length, discoverGroups.length]);
 
+  const loadRef = useRef(load);
   useEffect(() => {
-    void load();
+    loadRef.current = load;
   }, [load]);
+
+  const focusCountRef = useRef(0);
+  useFocusEffect(
+    useCallback(() => {
+      focusCountRef.current += 1;
+      if (focusCountRef.current === 1) {
+        void loadRef.current();
+      } else {
+        void loadRef.current({ silent: true });
+      }
+    }, []),
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     void load({ silent: true });
   }, [load]);
+
+  function navigateToGroup(g: GroupListItem) {
+    router.push({
+      pathname: "/group/[groupId]",
+      params: {
+        groupId: g.id,
+        hintName: g.name,
+        hintImage: g.imageUrl ?? "",
+        hintHero: g.heroImageUrl ?? "",
+        hintMembers: String(g.memberCount),
+        hintRole: g.myRole ?? "",
+      },
+    });
+  }
+
+  function renderGroupRow(g: GroupListItem) {
+    return (
+      <PressableOpacity
+        style={styles.groupCard}
+        onPress={() => navigateToGroup(g)}
+      >
+        {g.imageUrl ? (
+          <Image source={{ uri: g.imageUrl }} style={styles.groupAvatar} />
+        ) : (
+          <View style={[styles.groupAvatar, styles.groupAvatarFallback]}>
+            <Ionicons name="people" size={20} color={colors.muted} />
+          </View>
+        )}
+        <View style={styles.groupInfo}>
+          <Text style={styles.groupName} numberOfLines={1}>
+            {g.name}
+          </Text>
+          <Text style={styles.groupMeta}>
+            {g.memberCount} member{g.memberCount !== 1 ? "s" : ""}
+            {g.myRole ? ` · ${g.myRole === "owner" ? "Owner" : g.myRole === "admin" ? "Admin" : "Member"}` : ""}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+      </PressableOpacity>
+    );
+  }
 
   if (loading && myGroups.length === 0) {
     return (
@@ -79,36 +190,63 @@ export default function GroupsScreen() {
     );
   }
 
-  const sections: { type: "header"; title: string }[] | { type: "group"; group: GroupListItem }[] =
-    [];
-  const data: ({ type: "header"; title: string } | { type: "group"; group: GroupListItem } | { type: "empty" })[] = [];
+  const activeData = activeTab === "mine" ? myGroups : discoverGroups;
 
-  if (myGroups.length > 0) {
-    data.push({ type: "header", title: "My Groups" });
-    for (const g of myGroups) data.push({ type: "group", group: g });
-  }
+  const listHeader = (
+    <>
+      <Text style={styles.heading}>Groups</Text>
+      <Text style={styles.subheading}>Your communities and groups to explore.</Text>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <View style={styles.tabsRow}>
+        <Pressable
+          style={styles.tabLink}
+          onLayout={(e) => {
+            const { x, width } = e.nativeEvent.layout;
+            setTabMetrics((prev) => ({ ...prev, mine: { x, width } }));
+          }}
+          onPress={() => setActiveTab("mine")}
+        >
+          <Text style={[styles.tabText, activeTab === "mine" && styles.tabTextActive]}>
+            My Groups
+          </Text>
+        </Pressable>
+        <Pressable
+          style={styles.tabLink}
+          onLayout={(e) => {
+            const { x, width } = e.nativeEvent.layout;
+            setTabMetrics((prev) => ({ ...prev, discover: { x, width } }));
+          }}
+          onPress={() => setActiveTab("discover")}
+        >
+          <Text style={[styles.tabText, activeTab === "discover" && styles.tabTextActive]}>
+            Discover
+          </Text>
+        </Pressable>
+        <Animated.View
+          style={[
+            styles.tabUnderline,
+            {
+              transform: [{ translateX: underlineX }],
+              width: underlineW,
+            },
+          ]}
+        />
+      </View>
+    </>
+  );
 
-  if (discoverGroups.length > 0) {
-    data.push({ type: "header", title: "Discover Groups" });
-    for (const g of discoverGroups) data.push({ type: "group", group: g });
-  }
-
-  if (data.length === 0) {
-    data.push({ type: "empty" });
-  }
-
-  if (error && data.length === 1 && data[0].type === "empty") {
-    data.length = 0;
-    data.push({ type: "empty" });
-  }
+  const emptyTitle =
+    activeTab === "mine" ? "No groups yet" : "No groups to discover";
+  const emptyMessage =
+    activeTab === "mine"
+      ? "Create a group to organize rounds with friends, clubs, or leagues."
+      : "There are no public groups right now.";
 
   return (
     <View style={styles.root}>
       <FlatList
-        data={data}
-        keyExtractor={(item, i) =>
-          item.type === "group" ? item.group.id : `${item.type}-${i}`
-        }
+        data={activeData}
+        keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -117,95 +255,32 @@ export default function GroupsScreen() {
           />
         }
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => {
-          if (item.type === "header") {
-            return <Text style={styles.sectionTitle}>{item.title}</Text>;
-          }
-          if (item.type === "empty") {
-            return error ? (
-              <View style={styles.emptyWrap}>
-                <Ionicons name="cloud-offline-outline" size={48} color={colors.border} />
-                <Text style={styles.emptyTitle}>Something went wrong</Text>
-                <Text style={styles.emptySub}>{error}</Text>
-              </View>
-            ) : (
-              <View style={styles.emptyWrap}>
-                <Ionicons
-                  name="people-outline"
-                  size={48}
-                  color={colors.border}
-                />
-                <Text style={styles.emptyTitle}>No groups yet</Text>
-                <Text style={styles.emptySub}>
-                  Create a group to organize rounds with friends, clubs, or
-                  leagues.
-                </Text>
+        ListHeaderComponent={listHeader}
+        renderItem={({ item }) => renderGroupRow(item)}
+        ListEmptyComponent={
+          error ? (
+            <View style={styles.emptyWrap}>
+              <Ionicons name="cloud-offline-outline" size={48} color={colors.border} />
+              <Text style={styles.emptyTitle}>Something went wrong</Text>
+              <Text style={styles.emptySub}>{error}</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyWrap}>
+              <Ionicons name="people-outline" size={48} color={colors.border} />
+              <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+              <Text style={styles.emptySub}>{emptyMessage}</Text>
+              {activeTab === "mine" ? (
                 <Pressable
                   style={styles.createBtn}
                   onPress={() => router.push("/create-group")}
                 >
                   <Text style={styles.createBtnText}>Create a group</Text>
                 </Pressable>
-              </View>
-            );
-          }
-          const g = item.group;
-          return (
-            <PressableOpacity
-              style={styles.groupCard}
-              onPress={() =>
-                router.push({
-                  pathname: "/group/[groupId]",
-                  params: {
-                    groupId: g.id,
-                    hintName: g.name,
-                    hintImage: g.imageUrl ?? "",
-                    hintHero: g.heroImageUrl ?? "",
-                    hintMembers: String(g.memberCount),
-                    hintRole: g.myRole,
-                  },
-                })
-              }
-            >
-              {g.imageUrl ? (
-                <Image
-                  source={{ uri: g.imageUrl }}
-                  style={styles.groupAvatar}
-                />
-              ) : (
-                <View style={[styles.groupAvatar, styles.groupAvatarFallback]}>
-                  <Ionicons
-                    name="people"
-                    size={20}
-                    color={colors.muted}
-                  />
-                </View>
-              )}
-              <View style={styles.groupInfo}>
-                <Text style={styles.groupName} numberOfLines={1}>
-                  {g.name}
-                </Text>
-                <Text style={styles.groupMeta}>
-                  {g.memberCount} member{g.memberCount !== 1 ? "s" : ""}
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={colors.muted}
-              />
-            </PressableOpacity>
-          );
-        }}
+              ) : null}
+            </View>
+          )
+        }
       />
-
-      <Pressable
-        style={styles.fab}
-        onPress={() => router.push("/create-group")}
-        accessibilityLabel="Create a group"
-      >
-        <Ionicons name="add" size={28} color="#fff" />
-      </Pressable>
     </View>
   );
 }
@@ -218,19 +293,32 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.background,
   },
-  list: { paddingBottom: 100 },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-    paddingHorizontal: 16,
-    paddingTop: 20,
+  list: { padding: 16, paddingBottom: 32, gap: 10 },
+  heading: { fontSize: 28, fontWeight: "700", color: colors.text },
+  subheading: { color: colors.muted, marginBottom: 14 },
+  errorText: { color: colors.danger, marginBottom: 8 },
+  tabsRow: {
+    flexDirection: "row",
+    gap: 18,
+    marginBottom: 8,
+    alignSelf: "flex-start",
+    position: "relative",
     paddingBottom: 8,
+  },
+  tabLink: { paddingVertical: 2 },
+  tabText: { color: colors.muted, fontWeight: "700", fontSize: 15 },
+  tabTextActive: { color: colors.text },
+  tabUnderline: {
+    position: "absolute",
+    left: 0,
+    bottom: 0,
+    height: 2,
+    backgroundColor: colors.fairway,
+    borderRadius: 999,
   },
   groupCard: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
   },
@@ -249,7 +337,7 @@ const styles = StyleSheet.create({
   groupMeta: { color: colors.muted, fontSize: 13 },
   emptyWrap: {
     alignItems: "center",
-    paddingTop: 80,
+    paddingTop: 60,
     paddingHorizontal: 40,
     gap: 8,
   },
@@ -273,20 +361,19 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   createBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  fab: {
-    position: "absolute",
-    bottom: 24,
-    right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.fairway,
+  headerRightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerIconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 4,
   },
 });

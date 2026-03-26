@@ -19,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput } from "../../../components/animated-bottom-sheet-frame";
+import { ReportSheet } from "../../../components/report-sheet";
 import { apiDelete, apiGet, apiPatch, apiPost, apiBaseUrl } from "../../../lib/api";
 import { hapticLight } from "../../../lib/haptics";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
@@ -136,8 +137,8 @@ export default function GroupLandingScreen() {
   const [postImageUri, setPostImageUri] = useState<string | null>(null);
   const [uploadingPostImage, setUploadingPostImage] = useState(false);
 
-  // Overflow action sheet for announcements
   const [overflowItem, setOverflowItem] = useState<ActivityItem | null>(null);
+  const [reportItem, setReportItem] = useState<ActivityItem | null>(null);
 
   // Comments bottom sheet
   const [commentSheetItem, setCommentSheetItem] = useState<ActivityItem | null>(null);
@@ -653,6 +654,13 @@ export default function GroupLandingScreen() {
   const isAdmin = group.myRole === "owner" || group.myRole === "admin";
   const isMember = group.myRole !== null;
 
+  function goToProfile(user: { id: string; name: string; avatar: string | null }) {
+    router.push({
+      pathname: "/profile/[userId]",
+      params: { userId: user.id, userName: user.name, userAvatar: user.avatar ?? "" },
+    });
+  }
+
   // ── Header ────────────────────────────────────────────────────
 
   const headerComponent = (
@@ -824,29 +832,29 @@ export default function GroupLandingScreen() {
             return (
               <View style={styles.postCard}>
                 <View style={styles.postHeader}>
-                  {item.user.avatar ? (
-                    <Image source={{ uri: item.user.avatar }} style={styles.postAvatar} />
-                  ) : (
-                    <View style={[styles.postAvatar, styles.postAvatarFallback]}>
-                      <Ionicons name="person" size={16} color={colors.muted} />
+                  <Pressable style={styles.postAuthorTap} onPress={() => goToProfile(item.user)}>
+                    {item.user.avatar ? (
+                      <Image source={{ uri: item.user.avatar }} style={styles.postAvatar} />
+                    ) : (
+                      <View style={[styles.postAvatar, styles.postAvatarFallback]}>
+                        <Ionicons name="person" size={16} color={colors.muted} />
+                      </View>
+                    )}
+                    <View style={styles.postHeaderText}>
+                      <Text style={styles.postAuthor}>{item.user.name}</Text>
+                      <Text style={styles.postDate}>
+                        {formatRelative(item.createdAt)}
+                        {item.isPinned ? "  · Pinned" : ""}
+                      </Text>
                     </View>
-                  )}
-                  <View style={styles.postHeaderText}>
-                    <Text style={styles.postAuthor}>{item.user.name}</Text>
-                    <Text style={styles.postDate}>
-                      {formatRelative(item.createdAt)}
-                      {item.isPinned ? "  · Pinned" : ""}
-                    </Text>
-                  </View>
-                  {(isAdmin || item.user.id === meId) ? (
-                    <Pressable
-                      style={styles.postOverflow}
-                      onPress={() => setOverflowItem(item)}
-                      hitSlop={8}
-                    >
-                      <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
-                    </Pressable>
-                  ) : null}
+                  </Pressable>
+                  <Pressable
+                    style={styles.postOverflow}
+                    onPress={() => setOverflowItem(item)}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
+                  </Pressable>
                 </View>
                 <Text style={styles.postBody}>{item.body}</Text>
                 {item.imageUrl ? (
@@ -896,19 +904,21 @@ export default function GroupLandingScreen() {
                   }
                 }}
               >
-                {item.user.avatar ? (
-                  <Image
-                    source={{ uri: item.user.avatar }}
-                    style={styles.activityAvatar}
-                  />
-                ) : (
-                  <View style={[styles.activityAvatar, styles.activityAvatarFallback]}>
-                    <Ionicons name="person" size={14} color={colors.muted} />
-                  </View>
-                )}
+                <Pressable onPress={() => goToProfile(item.user)}>
+                  {item.user.avatar ? (
+                    <Image
+                      source={{ uri: item.user.avatar }}
+                      style={styles.activityAvatar}
+                    />
+                  ) : (
+                    <View style={[styles.activityAvatar, styles.activityAvatarFallback]}>
+                      <Ionicons name="person" size={14} color={colors.muted} />
+                    </View>
+                  )}
+                </Pressable>
                 <View style={styles.activityInfo}>
                   <Text style={styles.activityText}>
-                    <Text style={styles.bold}>{item.user.name}</Text> created a round
+                    <Text style={styles.bold} onPress={() => goToProfile(item.user)}>{item.user.name}</Text> created a round
                     {item.courseName ? ` at ${item.courseName}` : ""}
                   </Text>
                   <Text style={styles.activityTime}>
@@ -922,7 +932,7 @@ export default function GroupLandingScreen() {
 
           if (item.type === "member_joined") {
             return (
-              <View style={styles.activityRow}>
+              <Pressable style={styles.activityRow} onPress={() => goToProfile(item.user)}>
                 {item.user.avatar ? (
                   <Image
                     source={{ uri: item.user.avatar }}
@@ -941,7 +951,7 @@ export default function GroupLandingScreen() {
                     {formatRelative(item.joinedAt ?? item.createdAt)}
                   </Text>
                 </View>
-              </View>
+              </Pressable>
             );
           }
 
@@ -1086,6 +1096,19 @@ export default function GroupLandingScreen() {
                 <Text style={[styles.overflowRowText, { color: colors.danger }]}>Delete post</Text>
               </Pressable>
             ) : null}
+            {overflowItem.user.id !== meId ? (
+              <Pressable
+                style={styles.overflowRow}
+                onPress={() => {
+                  const reportItem = overflowItem;
+                  setOverflowItem(null);
+                  setTimeout(() => setReportItem(reportItem), 350);
+                }}
+              >
+                <Ionicons name="flag-outline" size={20} color={colors.danger} />
+                <Text style={[styles.overflowRowText, { color: colors.danger }]}>Report post</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </AnimatedBottomSheetFrame>
@@ -1123,16 +1146,18 @@ export default function GroupLandingScreen() {
           ) : (
             comments.map((comment) => (
               <View key={comment.id} style={styles.commentRow}>
-                {comment.user.avatar ? (
-                  <Image source={{ uri: comment.user.avatar }} style={styles.commentAvatar} />
-                ) : (
-                  <View style={[styles.commentAvatar, styles.commentAvatarFallback]}>
-                    <Ionicons name="person" size={12} color={colors.muted} />
-                  </View>
-                )}
+                <Pressable onPress={() => goToProfile(comment.user)}>
+                  {comment.user.avatar ? (
+                    <Image source={{ uri: comment.user.avatar }} style={styles.commentAvatar} />
+                  ) : (
+                    <View style={[styles.commentAvatar, styles.commentAvatarFallback]}>
+                      <Ionicons name="person" size={12} color={colors.muted} />
+                    </View>
+                  )}
+                </Pressable>
                 <View style={styles.commentContent}>
                   <View style={styles.commentBubble}>
-                    <Text style={styles.commentAuthor}>{comment.user.name}</Text>
+                    <Text style={styles.commentAuthor} onPress={() => goToProfile(comment.user)}>{comment.user.name}</Text>
                     <Text style={styles.commentBody}>{comment.body}</Text>
                   </View>
                   <View style={styles.commentMetaRow}>
@@ -1187,6 +1212,15 @@ export default function GroupLandingScreen() {
           </Pressable>
         </View>
       </AnimatedBottomSheetFrame>
+
+      <ReportSheet
+        visible={!!reportItem}
+        onClose={() => setReportItem(null)}
+        contentType="post"
+        contentId={reportItem?.id ?? ""}
+        targetUserId={reportItem?.user.id}
+        targetLabel="this post"
+      />
     </View>
   );
 }
@@ -1430,6 +1464,12 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 10,
     marginBottom: 10,
+  },
+  postAuthorTap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
   },
   postAvatar: {
     width: 40,

@@ -193,7 +193,6 @@ export default function NotificationsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.sub}>Invites, follow requests, and round updates.</Text>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       {loading ? (
@@ -239,7 +238,10 @@ export default function NotificationsScreen() {
               <Text style={styles.sectionMiniTitle}>Follow requests</Text>
               {followRequestNotifications.map((request) => (
                 <View key={`follow-${request.id}`} style={styles.notificationCard}>
-                  <View style={styles.notificationRow}>
+                  <Pressable
+                    style={styles.notificationRow}
+                    onPress={() => router.push({ pathname: "/profile/[userId]", params: { userId: request.followerId, userName: request.name, userAvatar: request.avatar ?? "" } })}
+                  >
                     {request.avatar ? (
                       <Image source={{ uri: toAbsoluteUrl(request.avatar) }} style={styles.notificationAvatar} />
                     ) : (
@@ -253,7 +255,7 @@ export default function NotificationsScreen() {
                       <Text style={styles.notificationTitle}>{request.name}</Text>
                       <Text style={styles.notificationMeta}>Wants to follow your profile</Text>
                     </View>
-                  </View>
+                  </Pressable>
                   <View style={styles.notificationActionsRow}>
                     <Pressable
                       style={[styles.requestBtn, styles.requestApprove, requestBusyId === request.followerId && styles.disabledBtn]}
@@ -317,17 +319,21 @@ export default function NotificationsScreen() {
                 No invites, follow requests, or round updates right now.
               </Text>
               <View style={styles.emptyActionsRow}>
-                <Pressable style={styles.emptySecondaryBtn} onPress={() => router.push("/(tabs)")}>
+                <Pressable
+                  style={styles.emptySecondaryBtn}
+                  onPress={() => {
+                    router.back();
+                    setTimeout(() => router.navigate("/(tabs)"), 50);
+                  }}
+                >
                   <Text style={styles.emptySecondaryBtnText}>Browse Discover</Text>
                 </Pressable>
                 <Pressable
                   style={styles.emptyPrimaryBtn}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(tabs)/rounds",
-                      params: { tab: "invited", refresh: String(Date.now()) },
-                    })
-                  }
+                  onPress={() => {
+                    router.back();
+                    setTimeout(() => router.navigate({ pathname: "/(tabs)/rounds", params: { tab: "invited", refresh: String(Date.now()) } }), 50);
+                  }}
                 >
                   <Text style={styles.emptyPrimaryBtnText}>Open Invited</Text>
                 </Pressable>
@@ -343,7 +349,6 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, gap: 10, paddingBottom: 32 },
-  sub: { color: colors.muted, marginBottom: 2 },
   loadingWrap: { paddingVertical: 24, alignItems: "center" },
   errorText: {
     color: colors.danger,

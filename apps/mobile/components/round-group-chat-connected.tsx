@@ -2,6 +2,7 @@ import { ChatMessageEventType, ConnectionStatus } from "@ably/chat";
 import { useChatConnection, useMessages } from "@ably/chat/react";
 import type { Message } from "ably";
 import { useAbly } from "ably/react";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -65,6 +66,7 @@ export function RoundGroupChatConnected({
   onComposerFocus,
   variant = "inline",
 }: RoundGroupChatProps) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const kbVisible = useKeyboardState((s) => s.isVisible);
@@ -433,20 +435,24 @@ export function RoundGroupChatConnected({
     [viewerId],
   );
 
+  const handleAvatarPress = useCallback((user: { id: string; name: string; avatar: string | null }) => {
+    router.push({ pathname: "/profile/[userId]", params: { userId: user.id, userName: user.name, userAvatar: user.avatar ?? "" } });
+  }, [router]);
+
   const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const renderItem = useCallback(
     ({ item }: { item: ChatMessage }) => (
-      <ChatBubbleRow message={item} isMine={resolveMine(item)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} />
+      <ChatBubbleRow message={item} isMine={resolveMine(item)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewerId, handleReaction, handleReply],
+    [viewerId, handleReaction, handleReply, handleAvatarPress],
   );
   const renderBubbleInline = useCallback(
     (m: ChatMessage) => (
-      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} />
+      <ChatBubbleRow key={m.id} message={m} isMine={resolveMine(m)} viewerId={viewerId} onReaction={handleReaction} onReply={handleReply} onAvatarPress={handleAvatarPress} />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewerId, handleReaction, handleReply],
+    [viewerId, handleReaction, handleReply, handleAvatarPress],
   );
   const keyExtractor = useCallback((m: ChatMessage) => m.id, []);
 

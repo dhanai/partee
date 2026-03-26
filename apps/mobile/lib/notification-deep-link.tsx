@@ -24,6 +24,17 @@ function openNotificationData(
   }
   if (type === "follow_request") {
     router.push("/notifications");
+    return;
+  }
+  if (type === "group_announcement") {
+    const groupId = typeof data.groupId === "string" ? data.groupId.trim() : "";
+    if (groupId.length > 0) {
+      router.push({
+        pathname: "/group/[groupId]",
+        params: { groupId },
+      });
+      return;
+    }
   }
 }
 

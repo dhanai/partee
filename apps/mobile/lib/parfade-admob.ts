@@ -1,5 +1,11 @@
 import { Platform } from "react-native";
-import { AdEventType, InterstitialAd, MobileAds, TestIds } from "react-native-google-mobile-ads";
+import {
+  AdEventType,
+  InterstitialAd,
+  MobileAds,
+  type RequestOptions,
+  TestIds,
+} from "react-native-google-mobile-ads";
 
 /** Inline native ad slot is inserted in the Discover list after every N round rows. */
 export const DISCOVER_NATIVE_AD_EVERY_N_ROUNDS = 18;
@@ -13,6 +19,10 @@ function adsGloballyDisabled(): boolean {
 export function isAdsDisabled(): boolean {
   return Platform.OS === "web" || adsGloballyDisabled();
 }
+
+export const NON_PERSONALIZED: RequestOptions = {
+  requestNonPersonalizedAdsOnly: true,
+};
 
 /** Call once at startup (native only). Safe to call multiple times. */
 export function initializeParfadeMobileAds(): void {
@@ -58,7 +68,7 @@ export async function loadAndShowInterstitial(): Promise<void> {
   }
 
   const unitId = gameEndInterstitialUnitId();
-  const ad = InterstitialAd.createForAdRequest(unitId);
+  const ad = InterstitialAd.createForAdRequest(unitId, NON_PERSONALIZED);
 
   await new Promise<void>((resolve) => {
     let finished = false;

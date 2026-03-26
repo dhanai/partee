@@ -1,6 +1,6 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -44,6 +44,7 @@ const POLL_MS = 5000;
 
 export default function ConversationChatScreen() {
   const { id: conversationId } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
@@ -282,6 +283,10 @@ export default function ConversationChatScreen() {
     setReplyTo(msg);
   }, []);
 
+  const handleAvatarPress = useCallback((user: { id: string; name: string; avatar: string | null }) => {
+    router.push({ pathname: "/profile/[userId]", params: { userId: user.id, userName: user.name, userAvatar: user.avatar ?? "" } });
+  }, [router]);
+
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.type === "date") {
@@ -295,10 +300,11 @@ export default function ConversationChatScreen() {
           viewerId={viewerId}
           onReaction={handleReaction}
           onReply={handleReply}
+          onAvatarPress={handleAvatarPress}
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply],
+    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress],
   );
   const keyExtractor = useCallback(
     (item: ListItem) =>

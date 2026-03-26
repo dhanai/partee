@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -14,7 +15,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { apiDelete, apiGet, apiPatch, apiPost } from "../lib/api";
+import { Ionicons } from "@expo/vector-icons";
+import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin } from "../lib/api";
 import { colors } from "../lib/theme";
 
 type MeResponse = {
@@ -38,7 +40,6 @@ export default function SettingsScreen() {
   const [saveNote, setSaveNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -143,26 +144,21 @@ export default function SettingsScreen() {
     }
   }
 
+  const deleteEnabled = deleteConfirmText.toLowerCase() === "delete";
+
   function promptDeleteAccount() {
+    if (!deleteEnabled) return;
     Alert.alert(
       "Delete Account",
       "This will permanently delete your account and all associated data including rounds, messages, and group memberships. This action cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Continue",
-          style: "destructive",
-          onPress: () => {
-            setShowDeleteConfirm(true);
-            setDeleteConfirmText("");
-          },
-        },
+        { text: "Delete", style: "destructive", onPress: () => void performDeleteAccount() },
       ],
     );
   }
 
-  async function handleDeleteAccount() {
-    if (deleteConfirmText !== "DELETE") return;
+  async function performDeleteAccount() {
     setDeleting(true);
     setError(null);
     try {
@@ -245,6 +241,24 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Legal</Text>
+            <Pressable
+              style={styles.legalRow}
+              onPress={() => void Linking.openURL(`${publicWebOrigin}/privacy`)}
+            >
+              <Text style={styles.legalRowText}>Privacy Policy</Text>
+              <Ionicons name="open-outline" size={16} color={colors.muted} />
+            </Pressable>
+            <Pressable
+              style={styles.legalRow}
+              onPress={() => void Linking.openURL(`${publicWebOrigin}/terms`)}
+            >
+              <Text style={styles.legalRowText}>Terms of Service</Text>
+              <Ionicons name="open-outline" size={16} color={colors.muted} />
+            </Pressable>
+          </View>
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Pressable
@@ -257,49 +271,29 @@ export default function SettingsScreen() {
 
           <View style={styles.dangerCard}>
             <Text style={styles.dangerTitle}>Danger Zone</Text>
-            {showDeleteConfirm ? (
-              <View style={styles.deleteConfirmWrap}>
-                <Text style={styles.deleteConfirmLabel}>
-                  Type <Text style={styles.deleteKeyword}>DELETE</Text> to confirm
-                </Text>
-                <TextInput
-                  value={deleteConfirmText}
-                  onChangeText={setDeleteConfirmText}
-                  autoCapitalize="characters"
-                  placeholder="DELETE"
-                  placeholderTextColor={colors.muted}
-                  style={styles.deleteInput}
-                />
-                <View style={styles.deleteConfirmRow}>
-                  <Pressable
-                    style={styles.deleteCancelBtn}
-                    onPress={() => setShowDeleteConfirm(false)}
-                  >
-                    <Text style={styles.deleteCancelText}>Cancel</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.deleteConfirmBtn,
-                      (deleteConfirmText !== "DELETE" || deleting) && styles.disabled,
-                    ]}
-                    onPress={() => void handleDeleteAccount()}
-                    disabled={deleteConfirmText !== "DELETE" || deleting}
-                  >
-                    <Text style={styles.deleteConfirmBtnText}>
-                      {deleting ? "Deleting..." : "Delete my account"}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            ) : (
-              <Pressable
-                style={styles.deleteButton}
-                onPress={promptDeleteAccount}
-                disabled={deleting}
-              >
-                <Text style={styles.deleteButtonText}>Delete Account</Text>
-              </Pressable>
-            )}
+            <Text style={styles.deleteConfirmLabel}>
+              Type <Text style={styles.deleteKeyword}>delete</Text> to enable account deletion
+            </Text>
+            <TextInput
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              autoCapitalize="none"
+              placeholder="delete"
+              placeholderTextColor={colors.muted}
+              style={styles.deleteInput}
+            />
+            <Pressable
+              style={[
+                styles.deleteButton,
+                (!deleteEnabled || deleting) && styles.deleteButtonDisabled,
+              ]}
+              onPress={promptDeleteAccount}
+              disabled={!deleteEnabled || deleting}
+            >
+              <Text style={styles.deleteButtonText}>
+                {deleting ? "Deleting..." : "Delete Account"}
+              </Text>
+            </Pressable>
           </View>
         </>
       )}
@@ -381,8 +375,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: colors.danger,
   },
+  deleteButtonDisabled: {
+    backgroundColor: "#ccc",
+  },
   deleteButtonText: { color: "#fff", fontWeight: "700" },
-  deleteConfirmWrap: { gap: 10, marginTop: 4 },
   deleteConfirmLabel: { color: colors.text, fontSize: 14 },
   deleteKeyword: { fontWeight: "800" },
   deleteInput: {
@@ -395,23 +391,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(220, 53, 69, 0.3)",
   },
-  deleteConfirmRow: { flexDirection: "row", gap: 10 },
-  deleteCancelBtn: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
+  legalRow: {
+    flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
-  deleteCancelText: { color: colors.text, fontWeight: "600" },
-  deleteConfirmBtn: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    backgroundColor: colors.danger,
+  legalRowText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "500",
   },
-  deleteConfirmBtnText: { color: "#fff", fontWeight: "700" },
 });

@@ -7,7 +7,7 @@ import {
   NativeAssetType,
   NativeMediaView,
 } from "react-native-google-mobile-ads";
-import { discoverNativeAdUnitId, isAdsDisabled, waitForAdsInit } from "../lib/parfade-admob";
+import { discoverNativeAdUnitId, isAdsDisabled, NON_PERSONALIZED, waitForAdsInit } from "../lib/parfade-admob";
 import { colors } from "../lib/theme";
 
 function useAdsOff(): boolean {
@@ -35,7 +35,7 @@ export function DiscoverNativeAdRow() {
       try {
         await waitForAdsInit();
         if (cancelled) return;
-        const native = await NativeAd.createForAdRequest(unitId);
+        const native = await NativeAd.createForAdRequest(unitId, NON_PERSONALIZED);
         if (cancelled) {
           native.destroy();
           return;

@@ -44,6 +44,7 @@ type Props = {
   viewerId?: string | null;
   onReaction?: (messageId: string, emoji: string, action: "add" | "remove") => void;
   onReply?: (message: EnhancedMessage) => void;
+  onAvatarPress?: (user: { id: string; name: string; avatar: string | null }) => void;
 };
 
 function formatTime(iso: string) {
@@ -77,6 +78,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   viewerId,
   onReaction,
   onReply,
+  onAvatarPress,
 }: Props) {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [bubbleLayout, setBubbleLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -187,7 +189,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     [m.id, myCurrentEmoji, onReaction],
   );
 
-  const avatarEl = m.user.avatar ? (
+  const avatarImage = m.user.avatar ? (
     <Image
       source={{ uri: toAbsoluteUrl(m.user.avatar) }}
       style={legacyStyles.avatar}
@@ -198,6 +200,12 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
         {m.user.name.trim().charAt(0).toUpperCase() || "?"}
       </Text>
     </View>
+  );
+
+  const avatarEl = onAvatarPress ? (
+    <Pressable onPress={() => onAvatarPress(m.user)}>{avatarImage}</Pressable>
+  ) : (
+    avatarImage
   );
 
   const reactions = m.reactions ?? {};
