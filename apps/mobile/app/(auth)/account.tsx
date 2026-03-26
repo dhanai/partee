@@ -47,6 +47,21 @@ function clerkNativeOAuthRedirectUrl(): string {
   return Linking.createURL("/");
 }
 
+function isSSOCancellation(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    if (msg.includes("cancel") || msg.includes("user_cancelled") || msg.includes("dismissed")) {
+      return true;
+    }
+  }
+  if (isClerkAPIResponseError(err)) {
+    return err.errors.some(
+      (e) => e.code === "user_cancelled" || e.message?.toLowerCase().includes("cancel"),
+    );
+  }
+  return false;
+}
+
 function formatClerkError(err: unknown): string {
   if (isClerkAPIResponseError(err)) {
     const first = err.errors[0];
@@ -383,6 +398,7 @@ function SignInFields({
       await setActiveFromSSO({ session: createdSessionId });
       router.replace("/(tabs)");
     } catch (googleError) {
+      if (isSSOCancellation(googleError)) return;
       setError(
         googleError instanceof Error ? googleError.message : "Unable to sign in with Google.",
       );
@@ -408,6 +424,7 @@ function SignInFields({
       await setActiveFromSSO({ session: createdSessionId });
       router.replace("/(tabs)");
     } catch (appleError) {
+      if (isSSOCancellation(appleError)) return;
       setError(
         appleError instanceof Error ? appleError.message : "Unable to sign in with Apple.",
       );
@@ -645,6 +662,7 @@ function SignUpFields({
       await setActiveFromSSO({ session: createdSessionId });
       router.replace("/(tabs)");
     } catch (googleError) {
+      if (isSSOCancellation(googleError)) return;
       setError(googleError instanceof Error ? googleError.message : "Unable to sign up with Google.");
     } finally {
       setGoogleSubmitting(false);
@@ -668,6 +686,7 @@ function SignUpFields({
       await setActiveFromSSO({ session: createdSessionId });
       router.replace("/(tabs)");
     } catch (appleError) {
+      if (isSSOCancellation(appleError)) return;
       setError(appleError instanceof Error ? appleError.message : "Unable to sign up with Apple.");
     } finally {
       setAppleSubmitting(false);

@@ -135,12 +135,11 @@ export default function GamesScreen() {
 
       <Text style={styles.sectionLabel}>Start a game</Text>
       <View style={styles.gameGrid}>
-        {GAME_DEFINITIONS.map((g) => (
+        {GAME_DEFINITIONS.filter((g) => g.implemented).map((g) => (
           <Pressable
             key={g.id}
             style={({ pressed }) => [styles.gameCard, pressed && styles.gameCardPressed]}
             onPress={() => {
-              if (!g.implemented) return;
               router.push({
                 pathname: "/games/create",
                 params: {
@@ -152,18 +151,11 @@ export default function GamesScreen() {
               });
             }}
           >
-            <Ionicons
-              name={g.implemented ? "golf-outline" : "lock-closed-outline"}
-              size={22}
-              color={g.implemented ? colors.fairway : colors.muted}
-            />
+            <Ionicons name="golf-outline" size={22} color={colors.fairway} />
             <Text style={styles.gameTitle}>{g.title}</Text>
             <Text style={styles.gameSub} numberOfLines={2}>
               {g.subtitle}
             </Text>
-            {!g.implemented ? (
-              <Text style={styles.soon}>Coming soon</Text>
-            ) : null}
           </Pressable>
         ))}
       </View>
@@ -269,7 +261,6 @@ const styles = StyleSheet.create({
   gameCardPressed: { opacity: 0.92 },
   gameTitle: { fontSize: 17, fontWeight: "700", color: colors.text },
   gameSub: { fontSize: 12, color: colors.muted, lineHeight: 16 },
-  soon: { fontSize: 11, fontWeight: "600", color: colors.muted, marginTop: 4 },
   loader: { marginVertical: 20 },
   error: { color: colors.danger, marginBottom: 8 },
   empty: { color: colors.muted, fontSize: 14 },
