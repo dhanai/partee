@@ -26,6 +26,7 @@ import {
   formatPlanningHeaderDate,
   formatPlanningWindow,
   formatScheduledCardMeta,
+  getTimeWindows,
 } from "../../lib/round-card-meta";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
 import {
@@ -37,7 +38,6 @@ import { useChatUnread } from "../../lib/chat-unread-context";
 import { parfadeRoundDetailChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { colors } from "../../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 import { MineRound } from "../../types/round";
 
 type MineTab = "hosting" | "joined" | "invited";
@@ -743,18 +743,18 @@ export default function MyRoundsScreen() {
                 primaryMeta={
                   round.mode === "scheduled"
                     ? formatScheduledCardMeta(effectiveIso, round.teeTime)
-                    : formatPlanningWindow(round.preferredTimeWindow)
+                    : formatPlanningWindow(getTimeWindows(round))
                 }
                 planningLocation={round.planningLocation}
                 planningHeaderDate={formatPlanningHeaderDate(effectiveIso)}
-                preferredTimeWindow={round.preferredTimeWindow}
+                preferredTimeWindow={getTimeWindows(round)}
                 onPlayerPress={(player) =>
                   router.push({
                     pathname: "/profile/[userId]",
                     params: {
                       userId: player.id,
                       userName: player.name,
-                      userAvatar: parfadeUserAvatarUrlForDisplay(player.avatar) ?? "",
+                      userAvatar: player.avatar ?? "",
                     },
                   })
                 }

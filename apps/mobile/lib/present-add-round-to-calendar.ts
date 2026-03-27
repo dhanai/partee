@@ -1,6 +1,6 @@
 import { Alert, Platform } from "react-native";
 import type { RoundDetails } from "../types/round";
-import { formatPlanningWindow } from "./round-card-meta";
+import { formatPlanningWindow, getTimeWindows } from "./round-card-meta";
 
 /**
  * Same fields `expo-calendar` expects for `createEventInCalendarAsync`.
@@ -38,19 +38,26 @@ function normalizeEventRange(data: CalendarEventInput): CalendarEventInput {
   return { ...data, startDate: start, endDate: end };
 }
 
+const WINDOW_HOURS: Record<string, { startH: number; endH: number }> = {
+  morning: { startH: 8, endH: 12 },
+  afternoon: { startH: 12, endH: 17 },
+  twilight: { startH: 17, endH: 20 },
+};
+
 function planningWindowHours(
-  window: RoundDetails["preferredTimeWindow"],
+  window: string[] | null,
 ): { startH: number; endH: number } {
-  switch (window) {
-    case "morning":
-      return { startH: 8, endH: 12 };
-    case "afternoon":
-      return { startH: 12, endH: 17 };
-    case "twilight":
-      return { startH: 17, endH: 20 };
-    default:
-      return { startH: 9, endH: 13 };
+  if (!window || window.length === 0) return { startH: 9, endH: 13 };
+  let minStart = 24;
+  let maxEnd = 0;
+  for (const slot of window) {
+    const h = WINDOW_HOURS[slot];
+    if (h) {
+      if (h.startH < minStart) minStart = h.startH;
+      if (h.endH > maxEnd) maxEnd = h.endH;
+    }
   }
+  return minStart < maxEnd ? { startH: minStart, endH: maxEnd } : { startH: 9, endH: 13 };
 }
 
 function eventTimeZone(): string {
@@ -82,13 +89,14 @@ function buildCalendarEventData(round: RoundDetails): CalendarEventInput {
 
   const day = new Date(round.targetDate);
   day.setHours(0, 0, 0, 0);
-  const { startH, endH } = planningWindowHours(round.preferredTimeWindow);
+  const tw = getTimeWindows(round);
+  const { startH, endH } = planningWindowHours(tw);
   const start = new Date(day);
   start.setHours(startH, 0, 0, 0);
   const end = new Date(day);
   end.setHours(endH, 0, 0, 0);
 
-  const windowLabel = formatPlanningWindow(round.preferredTimeWindow);
+  const windowLabel = formatPlanningWindow(tw);
   const loc = round.planningLocation?.trim();
   const isPlanning = round.mode === "planning";
   const notesLines = isPlanning

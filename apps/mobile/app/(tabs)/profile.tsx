@@ -72,13 +72,22 @@ export default function ProfileScreen() {
         paddingRight: 12,
       },
       headerRight: () => (
-        <Pressable
-          style={styles.headerSettingsBtn}
-          onPress={() => router.push("/settings")}
-          accessibilityLabel="Open settings"
-        >
-          <Ionicons name="options-outline" size={18} color={colors.fairway} />
-        </Pressable>
+        <View style={styles.headerRightRow}>
+          <Pressable
+            style={styles.headerSettingsBtn}
+            onPress={() => router.push("/search-users")}
+            accessibilityLabel="Search users"
+          >
+            <Ionicons name="search-outline" size={18} color={colors.fairway} />
+          </Pressable>
+          <Pressable
+            style={styles.headerSettingsBtn}
+            onPress={() => router.push("/settings")}
+            accessibilityLabel="Open settings"
+          >
+            <Ionicons name="options-outline" size={18} color={colors.fairway} />
+          </Pressable>
+        </View>
       ),
     });
   }, [navigation, router]);
@@ -180,7 +189,12 @@ export default function ProfileScreen() {
                   accessibilityLabel="Profile photo"
                 />
               ) : (
-                <InitialAvatar name={name} size={avatarSize} maxInitials={2} />
+                <InitialAvatar
+                  name={name}
+                  size={avatarSize}
+                  maxInitials={2}
+                  borderRadius={AVATAR_RADIUS}
+                />
               )}
             </View>
           </View>
@@ -343,6 +357,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   errorText: { color: colors.danger, marginTop: 12, textAlign: "center" },
+  headerRightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   headerSettingsBtn: {
     width: 30,
     height: 30,

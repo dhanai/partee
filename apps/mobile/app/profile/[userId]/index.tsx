@@ -39,7 +39,6 @@ import {
   type ProfileStatsGrouped,
 } from "../../../lib/profile-stats-api";
 import { colors } from "../../../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../../../lib/user-avatar-display";
 
 const AVATAR_RADIUS = 28;
 
@@ -58,10 +57,8 @@ function computeBootstrapProfile(
   const rawName = Array.isArray(userName) ? userName[0] : userName;
   const rawAvatar = Array.isArray(userAvatar) ? userAvatar[0] : userAvatar;
   const hasName = typeof rawName === "string" && rawName.trim().length > 0;
-  const displayAvatar = parfadeUserAvatarUrlForDisplay(
-    typeof rawAvatar === "string" ? rawAvatar : null,
-  );
-  const hasAvatar = displayAvatar != null;
+  const hasAvatar = typeof rawAvatar === "string" && rawAvatar.trim().length > 0;
+  const avatarForBootstrap = hasAvatar ? rawAvatar.trim() : null;
 
   if (!cached) {
     if (!hasName && !hasAvatar) return null;
@@ -69,7 +66,7 @@ function computeBootstrapProfile(
       user: {
         id: userId,
         name: hasName ? rawName.trim() : "Profile",
-        avatar: displayAvatar,
+        avatar: avatarForBootstrap,
         handicap: null,
         location: null,
         followVisibility: "public",
@@ -88,7 +85,7 @@ function computeBootstrapProfile(
     user: {
       ...cached.user,
       ...(hasName ? { name: rawName.trim() } : {}),
-      ...(hasAvatar ? { avatar: displayAvatar } : {}),
+      ...(hasAvatar ? { avatar: avatarForBootstrap } : {}),
     },
   };
 }
@@ -189,14 +186,13 @@ export default function PublicProfileScreen() {
         { participantUserId: userId },
         authToken,
       );
+      const dmPic = profile?.user.avatar ?? null;
       router.push({
         pathname: "/conversation/[id]/chat",
         params: {
           id: data.conversationId,
           chatTitle: profile?.user.name ?? "Chat",
-          chatAvatars: JSON.stringify(
-            profile?.user.avatar ? [profile.user.avatar] : [],
-          ),
+          chatAvatars: JSON.stringify(dmPic ? [dmPic] : []),
           chatType: "dm",
         },
       });
@@ -205,7 +201,7 @@ export default function PublicProfileScreen() {
     } finally {
       setDmBusy(false);
     }
-  }, [userId, dmBusy, router]);
+  }, [userId, dmBusy, router, profile?.user.avatar, profile?.user.name]);
 
   const isMutual = profile?.user.relationship === "mutual";
 
@@ -230,6 +226,8 @@ export default function PublicProfileScreen() {
 
   const handicapDisplay = profile?.user.handicap?.trim() || "";
   const locationDisplay = profile?.user.location?.trim() || "";
+  const displayAvatar =
+    profile != null && profile.user.avatar != null ? profile.user.avatar : null;
 
   async function handleFollowAction() {
     if (!profile || profile.user.relationship === "self" || !userId || busy) return;
@@ -352,13 +350,13 @@ export default function PublicProfileScreen() {
       >
       <Pressable
         style={[styles.avatarShadowOuter, { width: avatarSize, height: avatarSize }]}
-        onPress={profile.user.avatar ? () => setAvatarViewerVisible(true) : undefined}
-        disabled={!profile.user.avatar}
+        onPress={displayAvatar ? () => setAvatarViewerVisible(true) : undefined}
+        disabled={!displayAvatar}
       >
         <View style={[styles.avatarClip, { width: avatarSize, height: avatarSize }]}>
-          {profile.user.avatar ? (
+          {displayAvatar ? (
             <Image
-              source={toAbsoluteUrl(profile.user.avatar)}
+              source={toAbsoluteUrl(displayAvatar)}
               style={[styles.avatarImage, { width: avatarSize, height: avatarSize }]}
               contentFit="cover"
               transition={0}
@@ -367,7 +365,12 @@ export default function PublicProfileScreen() {
               accessibilityLabel="Profile photo"
             />
           ) : (
-            <InitialAvatar name={profile?.user.name ?? ""} size={avatarSize} maxInitials={2} />
+            <InitialAvatar
+              name={profile?.user.name ?? ""}
+              size={avatarSize}
+              maxInitials={2}
+              borderRadius={AVATAR_RADIUS}
+            />
           )}
         </View>
       </Pressable>
@@ -521,9 +524,9 @@ export default function PublicProfileScreen() {
         targetLabel={profile?.user.name ?? "this user"}
       />
     ) : null}
-    {profile?.user.avatar ? (
+    {displayAvatar ? (
       <FullscreenImageViewer
-        images={[toAbsoluteUrl(profile.user.avatar)]}
+        images={[toAbsoluteUrl(displayAvatar)]}
         visible={avatarViewerVisible}
         onClose={() => setAvatarViewerVisible(false)}
       />

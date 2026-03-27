@@ -13,7 +13,8 @@ export type RoundListHint = {
   imageUrl: string;
   teeTime: string | null;
   targetDate: string;
-  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  preferredTimeWindow: string | null;
+  preferredTimeWindows?: string[] | null;
   planningLocation: string | null;
   joinPolicy: "instant" | "approval";
   totalSpots: number;
@@ -67,6 +68,7 @@ export function buildRoundListHint(round: DiscoverRound | MineRound): string {
     teeTime: round.teeTime ?? null,
     targetDate: round.targetDate,
     preferredTimeWindow: round.preferredTimeWindow ?? null,
+    preferredTimeWindows: round.preferredTimeWindows ?? null,
     planningLocation: round.planningLocation ?? null,
     joinPolicy: round.joinPolicy,
     totalSpots,
@@ -111,6 +113,7 @@ function hintToRoundDetails(h: RoundListHint): RoundDetails {
     inviteToken: h.inviteToken,
     mode: h.mode,
     preferredTimeWindow: h.preferredTimeWindow,
+    preferredTimeWindows: h.preferredTimeWindows,
     planningLocation: h.planningLocation,
     courseName: h.courseName,
     teeTime: h.teeTime,
@@ -143,6 +146,7 @@ function mergeHintOntoCached(cached: RoundDetails, hint: RoundListHint): RoundDe
     targetDate: hint.targetDate,
     mode: hint.mode,
     preferredTimeWindow: hint.preferredTimeWindow,
+    preferredTimeWindows: hint.preferredTimeWindows,
     planningLocation: hint.planningLocation,
     joinPolicy: hint.joinPolicy,
     totalSpots: hint.totalSpots,

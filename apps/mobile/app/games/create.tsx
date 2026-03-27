@@ -23,7 +23,6 @@ import { getGameDefinition } from "../../lib/games-registry";
 import type { RoundDetails } from "../../types/round";
 import { colors } from "../../lib/theme";
 import { getCachedMeProfile } from "../../lib/me-profile-cache";
-import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 
 type NetworkFriend = { id: string; name: string; avatar: string | null };
 
@@ -296,7 +295,6 @@ export default function CreateGameScreen() {
             allPlayers.map((f) => {
               const on = selected.has(f.id);
               const parfadeFull = !on && selected.size >= rosterCap;
-              const displayAvatar = parfadeUserAvatarUrlForDisplay(f.avatar);
               return (
                 <Pressable
                   key={f.id}
@@ -308,8 +306,8 @@ export default function CreateGameScreen() {
                   onPress={() => toggle(f.id)}
                   disabled={parfadeFull}
                 >
-                  {displayAvatar ? (
-                    <Image source={{ uri: toAbsoluteUrl(displayAvatar) }} style={styles.avatar} />
+                  {f.avatar ? (
+                    <Image source={{ uri: toAbsoluteUrl(f.avatar) }} style={styles.avatar} />
                   ) : (
                     <View style={[styles.avatar, styles.avatarFallback]}>
                       <Text style={styles.avatarInitial}>

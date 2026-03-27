@@ -19,6 +19,7 @@ import {
   apiPatch,
   apiPost,
 } from "../../../lib/api";
+import { getTimeWindows } from "../../../lib/round-card-meta";
 import { emitRoundListsShouldRefresh } from "../../../lib/round-lists-refresh";
 import { colors } from "../../../lib/theme";
 import { RoundDetails } from "../../../types/round";
@@ -57,9 +58,7 @@ export default function EditRoundScreen() {
   const [snapshotReady, setSnapshotReady] = useState(false);
 
   const [planningMode, setPlanningMode] = useState(true);
-  const [preferredTimeWindow, setPreferredTimeWindow] = useState<
-    "morning" | "afternoon" | "twilight"
-  >("morning");
+  const [preferredTimeWindow, setPreferredTimeWindow] = useState<string[]>(["morning"]);
   const [planningLocation, setPlanningLocation] = useState("");
   const [planningLocationIsValidated, setPlanningLocationIsValidated] = useState(true);
   const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
@@ -114,7 +113,7 @@ export default function EditRoundScreen() {
 
         loadedRoundMetaRef.current = { id: round.id };
         setPlanningMode(round.mode === "planning");
-        setPreferredTimeWindow(round.preferredTimeWindow ?? "morning");
+        setPreferredTimeWindow(getTimeWindows(round) ?? ["morning"]);
         setTotalSpots(round.totalSpots);
         setVisibility(round.visibility);
         setJoinPolicy(round.joinPolicy);
@@ -404,7 +403,8 @@ export default function EditRoundScreen() {
             roundId: meta.id,
             inviteToken: token,
             mode: planningMode ? "planning" : "scheduled",
-            preferredTimeWindow: planningMode ? preferredTimeWindow : null,
+            preferredTimeWindow: planningMode ? (preferredTimeWindow[0] ?? null) : null,
+            preferredTimeWindows: planningMode ? (preferredTimeWindow.length > 0 ? preferredTimeWindow : null) : null,
             planningLocation: planningMode ? planningLocation.trim() : null,
             courseName: planningMode ? "" : (selectedCourse?.name ?? ""),
             courseId: planningMode ? null : (selectedCourse?.id ?? null),

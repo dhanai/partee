@@ -2,7 +2,8 @@ import { headers } from "next/headers";
 import { Webhook } from "svix";
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { updateUserProfile } from "@/lib/auth";
+import { getDbUserByClerkId, updateUserProfile } from "@/lib/auth";
+import { deleteUserAccount } from "@/lib/delete-user-account";
 
 type ClerkWebhookPayload = {
   type: string;
@@ -58,6 +59,13 @@ export async function POST(req: Request) {
       name,
       avatar: event.data.image_url ?? null,
     });
+  }
+
+  if (event.type === "user.deleted" && event.data?.id) {
+    const dbUser = await getDbUserByClerkId(event.data.id);
+    if (dbUser) {
+      await deleteUserAccount(dbUser.id, dbUser.clerkId);
+    }
   }
 
   return NextResponse.json({ ok: true });

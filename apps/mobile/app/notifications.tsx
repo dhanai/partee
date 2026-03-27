@@ -6,9 +6,9 @@ import { subscribeNotificationsListsRefresh } from "../lib/notifications-list-re
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../lib/api";
 import { buildRoundListHint, prefetchRoundOpen } from "../lib/round-details-cache";
+import { formatPlanningWindow, getTimeWindows } from "../lib/round-card-meta";
 import { useNotificationBadge } from "../lib/notification-badge-context";
 import { colors } from "../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 import { MineRound } from "../types/round";
 
 type MineTabResponse = {
@@ -214,15 +214,9 @@ export default function NotificationsScreen() {
       })}`;
     }
     if (round.mode === "planning") {
-      const slot = round.preferredTimeWindow
-        ? `${round.preferredTimeWindow.charAt(0).toUpperCase()}${round.preferredTimeWindow.slice(1)}`
-        : "Time TBD";
-      return slot;
+      return formatPlanningWindow(getTimeWindows(round));
     }
-    const slot = round.preferredTimeWindow
-      ? `${round.preferredTimeWindow.charAt(0).toUpperCase()}${round.preferredTimeWindow.slice(1)}`
-      : "Time TBD";
-    return `${dateText} • ${slot}`;
+    return `${dateText} • ${formatPlanningWindow(getTimeWindows(round))}`;
   }
 
   return (
@@ -241,7 +235,6 @@ export default function NotificationsScreen() {
               {activityItems
                 .filter((i) => i.type === "group_join_request")
                 .map((item) => {
-                  const actorDisplay = parfadeUserAvatarUrlForDisplay(item.actorAvatar);
                   return (
                   <View key={`gjr-${item.id}`} style={styles.notificationCard}>
                     <Pressable
@@ -253,14 +246,14 @@ export default function NotificationsScreen() {
                             params: {
                               userId: item.actorUserId,
                               userName: item.actorName,
-                              userAvatar: actorDisplay ?? "",
+                              userAvatar: item.actorAvatar ?? "",
                             },
                           });
                         }
                       }}
                     >
-                      {actorDisplay ? (
-                        <Image source={{ uri: toAbsoluteUrl(actorDisplay) }} style={styles.notificationAvatar} />
+                      {item.actorAvatar ? (
+                        <Image source={{ uri: toAbsoluteUrl(item.actorAvatar) }} style={styles.notificationAvatar} />
                       ) : (
                         <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
                           <Text style={styles.notificationAvatarInitial}>
@@ -337,7 +330,6 @@ export default function NotificationsScreen() {
             <View style={styles.notificationsList}>
               <Text style={styles.sectionMiniTitle}>Follow requests</Text>
               {followRequestNotifications.map((request) => {
-                const reqDisplay = parfadeUserAvatarUrlForDisplay(request.avatar);
                 return (
                 <View key={`follow-${request.id}`} style={styles.notificationCard}>
                   <Pressable
@@ -348,13 +340,13 @@ export default function NotificationsScreen() {
                         params: {
                           userId: request.followerId,
                           userName: request.name,
-                          userAvatar: reqDisplay ?? "",
+                          userAvatar: request.avatar ?? "",
                         },
                       })
                     }
                   >
-                    {reqDisplay ? (
-                      <Image source={{ uri: toAbsoluteUrl(reqDisplay) }} style={styles.notificationAvatar} />
+                    {request.avatar ? (
+                      <Image source={{ uri: toAbsoluteUrl(request.avatar) }} style={styles.notificationAvatar} />
                     ) : (
                       <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
                         <Text style={styles.notificationAvatarInitial}>

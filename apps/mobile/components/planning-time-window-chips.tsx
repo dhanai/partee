@@ -9,19 +9,17 @@ const SLOTS = [
   { value: "twilight" as const, label: "Twilight" },
 ];
 
-export type PlanningTimeWindowChoice = (typeof SLOTS)[number]["value"];
-
 type Props = {
-  value: PlanningTimeWindowChoice;
-  onChange: (value: PlanningTimeWindowChoice) => void;
+  value: string[];
+  onChange: (value: string[]) => void;
 };
 
 export function PlanningTimeWindowChips({ value, onChange }: Props) {
   return (
     <View style={styles.row}>
       {SLOTS.map((slot) => {
-        const t = planningWindowTheme(slot.value);
-        const selected = value === slot.value;
+        const t = planningWindowTheme([slot.value]);
+        const selected = value.includes(slot.value);
         return (
           <Pressable
             key={slot.value}
@@ -33,7 +31,13 @@ export function PlanningTimeWindowChips({ value, onChange }: Props) {
                 ? { backgroundColor: t.pillBg, borderColor: t.card.borderColor }
                 : styles.chipIdle,
             ]}
-            onPress={() => onChange(slot.value)}
+            onPress={() => {
+              if (selected) {
+                onChange(value.filter((v) => v !== slot.value));
+              } else {
+                onChange([...value, slot.value]);
+              }
+            }}
           >
             <Ionicons
               name={t.icon}

@@ -8,6 +8,7 @@ import { ensureDbUser, requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
+import { normalizeTimeWindowInput, timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 type RouteContext = {
   params: { token: string };
@@ -16,7 +17,10 @@ type RouteContext = {
 const updateRoundSchema = z
   .object({
     planningMode: z.boolean().default(false),
-    preferredTimeWindow: z.enum(["morning", "afternoon", "twilight"]).optional(),
+    preferredTimeWindow: z.preprocess(
+      (val) => (typeof val === "string" ? [val] : val),
+      z.array(z.enum(["morning", "afternoon", "twilight"])).max(3),
+    ).optional(),
     planningLocation: z.string().trim().min(2).max(80).optional(),
     courseId: z.string().uuid().optional(),
     teeTime: z.string().datetime().optional(),
@@ -214,7 +218,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       id: round.id,
       inviteToken: round.inviteToken,
       mode: round.mode,
-      preferredTimeWindow: round.preferredTimeWindow,
+      ...timeWindowResponseFields(round.preferredTimeWindow),
       planningLocation: round.planningLocation,
       courseId: round.courseId,
       courseName: round.courseName ?? "Course TBD",
@@ -320,7 +324,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       .set({
         mode: parsed.planningMode ? "planning" : "scheduled",
         preferredTimeWindow: parsed.planningMode
-          ? (parsed.preferredTimeWindow ?? null)
+          ? (parsed.preferredTimeWindow?.length ? parsed.preferredTimeWindow : null)
           : null,
         planningLocation: parsed.planningMode
           ? (parsed.planningLocation?.trim() ?? null)

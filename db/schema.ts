@@ -212,7 +212,7 @@ export const rounds = pgTable(
     targetDate: timestamp("target_date", { withTimezone: true })
       .notNull()
       .defaultNow(),
-    preferredTimeWindow: planningTimeWindowEnum("preferred_time_window"),
+    preferredTimeWindow: text("preferred_time_window").array(),
     planningLocation: text("planning_location"),
     totalSpots: integer("total_spots").notNull(),
     visibility: roundVisibilityEnum("visibility").notNull(),
@@ -397,8 +397,7 @@ export const messages = pgTable(
       .notNull()
       .references(() => conversations.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "set null" }),
     body: text("body"),
     parentId: uuid("parent_id"),
     attachments: jsonb("attachments").$type<{ type: string; url: string }[]>(),
@@ -536,8 +535,7 @@ export const groups = pgTable(
     heroImageUrl: text("hero_image_url"),
     joinPolicy: groupJoinPolicyEnum("join_policy").notNull().default("public"),
     createdBy: uuid("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

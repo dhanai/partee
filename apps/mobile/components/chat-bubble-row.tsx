@@ -24,7 +24,6 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { toAbsoluteUrl } from "../lib/api";
-import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 import { getImageUrls } from "../lib/attachment-types";
 import type { GroupStyle } from "../lib/chat-group-styles";
 import { colors } from "../lib/theme";
@@ -835,9 +834,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
               </Text>
               {data.userIds.map((uid) => {
                 const info = userInfoMap?.[uid];
-                const avatarUri = parfadeUserAvatarUrlForDisplay(
-                  info?.avatar ?? userAvatarMap?.[uid] ?? null,
-                );
+                const avatarUri = info?.avatar ?? userAvatarMap?.[uid] ?? null;
                 return (
                   <View key={uid} style={sheetStyles.userRow}>
                     {avatarUri ? (

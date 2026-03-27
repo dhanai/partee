@@ -42,7 +42,6 @@ import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calend
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-last-initial";
 import { colors } from "../../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 import { InitialAvatar } from "../../components/initial-avatar";
 import { RoundDetails } from "../../types/round";
 
@@ -59,6 +58,7 @@ import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../components/report-sheet";
 import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
+import { getTimeWindows } from "../../lib/round-card-meta";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
 import { getGameDefinitions } from "../../lib/games-registry";
@@ -81,10 +81,12 @@ function useDebounce(value: string, delayMs: number) {
 }
 
 function formatPlanningWindow(
-  window: "morning" | "afternoon" | "twilight" | null | undefined,
+  window: string[] | null | undefined,
 ) {
-  if (!window) return "time TBD";
-  return window.charAt(0).toUpperCase() + window.slice(1);
+  if (!window || window.length === 0 || window.length >= 3) return "time TBD";
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  if (window.length === 1) return cap(window[0]!);
+  return window.map(cap).join(" or ");
 }
 
 export default function RoundDetailsScreen() {
@@ -569,7 +571,7 @@ export default function RoundDetailsScreen() {
       ) : (
         <>
           <PlanningRoundBadge
-            preferredTimeWindow={round.preferredTimeWindow}
+            preferredTimeWindow={getTimeWindows(round)}
             compact
           />
           <Text style={styles.title}>
@@ -580,7 +582,7 @@ export default function RoundDetailsScreen() {
             })}
           </Text>
           <View style={styles.whenBlock}>
-            <Text style={styles.whenDate}>{formatPlanningWindow(round.preferredTimeWindow)}</Text>
+            <Text style={styles.whenDate}>{formatPlanningWindow(getTimeWindows(round))}</Text>
             {round.planningLocation?.trim() ? (
               <Text style={styles.whenTime}>{round.planningLocation.trim()}</Text>
             ) : null}
@@ -620,7 +622,7 @@ export default function RoundDetailsScreen() {
               params: {
                 userId: player.id,
                 userName: player.name,
-                userAvatar: parfadeUserAvatarUrlForDisplay(player.avatar) ?? "",
+                userAvatar: player.avatar ?? "",
               },
             })
           }
@@ -634,7 +636,6 @@ export default function RoundDetailsScreen() {
           <Text style={styles.claimedLabel}>Declined</Text>
           <View style={styles.declinedList}>
             {round.declinedPlayers.map((player) => {
-              const declinedDisplay = parfadeUserAvatarUrlForDisplay(player.avatar);
               return (
               <Pressable
                 key={player.id}
@@ -646,13 +647,13 @@ export default function RoundDetailsScreen() {
                     params: {
                       userId: player.id,
                       userName: player.name,
-                      userAvatar: declinedDisplay ?? "",
+                      userAvatar: player.avatar ?? "",
                     },
                   })
                 }
               >
-                {declinedDisplay ? (
-                  <Image source={toAbsoluteUrl(declinedDisplay)} style={styles.declinedAvatar} transition={0} />
+                {player.avatar ? (
+                  <Image source={toAbsoluteUrl(player.avatar)} style={styles.declinedAvatar} transition={0} />
                 ) : (
                   <InitialAvatar name={player.name} size={22} maxInitials={1} />
                 )}

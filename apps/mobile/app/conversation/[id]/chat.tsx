@@ -46,7 +46,6 @@ import {
 } from "../../../lib/message-cache";
 import { subscribeReactionUpdates } from "../../../lib/reaction-events";
 import { colors } from "../../../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../../../lib/user-avatar-display";
 
 type ConversationMessage = CachedMessage;
 
@@ -137,17 +136,14 @@ function ConversationChatContent() {
           `/api/conversations/${conversationId}`,
           authToken,
         );
-        const parfadeParticipantAvatars = data.participantAvatars.map((a) =>
-          parfadeUserAvatarUrlForDisplay(a),
-        );
-        let avatars = parfadeParticipantAvatars.filter((a): a is string => Boolean(a));
+        let avatars = data.participantAvatars.filter((a): a is string => Boolean(a));
         const allParticipants = data.participants ?? [];
         const avatarToUserId = new Map(
           allParticipants
-            .filter((p) => parfadeUserAvatarUrlForDisplay(p.avatar))
-            .map((p) => [parfadeUserAvatarUrlForDisplay(p.avatar)!, p.id]),
+            .filter((p) => p.avatar)
+            .map((p) => [p.avatar!, p.id]),
         );
-        let userIds: (string | null)[] = parfadeParticipantAvatars.map((a, i) => {
+        let userIds: (string | null)[] = data.participantAvatars.map((a, i) => {
           if (!a) return null;
           return allParticipants[i]?.id ?? avatarToUserId.get(a) ?? null;
         });
@@ -156,7 +152,7 @@ function ConversationChatContent() {
           avatars = [data.imageUrl];
           userIds = [null];
         } else if (data.roundMode === "scheduled" && data.imageUrl) {
-          const userSlotIds = parfadeParticipantAvatars.flatMap((a, i) => {
+          const userSlotIds = data.participantAvatars.flatMap((a, i) => {
             if (!a) return [];
             return [allParticipants[i]?.id ?? null];
           });
@@ -584,6 +580,7 @@ function ConversationChatContent() {
   }, []);
 
   const handleReport = useCallback((msg: { id: string; user: { id: string } }) => {
+    if (msg.user.id === "deleted") return;
     setReportTarget({ id: msg.id, userId: msg.user.id });
   }, []);
 
@@ -594,12 +591,13 @@ function ConversationChatContent() {
   }, []);
 
   const handleAvatarPress = useCallback((user: { id: string; name: string; avatar: string | null }) => {
+    if (user.id === "deleted") return;
     router.push({
       pathname: "/profile/[userId]",
       params: {
         userId: user.id,
         userName: user.name,
-        userAvatar: parfadeUserAvatarUrlForDisplay(user.avatar) ?? "",
+        userAvatar: user.avatar ?? "",
       },
     });
   }, [router]);
@@ -654,7 +652,7 @@ function ConversationChatContent() {
       if (m.user?.id && !(m.user.id in map)) {
         map[m.user.id] = {
           name: m.user.name,
-          avatar: parfadeUserAvatarUrlForDisplay(m.user.avatar),
+          avatar: m.user.avatar,
         };
       }
     }

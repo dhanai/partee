@@ -47,8 +47,8 @@ type MessageRow = {
   id: string;
   body: string | null;
   createdAt: Date;
-  userId: string;
-  userName: string;
+  userId: string | null;
+  userName: string | null;
   userAvatar: string | null;
   parentId?: string | null;
   attachments?: unknown;
@@ -60,9 +60,13 @@ function mapRow(row: MessageRow, viewerId: string): MappedMessage {
     body: row.body,
     attachments: (row.attachments as MessageAttachment[] | null) ?? null,
     createdAt: row.createdAt.toISOString(),
-    isMine: row.userId === viewerId,
+    isMine: row.userId != null && row.userId === viewerId,
     parentId: row.parentId ?? null,
-    user: { id: row.userId, name: row.userName, avatar: row.userAvatar },
+    user: {
+      id: row.userId ?? "deleted",
+      name: row.userName ?? "Deleted User",
+      avatar: row.userId != null ? row.userAvatar : null,
+    },
     reactions: {},
   };
 }
@@ -101,9 +105,9 @@ async function fetchParentPreviews(parentIds: string[]) {
   const rows = await db
     .select({ id: messages.id, body: messages.body, userName: users.name })
     .from(messages)
-    .innerJoin(users, eq(users.id, messages.userId))
+    .leftJoin(users, eq(users.id, messages.userId))
     .where(sql`${messages.id} IN (${sql.join(parentIds.map((id) => sql`${id}`), sql`, `)})`);
-  return new Map(rows.map((p) => [p.id, { body: p.body ?? "", userName: p.userName }]));
+  return new Map(rows.map((p) => [p.id, { body: p.body ?? "", userName: p.userName ?? "Deleted User" }]));
 }
 
 function truncatePreview(body: string, max = 80): string {
@@ -175,7 +179,7 @@ export async function getConversationMessages(
         userAvatar: users.avatar,
       })
       .from(messages)
-      .innerJoin(users, eq(users.id, messages.userId))
+      .leftJoin(users, eq(users.id, messages.userId))
       .where(whereClause)
       .orderBy(asc(messages.createdAt))
       .limit(limit);
@@ -204,7 +208,7 @@ export async function getConversationMessages(
       userAvatar: users.avatar,
     })
     .from(messages)
-    .innerJoin(users, eq(users.id, messages.userId))
+    .leftJoin(users, eq(users.id, messages.userId))
     .where(whereClause)
     .orderBy(desc(messages.createdAt))
     .limit(limit + 1);
@@ -264,13 +268,13 @@ export async function sendConversationMessage(input: {
     const [parent] = await db
       .select({ body: messages.body, userName: users.name })
       .from(messages)
-      .innerJoin(users, eq(users.id, messages.userId))
+      .leftJoin(users, eq(users.id, messages.userId))
       .where(eq(messages.id, inserted.parentId))
       .limit(1);
     if (parent) {
       parentPreview = {
         body: truncatePreview(parent.body ?? ""),
-        senderName: parent.userName,
+        senderName: parent.userName ?? "Deleted User",
       };
     }
   }

@@ -258,6 +258,13 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="search-users"
+              options={{
+                title: "Search Users",
+                headerBackTitle: "",
+              }}
+            />
+            <Stack.Screen
               name="search-groups"
               options={{
                 title: "Search Groups",

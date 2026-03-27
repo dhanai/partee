@@ -10,11 +10,15 @@ import { notifyRoundInvites } from "@/lib/notify-user";
 import { publishAfterRoundCreated, publishRoundInviteToast } from "@/lib/parfade-ably-publish";
 import { buildRoundInvitePushBody, formatChatPushTitleLine } from "@/lib/round-invite-push-message";
 import { resolveRoundImageUrl } from "@/lib/round-images";
+import { normalizeTimeWindowInput, timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 const createRoundSchema = z
   .object({
     planningMode: z.boolean().default(false),
-    preferredTimeWindow: z.enum(["morning", "afternoon", "twilight"]).optional(),
+    preferredTimeWindow: z.preprocess(
+      (val) => (typeof val === "string" ? [val] : val),
+      z.array(z.enum(["morning", "afternoon", "twilight"])).max(3),
+    ).optional(),
     planningLocation: z.string().trim().min(2).max(80).optional(),
     courseId: z.string().uuid().optional(),
     teeTime: z.string().datetime().optional(),
@@ -58,7 +62,7 @@ const createRoundSchema = z
       }
       return;
     }
-    if (payload.preferredTimeWindow) {
+    if (payload.preferredTimeWindow && payload.preferredTimeWindow.length > 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["preferredTimeWindow"],
@@ -156,7 +160,7 @@ export async function POST(req: Request) {
           teeTime,
           targetDate,
           preferredTimeWindow: parsed.planningMode
-            ? (parsed.preferredTimeWindow ?? null)
+            ? (parsed.preferredTimeWindow?.length ? parsed.preferredTimeWindow : null)
             : null,
           planningLocation: parsed.planningMode
             ? (parsed.planningLocation?.trim() ?? null)
@@ -261,7 +265,10 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({
-      round: createdRound,
+      round: {
+        ...createdRound,
+        ...timeWindowResponseFields(createdRound.preferredTimeWindow),
+      },
       invitePath: `/round/${createdRound.inviteToken}`,
       invitedCount,
     });
@@ -318,7 +325,7 @@ export async function GET(req: Request) {
           return {
             id: round.id,
             mode: round.mode,
-            preferredTimeWindow: round.preferredTimeWindow,
+            ...timeWindowResponseFields(round.preferredTimeWindow),
             planningLocation: round.planningLocation,
             courseName: round.courseName ?? "Course TBD",
             targetDate: round.targetDate,
@@ -333,20 +340,7 @@ export async function GET(req: Request) {
             }),
           };
         })
-        .filter((round) => new Date(round.effectiveDate) >= now)
-        .map((round) => ({
-        id: round.id,
-        mode: round.mode,
-        preferredTimeWindow: round.preferredTimeWindow,
-        planningLocation: round.planningLocation,
-        courseName: round.courseName,
-        targetDate: round.targetDate,
-        teeTime: round.teeTime,
-        visibility: round.visibility,
-        totalSpots: round.totalSpots,
-        confirmedCount: round.confirmedCount,
-        imageUrl: round.imageUrl,
-      })),
+        .filter((round) => new Date(round.effectiveDate) >= now),
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

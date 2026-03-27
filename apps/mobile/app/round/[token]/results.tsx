@@ -14,7 +14,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { fetchRoundResults, type RoundResultsResponse } from "../../../lib/round-results-api";
 import { toAbsoluteUrl } from "../../../lib/api";
 import { colors } from "../../../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../../../lib/user-avatar-display";
 
 function firstName(full: string): string {
   const t = full.trim();
@@ -119,7 +118,6 @@ export default function RoundResultsScreen() {
       {standings.map((p, index) => {
         const rank = index + 1;
         const fn = firstName(p.name);
-        const displayAvatar = parfadeUserAvatarUrlForDisplay(p.avatar);
         return (
           <View
             key={p.userId}
@@ -140,13 +138,13 @@ export default function RoundResultsScreen() {
                   params: {
                     userId: p.userId,
                     userName: p.name,
-                    userAvatar: displayAvatar ?? "",
+                    userAvatar: p.avatar ?? "",
                   },
                 })
               }
             >
-              {displayAvatar ? (
-                <Image source={{ uri: toAbsoluteUrl(displayAvatar) }} style={styles.avatar} />
+              {p.avatar ? (
+                <Image source={{ uri: toAbsoluteUrl(p.avatar) }} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatar, styles.avatarFallback]}>
                   <Text style={styles.avatarInitial}>{fn.charAt(0).toUpperCase()}</Text>

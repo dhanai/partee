@@ -21,7 +21,6 @@ import {
   setInviteSelection,
 } from "../lib/invite-selection-store";
 import { colors } from "../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 
 type NetworkFriend = {
   id: string;
@@ -254,11 +253,10 @@ export default function InviteFriendsScreen() {
         )
       ) : (
         rows.map((user) => {
-          const displayAvatar = parfadeUserAvatarUrlForDisplay(user.avatar);
           return (
           <Pressable key={user.id} style={styles.listRow} onPress={() => toggleUser(user)}>
-            {displayAvatar ? (
-              <Image source={{ uri: toAbsoluteUrl(displayAvatar) }} style={styles.avatar} />
+            {user.avatar ? (
+              <Image source={{ uri: toAbsoluteUrl(user.avatar) }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
                 <Text style={styles.avatarInitial}>{user.name.trim().charAt(0).toUpperCase() || "?"}</Text>

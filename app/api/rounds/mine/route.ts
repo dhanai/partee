@@ -5,6 +5,7 @@ import { conversationReadReceipts, conversations, courses, messages, rounds, spo
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { requireDbUser } from "@/lib/auth";
 import { resolveRoundImageUrl } from "@/lib/round-images";
+import { timeWindowResponseFields } from "@/lib/round-time-window-compat";
 import { effectiveRoundTimeMs } from "@/lib/utils";
 
 type MineRowWithImageFields = {
@@ -12,9 +13,9 @@ type MineRowWithImageFields = {
   customImageUrl: string | null;
 };
 
-async function enrichMineRoundsWithImageUrl<T extends MineRowWithImageFields>(
+async function enrichMineRoundsWithImageUrl<T extends MineRowWithImageFields & { preferredTimeWindow: string[] | null }>(
   rows: T[],
-): Promise<Array<Omit<T, "courseId" | "customImageUrl"> & { imageUrl: string }>> {
+): Promise<Array<Omit<T, "courseId" | "customImageUrl"> & { imageUrl: string; preferredTimeWindow: string | null; preferredTimeWindows: string[] | null }>> {
   const courseIds = [
     ...new Set(rows.map((r) => r.courseId).filter((id): id is string => Boolean(id))),
   ];
@@ -34,7 +35,7 @@ async function enrichMineRoundsWithImageUrl<T extends MineRowWithImageFields>(
       customImageUrl: customImageUrl ?? undefined,
       courseMetadata: courseId ? metaById.get(courseId) : null,
     });
-    return { ...rest, imageUrl };
+    return { ...rest, ...timeWindowResponseFields(r.preferredTimeWindow), imageUrl };
   });
 }
 
@@ -340,18 +341,21 @@ export async function GET(req: Request) {
       });
     }
 
+    const addTimeWindowCompat = <T extends { preferredTimeWindow: string[] | null }>(rows: T[]) =>
+      rows.map((r) => ({ ...r, ...timeWindowResponseFields(r.preferredTimeWindow) }));
+
     return NextResponse.json({
       hosting: {
         upcoming: hostingPayload,
-        past: sortByEffectiveDate(hosting.filter((r) => effectiveRoundTimeMs(r) < nowMs)),
+        past: addTimeWindowCompat(sortByEffectiveDate(hosting.filter((r) => effectiveRoundTimeMs(r) < nowMs))),
       },
       joined: {
         upcoming: joinedPayload,
-        past: sortByEffectiveDate(joined.filter((r) => effectiveRoundTimeMs(r) < nowMs)),
+        past: addTimeWindowCompat(sortByEffectiveDate(joined.filter((r) => effectiveRoundTimeMs(r) < nowMs))),
       },
       invited: {
         upcoming: invitedPayload,
-        past: sortByEffectiveDate(invitedOnly.filter((r) => effectiveRoundTimeMs(r) < nowMs)),
+        past: addTimeWindowCompat(sortByEffectiveDate(invitedOnly.filter((r) => effectiveRoundTimeMs(r) < nowMs))),
       },
     });
   } catch (error) {

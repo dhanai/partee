@@ -31,7 +31,6 @@ import { parseParfadeRealtimeMessage } from "../../../lib/parfade-ably-messages"
 import { uploadImage, AVATAR_MAX_BYTES, COVER_MAX_BYTES } from "../../../lib/upload-image";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { colors } from "../../../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../../../lib/user-avatar-display";
 
 type GroupDetail = {
   id: string;
@@ -629,7 +628,7 @@ export default function GroupLandingScreen() {
       params: {
         userId: user.id,
         userName: user.name,
-        userAvatar: parfadeUserAvatarUrlForDisplay(user.avatar) ?? "",
+        userAvatar: user.avatar ?? "",
       },
     });
   }
@@ -812,7 +811,7 @@ export default function GroupLandingScreen() {
           if (item.type === "post") {
             const liked = item.viewerLiked ?? false;
             const likeCount = item.likeCount ?? 0;
-            const postAuthorAvatar = parfadeUserAvatarUrlForDisplay(item.user.avatar);
+            const postAuthorAvatar = item.user.avatar;
             return (
               <View style={styles.postCard}>
                 <View style={styles.postHeader}>
@@ -880,7 +879,7 @@ export default function GroupLandingScreen() {
           }
 
           if (item.type === "round_created") {
-            const actAvatar = parfadeUserAvatarUrlForDisplay(item.user.avatar);
+            const actAvatar = item.user.avatar;
             return (
               <Pressable
                 style={styles.activityRow}
@@ -916,7 +915,7 @@ export default function GroupLandingScreen() {
           }
 
           if (item.type === "member_joined") {
-            const joinAvatar = parfadeUserAvatarUrlForDisplay(item.user.avatar);
+            const joinAvatar = item.user.avatar;
             return (
               <Pressable style={styles.activityRow} onPress={() => goToProfile(item.user)}>
                 {joinAvatar ? (
@@ -1067,7 +1066,7 @@ export default function GroupLandingScreen() {
             <Text style={styles.commentEmpty}>No comments yet. Be the first!</Text>
           ) : (
             comments.map((comment) => {
-              const commentAvatar = parfadeUserAvatarUrlForDisplay(comment.user.avatar);
+              const commentAvatar = comment.user.avatar;
               return (
               <View key={comment.id} style={styles.commentRow}>
                 <Pressable onPress={() => goToProfile(comment.user)}>

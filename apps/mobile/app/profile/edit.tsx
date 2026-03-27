@@ -19,7 +19,8 @@ import { uploadImage, AVATAR_MAX_BYTES } from "../../lib/upload-image";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import { InitialAvatar } from "../../components/initial-avatar";
 import { colors } from "../../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
+
+const EDIT_AVATAR_RADIUS = 52;
 
 type MeResponse = {
   user: {
@@ -305,8 +306,6 @@ export default function EditProfileScreen() {
     email,
   ]);
 
-  const displayAvatar = parfadeUserAvatarUrlForDisplay(avatar);
-
   return (
     <ScrollView
       style={styles.container}
@@ -329,17 +328,22 @@ export default function EditProfileScreen() {
             accessibilityLabel="Change profile photo"
             accessibilityRole="button"
           >
-            {displayAvatar ? (
+            {avatar ? (
               <View style={styles.avatar} pointerEvents="none">
                 <Image
-                  source={{ uri: toAbsoluteUrl(displayAvatar) }}
+                  source={{ uri: toAbsoluteUrl(avatar) }}
                   style={StyleSheet.absoluteFill}
                   resizeMode="cover"
                 />
               </View>
             ) : (
               <View style={styles.avatar} pointerEvents="none">
-                <InitialAvatar name={name || "Parfade"} size={104} maxInitials={2} />
+                <InitialAvatar
+                  name={name || "Parfade"}
+                  size={104}
+                  maxInitials={2}
+                  borderRadius={EDIT_AVATAR_RADIUS}
+                />
               </View>
             )}
             <View style={styles.avatarCameraBadge} pointerEvents="none">
@@ -453,20 +457,20 @@ const styles = StyleSheet.create({
     height: 104,
     position: "relative",
     marginBottom: 2,
-    borderRadius: 999,
+    borderRadius: EDIT_AVATAR_RADIUS,
     /* overflow hidden on the touchable can break hit testing on iOS; clip on inner .avatar */
   },
   /** Full-bleed touch surface above visuals (opaque to hits, ~invisible). */
   avatarHitCatcher: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 4,
-    borderRadius: 999,
+    borderRadius: EDIT_AVATAR_RADIUS,
     backgroundColor: "rgba(255,255,255,0.04)",
   },
   avatar: {
     width: 104,
     height: 104,
-    borderRadius: 999,
+    borderRadius: EDIT_AVATAR_RADIUS,
     overflow: "hidden",
     backgroundColor: "#dfe6df",
   },

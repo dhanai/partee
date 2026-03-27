@@ -9,7 +9,8 @@ export type OptimisticRoundListPatch = {
   roundId: string;
   inviteToken: string;
   mode: "planning" | "scheduled";
-  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  preferredTimeWindow: string | null;
+  preferredTimeWindows?: string[] | null;
   planningLocation: string | null;
   courseName: string;
   courseId: string | null;
@@ -56,6 +57,7 @@ export function applyOptimisticToDiscoverRound(
     ...row,
     mode: p.mode,
     preferredTimeWindow: p.preferredTimeWindow,
+    preferredTimeWindows: p.preferredTimeWindows,
     planningLocation: p.planningLocation,
     courseName: p.mode === "scheduled" ? p.courseName || row.courseName : row.courseName,
     teeTime: p.teeTime,
@@ -73,6 +75,7 @@ export function applyOptimisticToMineRound(row: MineRound, p: OptimisticRoundLis
     ...row,
     mode: p.mode,
     preferredTimeWindow: p.preferredTimeWindow,
+    preferredTimeWindows: p.preferredTimeWindows,
     planningLocation: p.planningLocation,
     courseName:
       p.mode === "scheduled" ? (p.courseName || row.courseName) : (row.courseName ?? null),
@@ -92,6 +95,7 @@ export function applyOptimisticToRoundDetails(
     ...row,
     mode: p.mode,
     preferredTimeWindow: p.preferredTimeWindow,
+    preferredTimeWindows: p.preferredTimeWindows,
     planningLocation: p.planningLocation,
     courseName: p.mode === "scheduled" ? p.courseName || row.courseName : row.courseName,
     courseId: p.courseId ?? row.courseId,

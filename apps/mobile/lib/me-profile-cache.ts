@@ -1,5 +1,3 @@
-import { parfadeUserAvatarUrlForDisplay } from "./user-avatar-display";
-
 export type MeProfile = {
   id: string;
   name: string;
@@ -22,12 +20,7 @@ let meCacheEntry: MeCacheEntry | null = null;
 const listeners = new Set<(profile: MeProfile) => void>();
 
 export function getCachedMeProfile(): MeProfile | null {
-  const raw = meCacheEntry?.data ?? null;
-  if (!raw) return null;
-  return {
-    ...raw,
-    avatar: parfadeUserAvatarUrlForDisplay(raw.avatar),
-  };
+  return meCacheEntry?.data ?? null;
 }
 
 export function isMeProfileStale(): boolean {
@@ -36,15 +29,11 @@ export function isMeProfileStale(): boolean {
 }
 
 export function setCachedMeProfile(data: MeProfile) {
-  const normalized: MeProfile = {
-    ...data,
-    avatar: parfadeUserAvatarUrlForDisplay(data.avatar),
-  };
   meCacheEntry = {
-    data: normalized,
+    data,
     updatedAt: Date.now(),
   };
-  listeners.forEach((fn) => fn(normalized));
+  listeners.forEach((fn) => fn(data));
 }
 
 export function clearCachedMeProfile() {
@@ -53,5 +42,7 @@ export function clearCachedMeProfile() {
 
 export function subscribeMeProfile(fn: (profile: MeProfile) => void): () => void {
   listeners.add(fn);
-  return () => { listeners.delete(fn); };
+  return () => {
+    listeners.delete(fn);
+  };
 }

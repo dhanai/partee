@@ -24,6 +24,7 @@ import {
   formatPlanningHeaderDate,
   formatPlanningWindow,
   formatScheduledCardMeta,
+  getTimeWindows,
 } from "../../lib/round-card-meta";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
 import { buildRoundListHint, prefetchRoundOpen } from "../../lib/round-details-cache";
@@ -37,7 +38,6 @@ import { getHousePromosCached, type HousePromoSlotClient } from "../../lib/house
 import { parfadeRoundDetailChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { colors } from "../../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 import { DiscoverRound } from "../../types/round";
 
 type DiscoverResponse = {
@@ -634,18 +634,18 @@ export default function DiscoverScreen() {
               primaryMeta={
                 item.round.mode === "scheduled"
                   ? formatScheduledCardMeta(item.round.effectiveDate, item.round.teeTime)
-                  : formatPlanningWindow(item.round.preferredTimeWindow)
+                  : formatPlanningWindow(getTimeWindows(item.round))
               }
               planningLocation={item.round.planningLocation}
               planningHeaderDate={formatPlanningHeaderDate(item.round.effectiveDate)}
-              preferredTimeWindow={item.round.preferredTimeWindow}
+              preferredTimeWindow={getTimeWindows(item.round)}
               onPlayerPress={(player) =>
                 router.push({
                   pathname: "/profile/[userId]",
                   params: {
                     userId: player.id,
                     userName: player.name,
-                    userAvatar: parfadeUserAvatarUrlForDisplay(player.avatar) ?? "",
+                    userAvatar: player.avatar ?? "",
                   },
                 })
               }

@@ -2,7 +2,8 @@ export type DiscoverRound = {
   id: string;
   inviteToken: string;
   mode: "scheduled" | "planning";
-  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  preferredTimeWindow: string | null;
+  preferredTimeWindows?: string[] | null;
   planningLocation: string | null;
   courseName: string;
   teeTime: string | null;
@@ -27,7 +28,8 @@ export type RoundDetails = {
   id: string;
   inviteToken: string;
   mode: "scheduled" | "planning";
-  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  preferredTimeWindow: string | null;
+  preferredTimeWindows?: string[] | null;
   planningLocation: string | null;
   courseId?: string | null;
   courseName: string;
@@ -72,7 +74,8 @@ export type MineRound = {
   teeTime: string | null;
   targetDate: string;
   mode: "scheduled" | "planning";
-  preferredTimeWindow: "morning" | "afternoon" | "twilight" | null;
+  preferredTimeWindow: string | null;
+  preferredTimeWindows?: string[] | null;
   planningLocation: string | null;
   status: "forming" | "confirmed" | "completed";
   joinPolicy: "instant" | "approval";

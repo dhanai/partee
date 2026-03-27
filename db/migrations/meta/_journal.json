@@ -232,6 +232,20 @@
       "when": 1776300000000,
       "tag": "0032_game_types",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1776400000000,
+      "tag": "0033_account_deletion_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1776500000000,
+      "tag": "0034_preferred_time_window_array",
+      "breakpoints": true
     }
   ]
 }

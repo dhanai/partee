@@ -17,7 +17,6 @@ import {
 import { InviteFriendsSheet } from "../../../components/invite-friends-sheet";
 import { apiDelete, apiGet, apiPost } from "../../../lib/api";
 import { colors } from "../../../lib/theme";
-import { parfadeUserAvatarUrlForDisplay } from "../../../lib/user-avatar-display";
 import { InitialAvatar } from "../../../components/initial-avatar";
 
 type Member = {
@@ -140,7 +139,6 @@ export default function GroupMembersScreen() {
         }
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
-          const displayAvatar = parfadeUserAvatarUrlForDisplay(item.avatar);
           return (
           <View style={styles.memberRow}>
             <Pressable
@@ -151,13 +149,13 @@ export default function GroupMembersScreen() {
                   params: {
                     userId: item.userId,
                     userName: item.name,
-                    userAvatar: displayAvatar ?? "",
+                    userAvatar: item.avatar ?? "",
                   },
                 })
               }
             >
-              {displayAvatar ? (
-                <Image source={{ uri: displayAvatar }} style={styles.avatar} />
+              {item.avatar ? (
+                <Image source={{ uri: item.avatar }} style={styles.avatar} />
               ) : (
                 <InitialAvatar name={item.name} size={42} maxInitials={2} />
               )}

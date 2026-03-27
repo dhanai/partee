@@ -9,6 +9,7 @@ import { resolveValidatedUsLocation } from "@/lib/places";
 import { haversineMiles } from "@/lib/utils";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { resolveRoundImageUrl } from "@/lib/round-images";
+import { timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 const planningLocationCoordCache = new Map<
   string,
@@ -145,7 +146,7 @@ export async function GET(req: Request) {
         id: row.id,
         inviteToken: row.inviteToken,
         mode: row.mode,
-        preferredTimeWindow: row.preferredTimeWindow,
+        ...timeWindowResponseFields(row.preferredTimeWindow),
         planningLocation: row.planningLocation,
         courseName: row.courseName ?? "Course TBD",
         teeTime: row.teeTime,

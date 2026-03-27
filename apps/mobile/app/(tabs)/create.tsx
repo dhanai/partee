@@ -94,9 +94,7 @@ export default function CreateScreen() {
   const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [showLocationResults, setShowLocationResults] = useState(false);
-  const [preferredTimeWindow, setPreferredTimeWindow] = useState<
-    "morning" | "afternoon" | "twilight"
-  >("morning");
+  const [preferredTimeWindow, setPreferredTimeWindow] = useState<string[]>(["morning"]);
   const [teeDate, setTeeDate] = useState<Date | null>(null);
   const [teeTimeValue, setTeeTimeValue] = useState<Date>(() => defaultTopOfHourDate());
   const [timePickerOpen, setTimePickerOpen] = useState(false);
@@ -162,7 +160,7 @@ export default function CreateScreen() {
     setLocationResults([]);
     setShowLocationResults(false);
     setLoadingLocations(false);
-    setPreferredTimeWindow("morning");
+    setPreferredTimeWindow(["morning"]);
     setTeeDate(null);
     setTeeTimeValue(defaultTopOfHourDate());
     setTimePickerOpen(false);

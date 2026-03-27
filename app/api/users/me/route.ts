@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
-import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { db } from "@/db";
 import { userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { deleteUserAccount } from "@/lib/delete-user-account";
 import { publishAfterProfileUpdated } from "@/lib/parfade-ably-publish";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 
@@ -184,16 +184,7 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   try {
     const user = await requireDbUser(req);
-    const clerkId = user.clerkId;
-
-    await db.delete(users).where(eq(users.id, user.id));
-
-    try {
-      await clerkClient.users.deleteUser(clerkId);
-    } catch {
-      // Best-effort: Clerk user may already be deleted or unreachable.
-    }
-
+    await deleteUserAccount(user.id, user.clerkId);
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

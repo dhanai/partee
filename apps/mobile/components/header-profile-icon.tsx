@@ -5,12 +5,18 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
 
-import { apiPost } from "../lib/api";
+import { apiPost, toAbsoluteUrl } from "../lib/api";
 import { clearAllCaches } from "../lib/clear-all-caches";
 import { InitialAvatar } from "./initial-avatar";
 import { getCachedMeProfile, subscribeMeProfile } from "../lib/me-profile-cache";
 import { colors } from "../lib/theme";
 import { OverflowMenuSheet, type OverflowMenuItem } from "./overflow-menu-sheet";
+
+/** Header chip is a circle (not the rounded-square used on full profile). */
+const HEADER_IMG = 28;
+const HEADER_IMG_R = HEADER_IMG / 2;
+const HEADER_BTN = 30;
+const HEADER_BTN_R = HEADER_BTN / 2;
 
 export function HeaderProfileIcon() {
   const router = useRouter();
@@ -81,9 +87,9 @@ export function HeaderProfileIcon() {
         accessibilityLabel="Open profile"
       >
         {avatar ? (
-          <Image source={avatar} style={styles.avatar} transition={0} />
+          <Image source={{ uri: toAbsoluteUrl(avatar) }} style={styles.avatar} transition={0} />
         ) : getCachedMeProfile()?.name ? (
-          <InitialAvatar name={getCachedMeProfile()!.name} size={26} />
+          <InitialAvatar name={getCachedMeProfile()!.name} size={26} borderRadius={13} />
         ) : (
           <View style={styles.skeleton} />
         )}
@@ -99,22 +105,22 @@ export function HeaderProfileIcon() {
 
 const styles = StyleSheet.create({
   btn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: HEADER_BTN,
+    height: HEADER_BTN,
+    borderRadius: HEADER_BTN_R,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: HEADER_IMG,
+    height: HEADER_IMG,
+    borderRadius: HEADER_IMG_R,
   },
   skeleton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: HEADER_IMG,
+    height: HEADER_IMG,
+    borderRadius: HEADER_IMG_R,
     backgroundColor: "#e5e3de",
   },
 });
