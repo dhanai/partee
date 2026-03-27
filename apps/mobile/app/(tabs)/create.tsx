@@ -782,9 +782,11 @@ export default function CreateScreen() {
           onPress={() => void submit()}
           disabled={!canSubmit}
         >
-          <Text style={styles.primaryButtonText}>
-            {submitting ? "Creating..." : "Create round"}
-          </Text>
+          {submitting ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.primaryButtonText}>Create round</Text>
+          )}
         </Pressable>
       </View>
 

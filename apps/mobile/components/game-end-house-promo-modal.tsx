@@ -113,8 +113,8 @@ export function GameEndHousePromoModal({ visible, slot, onDismiss }: Props) {
         </View>
 
         <LinearGradient
-          colors={["transparent", "rgba(0,0,0,0.55)"]}
-          locations={[0, 0.35]}
+          colors={["transparent", "rgba(0,0,0,0.25)"]}
+          locations={[0, 0.4]}
           style={[styles.bottomSheet, { paddingBottom: Math.max(insets.bottom, 20) + 12 }]}
           pointerEvents="box-none"
         >
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 48,
     zIndex: 2,
   },
   swipeHint: {

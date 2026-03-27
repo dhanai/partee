@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, StyleSheet } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
@@ -81,8 +81,10 @@ export function HeaderProfileIcon() {
       >
         {avatar ? (
           <Image source={{ uri: avatar }} style={styles.avatar} />
+        ) : getCachedMeProfile()?.name ? (
+          <InitialAvatar name={getCachedMeProfile()!.name} size={26} />
         ) : (
-          <InitialAvatar name={getCachedMeProfile()?.name ?? "?"} size={26} />
+          <View style={styles.skeleton} />
         )}
       </Pressable>
       <OverflowMenuSheet
@@ -107,5 +109,11 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
+  },
+  skeleton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#e5e3de",
   },
 });

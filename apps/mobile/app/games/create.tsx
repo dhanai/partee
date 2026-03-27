@@ -392,9 +392,11 @@ export default function CreateGameScreen() {
         onPress={() => void submit()}
         disabled={!canStart}
       >
-        <Text style={styles.primaryBtnText}>
-          {submitting ? "Starting…" : "Start game"}
-        </Text>
+        {submitting ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Text style={styles.primaryBtnText}>Start game</Text>
+        )}
       </Pressable>
     </ScrollView>
 

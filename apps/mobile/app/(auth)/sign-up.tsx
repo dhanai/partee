@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   ScrollView,
@@ -196,9 +197,11 @@ export default function SignUpScreen() {
                   onPress={() => void onSignUp()}
                   disabled={submitting || ssoSubmitting || !canSubmitCreate}
                 >
-                  <Text style={authFormStyles.buttonText}>
-                    {submitting ? "Creating account..." : "Create account"}
-                  </Text>
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={authFormStyles.buttonText}>Create account</Text>
+                  )}
                 </Pressable>
                 <View style={authFormStyles.dividerRow}>
                   <View style={authFormStyles.dividerLine} />
@@ -253,9 +256,11 @@ export default function SignUpScreen() {
                   onPress={() => void onVerifyCode()}
                   disabled={submitting || !canSubmitVerify}
                 >
-                  <Text style={authFormStyles.buttonText}>
-                    {submitting ? "Verifying..." : "Verify code"}
-                  </Text>
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={authFormStyles.buttonText}>Verify code</Text>
+                  )}
                 </Pressable>
               </>
             )}

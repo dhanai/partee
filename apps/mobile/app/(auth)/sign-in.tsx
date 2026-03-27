@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   ScrollView,
@@ -257,9 +258,11 @@ export default function SignInScreen() {
                   onPress={() => void onVerifySecondFactor()}
                   disabled={submitting || googleSubmitting || !canSubmitSecondFactor}
                 >
-                  <Text style={authFormStyles.buttonText}>
-                    {submitting ? "Verifying..." : "Continue"}
-                  </Text>
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={authFormStyles.buttonText}>Continue</Text>
+                  )}
                 </Pressable>
                 {secondFactor.strategy === "email_code" || secondFactor.strategy === "phone_code" ? (
                   <Pressable
@@ -309,9 +312,11 @@ export default function SignInScreen() {
                   onPress={() => void onSignIn()}
                   disabled={submitting || ssoSubmitting || !canSubmitSignIn}
                 >
-                  <Text style={authFormStyles.buttonText}>
-                    {submitting ? "Signing in..." : "Sign in"}
-                  </Text>
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={authFormStyles.buttonText}>Sign in</Text>
+                  )}
                 </Pressable>
                 <View style={authFormStyles.dividerRow}>
                   <View style={authFormStyles.dividerLine} />

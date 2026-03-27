@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -122,9 +123,11 @@ export default function ForgotPasswordScreen() {
               onPress={() => void onRequestCode()}
               disabled={submitting || !canSubmitEmail}
             >
-              <Text style={authFormStyles.buttonText}>
-                {submitting ? "Sending..." : "Send reset code"}
-              </Text>
+              {submitting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={authFormStyles.buttonText}>Send reset code</Text>
+              )}
             </Pressable>
           </>
         ) : (
@@ -158,9 +161,11 @@ export default function ForgotPasswordScreen() {
               onPress={() => void onResetPassword()}
               disabled={submitting || !canSubmitReset}
             >
-              <Text style={authFormStyles.buttonText}>
-                {submitting ? "Resetting..." : "Reset password"}
-              </Text>
+              {submitting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={authFormStyles.buttonText}>Reset password</Text>
+              )}
             </Pressable>
             <Pressable
               style={authFormStyles.switchRow}

@@ -20,7 +20,7 @@ import {
 import { Image } from "expo-image";
 import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput } from "../../../components/animated-bottom-sheet-frame";
 import { InitialAvatar } from "../../../components/initial-avatar";
-import { OverflowMenuSheet, type OverflowMenuItem } from "../../../components/overflow-menu-sheet";
+import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../../components/report-sheet";
 import { useAbly } from "ably/react";
 import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin } from "../../../lib/api";
@@ -28,7 +28,7 @@ import { hapticLight } from "../../../lib/haptics";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
 import { parfadeGroupChannel, parfadePostChannel } from "../../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../../lib/parfade-ably-messages";
-import { uploadImage, AVATAR_MAX_BYTES, COVER_MAX_BYTES, POST_MAX_BYTES } from "../../../lib/upload-image";
+import { uploadImage, AVATAR_MAX_BYTES, COVER_MAX_BYTES } from "../../../lib/upload-image";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { colors } from "../../../lib/theme";
 
@@ -144,18 +144,8 @@ export default function GroupLandingScreen() {
   const [viewerImages, setViewerImages] = useState<string[]>([]);
   const [viewerVisible, setViewerVisible] = useState(false);
 
-  // Announcement bottom sheet
-  const [showAnnounceSheet, setShowAnnounceSheet] = useState(false);
-  const [announceDraft, setAnnounceDraft] = useState("");
-  const [editingAnnouncement, setEditingAnnouncement] = useState<{ id: string; body: string } | null>(null);
-  const [postingAnnouncement, setPostingAnnouncement] = useState(false);
-
   // Image upload
   const [uploadingImage, setUploadingImage] = useState<"profile" | "hero" | null>(null);
-
-  // Post image attachment
-  const [postImageUri, setPostImageUri] = useState<string | null>(null);
-  const [uploadingPostImage, setUploadingPostImage] = useState(false);
 
   const [overflowItem, setOverflowItem] = useState<ActivityItem | null>(null);
   const [reportItem, setReportItem] = useState<ActivityItem | null>(null);
@@ -417,95 +407,21 @@ export default function GroupLandingScreen() {
   // ── Announcements ─────────────────────────────────────────────
 
   const openNewAnnouncement = useCallback(() => {
-    setEditingAnnouncement(null);
-    setAnnounceDraft("");
-    setPostImageUri(null);
-    setShowAnnounceSheet(true);
-  }, []);
+    router.push({ pathname: "/group/[groupId]/post", params: { groupId } });
+  }, [router, groupId]);
 
   const openEditAnnouncement = useCallback((item: ActivityItem) => {
     setOverflowItem(null);
-    setEditingAnnouncement({ id: rawPostId(item), body: item.body ?? "" });
-    setAnnounceDraft(item.body ?? "");
-    setPostImageUri(item.imageUrl ?? null);
-    setShowAnnounceSheet(true);
-  }, []);
-
-  const pickPostImage = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission required", "Photo library access is needed to attach images.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      allowsEditing: true,
+    router.push({
+      pathname: "/group/[groupId]/post",
+      params: {
+        groupId,
+        editId: rawPostId(item),
+        editBody: item.body ?? "",
+        ...(item.imageUrl ? { editImageUrl: item.imageUrl } : {}),
+      },
     });
-    if (!result.canceled && result.assets[0]?.uri) {
-      setPostImageUri(result.assets[0].uri);
-    }
-  }, []);
-
-  const uploadPostImage = useCallback(async (localUri: string): Promise<string | null> => {
-    setUploadingPostImage(true);
-    try {
-      const url = await uploadImage({
-        uri: localUri,
-        filename: "post-image.jpg",
-        maxBytes: POST_MAX_BYTES,
-        getToken: getTokenRef.current,
-      });
-      return url;
-    } catch (e) {
-      Alert.alert("Upload failed", e instanceof Error ? e.message : "Could not upload image.");
-      return null;
-    } finally {
-      setUploadingPostImage(false);
-    }
-  }, []);
-
-  const handlePostOrEditAnnouncement = useCallback(async () => {
-    const body = announceDraft.trim();
-    if (!body) return;
-    setPostingAnnouncement(true);
-    try {
-      const token = await getTokenRef.current();
-
-      let imageUrl: string | null | undefined;
-      if (postImageUri && postImageUri.startsWith("http")) {
-        imageUrl = postImageUri;
-      } else if (postImageUri) {
-        const uploaded = await uploadPostImage(postImageUri);
-        if (!uploaded) {
-          setPostingAnnouncement(false);
-          return;
-        }
-        imageUrl = uploaded;
-      } else {
-        imageUrl = editingAnnouncement ? null : undefined;
-      }
-
-      if (editingAnnouncement) {
-        await apiPatch(
-          `/api/groups/${groupId}/announcements`,
-          { id: editingAnnouncement.id, body, imageUrl },
-          token,
-        );
-      } else {
-        await apiPost(`/api/groups/${groupId}/announcements`, { body, imageUrl }, token);
-      }
-      setAnnounceDraft("");
-      setEditingAnnouncement(null);
-      setPostImageUri(null);
-      setShowAnnounceSheet(false);
-      void load({ silent: true });
-    } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Could not post.");
-    } finally {
-      setPostingAnnouncement(false);
-    }
-  }, [announceDraft, editingAnnouncement, groupId, load, postImageUri, uploadPostImage]);
+  }, [router, groupId]);
 
   const handleDeleteAnnouncement = useCallback(
     (item: ActivityItem) => {
@@ -1043,84 +959,6 @@ export default function GroupLandingScreen() {
           ) : null
         }
       />
-
-      {/* Post / Edit Announcement bottom sheet */}
-      <AnimatedBottomSheetFrame
-        visible={showAnnounceSheet}
-        onClose={() => {
-          Keyboard.dismiss();
-          setShowAnnounceSheet(false);
-          setEditingAnnouncement(null);
-          setAnnounceDraft("");
-          setPostImageUri(null);
-        }}
-        sheetStyle={styles.announceSheetContent}
-      >
-        <Text style={styles.sheetTitle}>
-          {editingAnnouncement ? "Edit post" : "Create a post"}
-        </Text>
-        <BottomSheetTextInput
-          style={styles.sheetInput}
-          value={announceDraft}
-          onChangeText={setAnnounceDraft}
-          placeholder="What's on your mind?"
-          placeholderTextColor={colors.muted}
-          multiline
-          numberOfLines={4}
-          maxLength={2000}
-          autoFocus
-        />
-        {postImageUri ? (
-          <View style={styles.sheetImagePreviewWrap}>
-            <Image source={postImageUri} style={styles.sheetImagePreview} transition={0} />
-            <Pressable
-              style={styles.sheetImageRemove}
-              onPress={() => setPostImageUri(null)}
-              hitSlop={6}
-            >
-              <Ionicons name="close-circle" size={22} color="rgba(0,0,0,0.7)" />
-            </Pressable>
-          </View>
-        ) : null}
-        <View style={styles.sheetActions}>
-          <Pressable
-            style={styles.sheetImageBtn}
-            onPress={() => void pickPostImage()}
-            disabled={uploadingPostImage}
-          >
-            <Ionicons name="image-outline" size={22} color={colors.fairway} />
-          </Pressable>
-          <View style={{ flex: 1 }} />
-          <Pressable
-            style={styles.sheetCancel}
-            onPress={() => {
-              Keyboard.dismiss();
-              setShowAnnounceSheet(false);
-              setEditingAnnouncement(null);
-              setAnnounceDraft("");
-              setPostImageUri(null);
-            }}
-          >
-            <Text style={styles.sheetCancelText}>Cancel</Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.sheetPost,
-              (!announceDraft.trim() || postingAnnouncement) && styles.sheetPostDisabled,
-            ]}
-            onPress={handlePostOrEditAnnouncement}
-            disabled={!announceDraft.trim() || postingAnnouncement}
-          >
-            {postingAnnouncement ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.sheetPostText}>
-                {editingAnnouncement ? "Save" : "Post"}
-              </Text>
-            )}
-          </Pressable>
-        </View>
-      </AnimatedBottomSheetFrame>
 
       {/* Overflow action sheet for post */}
       <OverflowMenuSheet
@@ -1797,62 +1635,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // ── Announce bottom sheet ──────────────────────────────────
-  announceSheetContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  sheetTitle: {
-    color: colors.text,
-    fontWeight: "700",
-    fontSize: 18,
-    marginBottom: 12,
-  },
-  sheetInput: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 15,
-    color: colors.text,
-    minHeight: 100,
-    textAlignVertical: "top",
-  },
-  sheetImagePreviewWrap: {
-    marginTop: 10,
-    position: "relative",
-    alignSelf: "flex-start",
-  },
-  sheetImagePreview: {
-    width: 120,
-    height: 90,
-    borderRadius: 8,
-    backgroundColor: colors.fairwaySoft,
-  },
-  sheetImageRemove: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-  },
-  sheetImageBtn: {
-    padding: 8,
-  },
-  sheetActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 12,
-  },
-  sheetCancel: { paddingVertical: 10, paddingHorizontal: 16 },
-  sheetCancelText: { color: colors.muted, fontWeight: "600", fontSize: 15 },
-  sheetPost: {
-    backgroundColor: colors.fairway,
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-  },
-  sheetPostDisabled: { opacity: 0.5 },
-  sheetPostText: { color: "#fff", fontWeight: "700", fontSize: 15 },
 });

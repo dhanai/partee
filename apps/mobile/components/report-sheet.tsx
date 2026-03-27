@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   StyleSheet,
@@ -148,9 +149,11 @@ export function ReportSheet({
         onPress={() => void submit()}
         disabled={!canSubmit || submitting}
       >
-        <Text style={styles.submitBtnText}>
-          {submitting ? "Submitting..." : "Submit report"}
-        </Text>
+        {submitting ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Text style={styles.submitBtnText}>Submit report</Text>
+        )}
       </Pressable>
     </AnimatedBottomSheetFrame>
   );

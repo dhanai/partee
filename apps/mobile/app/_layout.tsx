@@ -283,6 +283,18 @@ export default function RootLayout() {
                 headerBackTitle: "",
               }}
             />
+            <Stack.Screen
+              name="group/[groupId]/post"
+              options={{
+                title: "",
+                headerShown: false,
+                presentation: "formSheet",
+                sheetAllowedDetents: [0.55, 1.0],
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 16,
+                sheetExpandsWhenScrolledToEdge: true,
+              }}
+            />
                 </Stack>
               </View>
             </KeyboardProvider>
