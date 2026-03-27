@@ -178,9 +178,7 @@ export default function SignInScreen() {
       router.replace("/(tabs)");
     } catch (googleError) {
       if (isSSOCancellation(googleError)) return;
-      setError(
-        googleError instanceof Error ? googleError.message : "Unable to sign in with Google.",
-      );
+      setError(formatClerkError(googleError));
     } finally {
       setGoogleSubmitting(false);
     }
@@ -204,9 +202,7 @@ export default function SignInScreen() {
       router.replace("/(tabs)");
     } catch (appleError) {
       if (isSSOCancellation(appleError)) return;
-      setError(
-        appleError instanceof Error ? appleError.message : "Unable to sign in with Apple.",
-      );
+      setError(formatClerkError(appleError));
     } finally {
       setAppleSubmitting(false);
     }

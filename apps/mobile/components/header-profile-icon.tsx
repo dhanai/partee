@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
@@ -80,7 +81,7 @@ export function HeaderProfileIcon() {
         accessibilityLabel="Open profile"
       >
         {avatar ? (
-          <Image source={{ uri: avatar }} style={styles.avatar} />
+          <Image source={avatar} style={styles.avatar} transition={0} />
         ) : getCachedMeProfile()?.name ? (
           <InitialAvatar name={getCachedMeProfile()!.name} size={26} />
         ) : (

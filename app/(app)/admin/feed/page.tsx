@@ -7,12 +7,20 @@ type FeedConfig = {
   sortMode: "chronological" | "scored";
 };
 
+type AppStoreConfig = {
+  iosAppId: string | null;
+};
+
 export default function AdminFeedPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [config, setConfig] = useState<FeedConfig>({ sortMode: "chronological" });
+
+  const [appStoreLoading, setAppStoreLoading] = useState(true);
+  const [appStoreSaving, setAppStoreSaving] = useState(false);
+  const [iosAppId, setIosAppId] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -29,9 +37,24 @@ export default function AdminFeedPage() {
     }
   }, []);
 
+  const loadAppStore = useCallback(async () => {
+    setAppStoreLoading(true);
+    try {
+      const res = await fetch("/api/admin/app-store");
+      const json = (await res.json()) as AppStoreConfig & { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Could not load");
+      setIosAppId(json.iosAppId ?? "");
+    } catch {
+      // ignore — field will just be empty
+    } finally {
+      setAppStoreLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadAppStore();
+  }, [load, loadAppStore]);
 
   async function toggleSortMode() {
     const next: FeedConfig["sortMode"] = config.sortMode === "chronological" ? "scored" : "chronological";
@@ -55,12 +78,33 @@ export default function AdminFeedPage() {
     }
   }
 
+  async function saveAppStoreId() {
+    setAppStoreSaving(true);
+    setError(null);
+    setNote(null);
+    try {
+      const res = await fetch("/api/admin/app-store", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ iosAppId: iosAppId.trim() || null }),
+      });
+      const json = (await res.json()) as AppStoreConfig & { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Save failed");
+      setIosAppId(json.iosAppId ?? "");
+      setNote(json.iosAppId ? "App Store ID saved. Homepage will show a download button." : "App Store ID cleared.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setAppStoreSaving(false);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-[30px] font-bold text-[#1c1c1e]">Feed settings</h1>
+        <h1 className="text-[30px] font-bold text-[#1c1c1e]">App settings</h1>
         <p className="mt-1 text-sm text-[#6e6e6e]">
-          Control how rounds appear in the Discover feed.
+          Control feed behavior and app distribution.
         </p>
       </div>
 
@@ -73,6 +117,47 @@ export default function AdminFeedPage() {
         </div>
       ) : null}
 
+      {/* App Store */}
+      <div className="space-y-4 rounded-xl border border-[#ece8e1] bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-bold text-[#1c1c1e]">App Store</h2>
+        <p className="text-sm text-[#6e6e6e]">
+          Set your Apple App Store ID to show a download button on the homepage instead of sign-up.
+        </p>
+        {appStoreLoading ? (
+          <div className="flex justify-center py-4">
+            <ParfadeSpinner size="sm" variant="muted" aria-label="Loading" />
+          </div>
+        ) : (
+          <>
+            <label className="block space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">
+                iOS App ID
+              </span>
+              <input
+                value={iosAppId}
+                onChange={(e) => setIosAppId(e.target.value)}
+                placeholder="e.g. 6743210548"
+                className="w-full rounded-lg border border-[#ece8e1] bg-[#faf8f5] px-3 py-2 text-sm"
+              />
+            </label>
+            {iosAppId.trim() ? (
+              <p className="text-xs text-[#999]">
+                URL: <span className="font-mono">https://apps.apple.com/app/id{iosAppId.trim()}</span>
+              </p>
+            ) : null}
+            <button
+              type="button"
+              disabled={appStoreSaving}
+              onClick={() => void saveAppStoreId()}
+              className="rounded-xl bg-[#1a3c2a] px-6 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {appStoreSaving ? "Saving…" : "Save"}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Feed sort */}
       {loading ? (
         <div className="flex justify-center py-16">
           <ParfadeSpinner size="md" variant="muted" aria-label="Loading" />
