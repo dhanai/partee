@@ -3,6 +3,7 @@ import Ably from "ably";
 import { NextResponse } from "next/server";
 import { requireDbUser } from "@/lib/auth";
 import {
+  parfadeConversationChannelsCapabilityPattern,
   parfadeDiscoverChannel,
   parfadeProfileChannelsCapabilityPattern,
   parfadeRoundDetailChannelsCapabilityPattern,
@@ -26,6 +27,7 @@ function clientCapability(userId: string): { [key: string]: capabilityOp[] } {
     [parfadeUserInboxChannel(userId)]: ["subscribe"],
     [parfadeProfileChannelsCapabilityPattern()]: ["subscribe"],
     [parfadeRoundDetailChannelsCapabilityPattern()]: ["subscribe"],
+    [parfadeConversationChannelsCapabilityPattern()]: ["subscribe"],
   };
 }
 

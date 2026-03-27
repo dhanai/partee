@@ -6,6 +6,7 @@ import { parfadeDiscoverChannel, parfadeUserInboxChannel } from "../lib/parfade-
 import { parseParfadeRealtimeMessage } from "../lib/parfade-ably-messages";
 import { useChatUnread } from "../lib/chat-unread-context";
 import { useInAppToast } from "../lib/in-app-toast-context";
+import { emitChatListsShouldRefresh } from "../lib/chat-lists-refresh";
 import { emitNotificationsListsShouldRefresh } from "../lib/notifications-list-refresh";
 import { emitRoundListsShouldRefresh } from "../lib/round-lists-refresh";
 import { useNotificationBadge } from "../lib/notification-badge-context";
@@ -61,6 +62,7 @@ export function ParfadeAppRealtime() {
       }
       if (parsed.type === "conversation-toast") {
         markConversationUnread(parsed.conversationId);
+        emitChatListsShouldRefresh();
         showConversationToast({
           conversationId: parsed.conversationId,
           senderName: parsed.senderName,

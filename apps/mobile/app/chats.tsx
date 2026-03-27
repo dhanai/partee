@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter, Stack } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -14,6 +14,7 @@ import { Image } from "expo-image";
 import { InitialAvatar } from "../components/initial-avatar";
 import { NotificationMustardDot } from "../components/notification-mustard-dot";
 import { apiGet, toAbsoluteUrl } from "../lib/api";
+import { subscribeChatListsRefresh } from "../lib/chat-lists-refresh";
 import { useChatUnread } from "../lib/chat-unread-context";
 import { colors } from "../lib/theme";
 
@@ -175,7 +176,7 @@ export default function ChatsScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
-  const { reportConversations } = useChatUnread();
+  const { reportConversations, unreadConversationIds } = useChatUnread();
 
   const [rows, setRows] = useState<ConversationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,9 +205,13 @@ export default function ChatsScreen() {
     }, [loadChats]),
   );
 
+  const loadChatsRef = useRef(loadChats);
+  loadChatsRef.current = loadChats;
+  useEffect(() => subscribeChatListsRefresh(() => void loadChatsRef.current()), []);
+
   const renderItem = useCallback(
     ({ item }: { item: ConversationRow }) => {
-      const unread = item.isUnread;
+      const unread = item.isUnread || unreadConversationIds.has(item.id);
       return (
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
@@ -253,7 +258,7 @@ export default function ChatsScreen() {
         </Pressable>
       );
     },
-    [router],
+    [router, unreadConversationIds],
   );
 
   return (

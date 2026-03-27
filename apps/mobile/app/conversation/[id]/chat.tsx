@@ -26,8 +26,11 @@ import { ChatTimestamp } from "../../../components/chat-timestamp";
 import { buildChatItems, chatItemKey, type ChatListItem } from "../../../lib/build-chat-items";
 import { RoundGroupChatComposer, type ComposerHandle, type PickedImageAsset } from "../../../components/round-group-chat-composer";
 import { TypingIndicator } from "../../../components/typing-indicator";
+import { useAbly } from "ably/react";
 import { apiGet, apiPost, apiDelete } from "../../../lib/api";
+import { useAblyChatMounted } from "../../../lib/ably-chat-context";
 import { imageAttachments } from "../../../lib/attachment-types";
+import { parfadeConversationChannel } from "../../../lib/parfade-ably-channels";
 import { uploadImage, POST_MAX_BYTES } from "../../../lib/upload-image";
 import { useChatUnread } from "../../../lib/chat-unread-context";
 import { GROUP_CHAT_COMPOSER_GAP } from "../../../lib/group-chat-layout-constants";
@@ -49,7 +52,7 @@ type MessagesResponse = {
   viewerId: string;
 };
 
-const POLL_MS = 5000;
+const FALLBACK_POLL_MS = 30_000;
 const INPUT_HEIGHT = 42;
 const MARGIN = 8;
 
@@ -244,11 +247,13 @@ export default function ConversationChatScreen() {
     void fetchMessages();
   }, [fetchMessages]);
 
+  const ablyMounted = useAblyChatMounted();
+
   useEffect(() => {
-    if (!conversationId) return;
-    const id = setInterval(() => void fetchMessages(), POLL_MS);
+    if (!conversationId || ablyMounted) return;
+    const id = setInterval(() => void fetchMessages(), FALLBACK_POLL_MS);
     return () => clearInterval(id);
-  }, [conversationId, fetchMessages]);
+  }, [conversationId, fetchMessages, ablyMounted]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -630,6 +635,9 @@ export default function ConversationChatScreen() {
 
   return (
     <>
+    {ablyMounted && conversationId ? (
+      <ConversationLiveSubscription conversationId={conversationId} onNewEvent={fetchMessages} />
+    ) : null}
     <ChatFreezeContext.Provider value={chatFreeze}>
     <View style={cStyles.root}>
       <View style={cStyles.listWrap}>
@@ -697,6 +705,28 @@ export default function ConversationChatScreen() {
     />
     </>
   );
+}
+
+function ConversationLiveSubscription({
+  conversationId,
+  onNewEvent,
+}: {
+  conversationId: string;
+  onNewEvent: () => void;
+}) {
+  const ably = useAbly();
+  useEffect(() => {
+    if (!conversationId) return;
+    const channel = ably.channels.get(parfadeConversationChannel(conversationId));
+    const handler = () => onNewEvent();
+    channel.subscribe("parfade", handler).catch(() => {
+      /* capability not yet granted — falls back to polling */
+    });
+    return () => {
+      try { channel.unsubscribe("parfade", handler); } catch { /* cleanup */ }
+    };
+  }, [ably, conversationId, onNewEvent]);
+  return null;
 }
 
 const cStyles = StyleSheet.create({

@@ -20,3 +20,7 @@ export function parfadeProfileChannelsCapabilityPattern(): string {
 export function parfadeRoundDetailChannel(inviteToken: string): string {
   return `${PARFADE_ABLY_NS}:round-detail:${inviteToken.trim()}`;
 }
+
+export function parfadeConversationChannel(conversationId: string): string {
+  return `${PARFADE_ABLY_NS}:conversation:${conversationId}`;
+}

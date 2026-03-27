@@ -25,6 +25,17 @@ function extractPhotoReference(
   return null;
 }
 
+function extractLatLng(
+  metadata: Record<string, unknown> | null | undefined,
+): { lat: number; lng: number } | null {
+  if (!metadata) return null;
+  const geo = metadata.geometry as { location?: { lat?: unknown; lng?: unknown } } | undefined;
+  const lat = geo?.location?.lat;
+  const lng = geo?.location?.lng;
+  if (typeof lat === "number" && typeof lng === "number") return { lat, lng };
+  return null;
+}
+
 export function resolveRoundImageUrl(input: {
   customImageUrl?: string | null;
   courseMetadata?: Record<string, unknown> | null;
@@ -35,6 +46,11 @@ export function resolveRoundImageUrl(input: {
   const photoReference = extractPhotoReference(input.courseMetadata);
   if (photoReference) {
     return `/api/images/course-photo?ref=${encodeURIComponent(photoReference)}`;
+  }
+
+  const coords = extractLatLng(input.courseMetadata);
+  if (coords) {
+    return `/api/images/course-satellite?lat=${coords.lat}&lng=${coords.lng}`;
   }
 
   return GENERIC_ROUND_IMAGE;

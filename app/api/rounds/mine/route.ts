@@ -71,12 +71,17 @@ export async function GET(req: Request) {
     const isChatUnreadSubquery = sql<boolean>`(
       SELECT CASE
         WHEN lm.last_msg IS NULL THEN false
+        WHEN lm.last_sender = ${sql.raw(`'${user.id}'`)} THEN false
         WHEN lr.last_read IS NULL THEN true
         WHEN lm.last_msg > lr.last_read THEN true
         ELSE false
       END
       FROM (
-        SELECT MAX(${messages.createdAt}) AS last_msg
+        SELECT MAX(${messages.createdAt}) AS last_msg,
+          (SELECT m3.user_id FROM ${messages} m3
+           INNER JOIN ${conversations} c3 ON c3.id = m3.conversation_id
+           WHERE c3.round_id = ${rounds.id} AND c3.type = 'round'
+           ORDER BY m3.created_at DESC LIMIT 1) AS last_sender
         FROM ${messages}
         INNER JOIN ${conversations} ON ${conversations.id} = ${messages.conversationId}
         WHERE ${conversations.roundId} = ${rounds.id} AND ${conversations.type} = 'round'
