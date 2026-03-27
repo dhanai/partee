@@ -8,7 +8,7 @@ import { ensureDbUser, requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
-import { normalizeTimeWindowInput, timeWindowResponseFields } from "@/lib/round-time-window-compat";
+import { timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 type RouteContext = {
   params: { token: string };

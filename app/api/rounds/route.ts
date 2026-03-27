@@ -10,7 +10,7 @@ import { notifyRoundInvites } from "@/lib/notify-user";
 import { publishAfterRoundCreated, publishRoundInviteToast } from "@/lib/parfade-ably-publish";
 import { buildRoundInvitePushBody, formatChatPushTitleLine } from "@/lib/round-invite-push-message";
 import { resolveRoundImageUrl } from "@/lib/round-images";
-import { normalizeTimeWindowInput, timeWindowResponseFields } from "@/lib/round-time-window-compat";
+import { timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 const createRoundSchema = z
   .object({
