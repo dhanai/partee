@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HousePromoSlotClient } from "../lib/house-promo-api";
 import { colors } from "../lib/theme";
@@ -111,7 +112,9 @@ export function GameEndHousePromoModal({ visible, slot, onDismiss }: Props) {
           </Pressable>
         </View>
 
-        <View
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.55)"]}
+          locations={[0, 0.35]}
           style={[styles.bottomSheet, { paddingBottom: Math.max(insets.bottom, 20) + 12 }]}
           pointerEvents="box-none"
         >
@@ -141,7 +144,7 @@ export function GameEndHousePromoModal({ visible, slot, onDismiss }: Props) {
           <Pressable onPress={onDismiss} style={styles.skip} accessibilityRole="button">
             <Text style={styles.skipText}>Skip</Text>
           </Pressable>
-        </View>
+        </LinearGradient>
       </View>
     </Modal>
   );
@@ -179,7 +182,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 20,
     paddingTop: 24,
-    backgroundColor: "rgba(0,0,0,0.55)",
     zIndex: 2,
   },
   swipeHint: {
