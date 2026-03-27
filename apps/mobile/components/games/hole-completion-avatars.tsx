@@ -2,7 +2,6 @@ import { Image } from "expo-image";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { toAbsoluteUrl } from "../../lib/api";
-import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 import type { GamePlayerRow } from "../../lib/games-api";
 import { colors } from "../../lib/theme";
 
@@ -14,20 +13,8 @@ const MAX_VISIBLE = 5;
 function AvatarInitialFallback({ initial, size }: { initial: string; size: number }) {
   const fontSize = Math.max(10, Math.round(size * 0.4));
   return (
-    <View style={[styles.fallback, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Text
-        style={[
-          styles.fallbackGlyph,
-          {
-            width: size,
-            height: size,
-            fontSize,
-            lineHeight: size,
-          },
-        ]}
-      >
-        {initial}
-      </Text>
+    <View style={[styles.fallback, StyleSheet.absoluteFillObject]}>
+      <Text style={[styles.fallbackGlyph, { fontSize }]}>{initial}</Text>
     </View>
   );
 }
@@ -80,7 +67,7 @@ export function HoleCompletionAvatars({
             {p?.avatar ? (
               <Image
                 source={{ uri: toAbsoluteUrl(p.avatar) }}
-                style={{ width: size, height: size, borderRadius: size / 2 }}
+                style={StyleSheet.absoluteFillObject}
                 contentFit="cover"
                 accessibilityIgnoresInvertColors
               />
@@ -100,7 +87,6 @@ export function HoleCompletionAvatars({
 /** Single circle for standings rows */
 export function StandingAvatar({ player, size = 32 }: { player: GamePlayerRow; size?: number }) {
   const initial = (player.name ?? "?").trim().charAt(0).toUpperCase() || "?";
-  const displayAvatar = parfadeUserAvatarUrlForDisplay(player.avatar);
   return (
     <View
       style={[
@@ -112,10 +98,10 @@ export function StandingAvatar({ player, size = 32 }: { player: GamePlayerRow; s
         },
       ]}
     >
-      {displayAvatar ? (
+      {player.avatar ? (
         <Image
-          source={{ uri: toAbsoluteUrl(displayAvatar) }}
-          style={{ width: size, height: size, borderRadius: size / 2 }}
+          source={{ uri: toAbsoluteUrl(player.avatar) }}
+          style={StyleSheet.absoluteFillObject}
           contentFit="cover"
           accessibilityIgnoresInvertColors
         />
@@ -146,16 +132,13 @@ const styles = StyleSheet.create({
   },
   fallback: {
     backgroundColor: "#ece8e1",
-    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  /** lineHeight === circle diameter centers one line; Android needs includeFontPadding: false. */
   fallbackGlyph: {
     fontWeight: "800",
     color: colors.muted,
     textAlign: "center",
-    textAlignVertical: "center",
-    // Optical center: cap letters still read low/right in the line box on both platforms.
-    transform: [{ translateX: -1.5 }, { translateY: -2 }],
     ...Platform.select({
       android: { includeFontPadding: false },
       default: {},
