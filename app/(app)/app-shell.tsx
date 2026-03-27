@@ -12,7 +12,6 @@ import {
 import { AppTabBar } from "@/components/app-tab-bar";
 import { NotificationBadgeWebProvider } from "@/components/notification-badge-web-context";
 import { ParfadeWordmark } from "@/components/parfade-wordmark";
-import { isRoundChatPath } from "@/lib/is-round-chat-path";
 
 const tabBarStackVar = {
   ["--app-tab-bar-stack" as string]:
@@ -21,9 +20,8 @@ const tabBarStackVar = {
 
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
-  const chatImmersive = isRoundChatPath(pathname);
   const adminImmersive = pathname === "/admin" || pathname?.startsWith("/admin/");
-  const hideTabBar = chatImmersive || adminImmersive;
+  const hideTabBar = adminImmersive;
 
   return (
     <AppAlertDialogProvider>

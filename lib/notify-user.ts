@@ -1,10 +1,8 @@
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { conversationParticipants, groupMembers, inAppNotifications, users } from "@/db/schema";
-import { listRoundChatPushRecipientUserIds } from "@/lib/round-chat-access";
 import {
   buildHostRsvpNotificationCopy,
-  formatChatPushTitleLine,
   formatInviterFirstLastInitial,
 } from "@/lib/round-invite-push-message";
 import { publishNotificationBadgeNudge } from "@/lib/parfade-ably-publish";
@@ -193,85 +191,6 @@ export async function notifyGroupPost(input: {
       title: `${input.groupName} — Post`,
       body: `${input.senderName}: ${preview}`,
       data: { type: "group_post", groupId: input.groupId },
-    })),
-  );
-}
-
-const CHAT_PREVIEW_MAX = 140;
-
-/**
- * Push to other group-chat participants when someone sends a message (host + confirmed; not sender).
- */
-export async function notifyRoundChatMessagePushes(input: {
-  roundId: string;
-  inviteToken: string;
-  senderUserId: string;
-  senderName: string;
-  messageBody: string;
-  courseName: string | null;
-  planningLocation: string | null;
-  mode: "planning" | "scheduled";
-  teeTime: Date | null;
-  targetDate: Date;
-}): Promise<void> {
-  const recipientIds = await listRoundChatPushRecipientUserIds(
-    input.roundId,
-    input.senderUserId,
-  );
-  if (recipientIds.length === 0) {
-    if (process.env.EXPO_DEBUG_PUSH === "1") {
-      console.warn("[notifyRoundChatMessagePushes] No eligible recipients.", {
-        roundId: input.roundId,
-        senderUserId: input.senderUserId,
-      });
-    }
-    return;
-  }
-
-  const rows = await db
-    .select({ token: users.expoPushToken })
-    .from(users)
-    .where(inArray(users.id, recipientIds));
-
-  const tokens = rows
-    .map((r) => r.token?.trim())
-    .filter((t): t is string => Boolean(t));
-
-  if (tokens.length === 0) {
-    if (process.env.EXPO_DEBUG_PUSH === "1") {
-      console.warn("[notifyRoundChatMessagePushes] Recipients have no expo push tokens.", {
-        roundId: input.roundId,
-        recipientCount: recipientIds.length,
-      });
-    }
-    return;
-  }
-
-  const title = formatChatPushTitleLine({
-    courseName: input.courseName,
-    planningLocation: input.planningLocation,
-    mode: input.mode,
-    teeTime: input.teeTime,
-    targetDate: input.targetDate,
-  });
-  const who = formatInviterFirstLastInitial(input.senderName);
-  const raw = input.messageBody.trim();
-  const preview =
-    raw.length > CHAT_PREVIEW_MAX ? `${raw.slice(0, CHAT_PREVIEW_MAX - 1)}…` : raw;
-  const body = `${who}: ${preview}`;
-
-  const data = {
-    type: "round_chat",
-    inviteToken: input.inviteToken,
-  } as const;
-
-  await sendExpoPushMessages(
-    tokens.map((to) => ({
-      to,
-      sound: "default" as const,
-      title,
-      body,
-      data,
     })),
   );
 }

@@ -15,14 +15,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { toAbsoluteUrl } from "./api";
 import { colors } from "./theme";
 
-export type GroupChatToastPayload = {
-  inviteToken: string;
-  roundTitle: string;
-  senderName: string;
-  senderAvatar?: string;
-  bodyPreview: string;
-};
-
 export type RsvpToastPayload = {
   inviteToken: string;
   roundTitle: string;
@@ -31,29 +23,43 @@ export type RsvpToastPayload = {
   spotStatus: "confirmed" | "requested" | "declined";
 };
 
+export type ConversationToastPayload = {
+  conversationId: string;
+  senderName: string;
+  senderAvatar?: string;
+  bodyPreview: string;
+};
+
+export type RoundInviteToastPayload = {
+  inviteToken: string;
+  roundTitle: string;
+  inviterName: string;
+  inviterAvatar?: string;
+};
+
 type ToastItem =
-  | { type: "group-chat"; payload: GroupChatToastPayload }
-  | { type: "rsvp"; payload: RsvpToastPayload };
+  | { type: "rsvp"; payload: RsvpToastPayload }
+  | { type: "conversation"; payload: ConversationToastPayload }
+  | { type: "round-invite"; payload: RoundInviteToastPayload };
 
 type InAppToastContextValue = {
-  showGroupChatToast: (payload: GroupChatToastPayload) => void;
   showRsvpToast: (payload: RsvpToastPayload) => void;
+  showConversationToast: (payload: ConversationToastPayload) => void;
+  showRoundInviteToast: (payload: RoundInviteToastPayload) => void;
 };
 
 const InAppToastContext = createContext<InAppToastContextValue | null>(null);
-
-function isViewingRoundChatPath(path: string, inviteToken: string): boolean {
-  const t = inviteToken.trim();
-  if (!t) return false;
-  const n = path.replace(/\/+/g, "/");
-  return n.includes(`/round/${t}/chat`);
-}
 
 function isViewingRoundDetailPath(path: string, inviteToken: string): boolean {
   const t = inviteToken.trim();
   if (!t) return false;
   const n = path.replace(/\/+/g, "/");
   return n === `/round/${t}` || n.startsWith(`/round/${t}/`);
+}
+
+function isViewingConversationChat(path: string, conversationId: string): boolean {
+  const n = path.replace(/\/+/g, "/");
+  return n.includes(`/conversation/${conversationId}/chat`);
 }
 
 function rsvpBodyText(status: RsvpToastPayload["spotStatus"]): string {
@@ -113,18 +119,26 @@ export function InAppToastProvider({ children }: { children: ReactNode }) {
     [clearTimer, hide, translateY],
   );
 
-  const showGroupChatToast = useCallback(
-    (p: GroupChatToastPayload) => {
-      if (isViewingRoundChatPath(pathnameRef.current, p.inviteToken)) return;
-      showToast({ type: "group-chat", payload: p });
-    },
-    [showToast],
-  );
-
   const showRsvpToast = useCallback(
     (p: RsvpToastPayload) => {
       if (isViewingRoundDetailPath(pathnameRef.current, p.inviteToken)) return;
       showToast({ type: "rsvp", payload: p });
+    },
+    [showToast],
+  );
+
+  const showConversationToast = useCallback(
+    (p: ConversationToastPayload) => {
+      if (isViewingConversationChat(pathnameRef.current, p.conversationId)) return;
+      showToast({ type: "conversation", payload: p });
+    },
+    [showToast],
+  );
+
+  const showRoundInviteToast = useCallback(
+    (p: RoundInviteToastPayload) => {
+      if (isViewingRoundDetailPath(pathnameRef.current, p.inviteToken)) return;
+      showToast({ type: "round-invite", payload: p });
     },
     [showToast],
   );
@@ -134,12 +148,17 @@ export function InAppToastProvider({ children }: { children: ReactNode }) {
   const handlePress = useCallback(() => {
     const t = toastRef.current;
     if (!t) return;
-    if (t.type === "group-chat") {
+    if (t.type === "rsvp") {
       router.push({
-        pathname: "/round/[token]/chat",
+        pathname: "/round/[token]",
         params: { token: t.payload.inviteToken },
       });
-    } else if (t.type === "rsvp") {
+    } else if (t.type === "conversation") {
+      router.push({
+        pathname: "/conversation/[id]/chat",
+        params: { id: t.payload.conversationId },
+      });
+    } else if (t.type === "round-invite") {
       router.push({
         pathname: "/round/[token]",
         params: { token: t.payload.inviteToken },
@@ -149,26 +168,32 @@ export function InAppToastProvider({ children }: { children: ReactNode }) {
   }, [hide, router]);
 
   const value = useMemo(
-    () => ({ showGroupChatToast, showRsvpToast }),
-    [showGroupChatToast, showRsvpToast],
+    () => ({ showRsvpToast, showConversationToast, showRoundInviteToast }),
+    [showRsvpToast, showConversationToast, showRoundInviteToast],
   );
 
   let kicker = "";
   let avatarUrl: string | undefined;
   let title = "";
   let body = "";
-  if (toast?.type === "group-chat") {
-    const p = toast.payload;
-    kicker = `Group chat · ${p.roundTitle}`;
-    avatarUrl = p.senderAvatar;
-    title = p.senderName;
-    body = p.bodyPreview;
-  } else if (toast?.type === "rsvp") {
+  if (toast?.type === "rsvp") {
     const p = toast.payload;
     kicker = p.roundTitle;
     avatarUrl = p.guestAvatar;
     title = p.guestName;
     body = rsvpBodyText(p.spotStatus);
+  } else if (toast?.type === "conversation") {
+    const p = toast.payload;
+    kicker = "Message";
+    avatarUrl = p.senderAvatar;
+    title = p.senderName;
+    body = p.bodyPreview;
+  } else if (toast?.type === "round-invite") {
+    const p = toast.payload;
+    kicker = p.roundTitle;
+    avatarUrl = p.inviterAvatar;
+    title = p.inviterName;
+    body = "Invited you to a round.";
   }
 
   return (

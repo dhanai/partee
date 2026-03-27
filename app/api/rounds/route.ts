@@ -7,8 +7,8 @@ import { conversationParticipants, conversations, courses, rounds, spots, users 
 import { requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { notifyRoundInvites } from "@/lib/notify-user";
-import { publishAfterRoundCreated } from "@/lib/parfade-ably-publish";
-import { buildRoundInvitePushBody } from "@/lib/round-invite-push-message";
+import { publishAfterRoundCreated, publishRoundInviteToast } from "@/lib/parfade-ably-publish";
+import { buildRoundInvitePushBody, formatChatPushTitleLine } from "@/lib/round-invite-push-message";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
 const createRoundSchema = z
@@ -233,6 +233,23 @@ export async function POST(req: Request) {
           planningLocation: createdRound.planningLocation,
         }),
       });
+
+      const roundTitle = formatChatPushTitleLine({
+        courseName: createdRound.courseName,
+        planningLocation: createdRound.planningLocation,
+        mode: createdRound.mode,
+        teeTime: createdRound.teeTime,
+        targetDate: createdRound.targetDate,
+      });
+      for (const uid of inviteeUserIds) {
+        publishRoundInviteToast({
+          inviteeUserId: uid,
+          inviteToken: createdRound.inviteToken,
+          roundTitle,
+          inviterName: user.name,
+          inviterAvatar: user.avatar,
+        });
+      }
     }
 
     publishAfterRoundCreated({

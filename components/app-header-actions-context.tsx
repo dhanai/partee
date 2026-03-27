@@ -12,7 +12,6 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppHeaderNotificationBell } from "@/components/app-header-notification-bell";
-import { isRoundChatPath } from "@/lib/is-round-chat-path";
 
 type Value = {
   node: ReactNode | null;
@@ -48,7 +47,7 @@ export function useAppHeaderActions() {
 export function AppHeaderActionsSlot() {
   const ctx = useContext(AppHeaderActionsContext);
   const pathname = usePathname();
-  const hideBell = isRoundChatPath(pathname);
+  const hideBell = false;
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {

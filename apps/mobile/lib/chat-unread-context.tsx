@@ -9,12 +9,9 @@ import {
 
 type ChatUnreadContextValue = {
   hasAnyUnreadChat: boolean;
-  isRoundChatUnread: (inviteToken: string) => boolean;
-  markChatRead: (inviteToken: string) => void;
-  markRoundChatUnread: (inviteToken: string) => void;
-  reportRounds: (rounds: Array<{ inviteToken: string; isChatUnread?: boolean }>) => void;
   unreadConversationIds: Set<string>;
   markConversationRead: (conversationId: string) => void;
+  markConversationUnread: (conversationId: string) => void;
   reportConversations: (convos: Array<{ id: string; isUnread: boolean }>) => void;
   resetUnread: () => void;
 };
@@ -22,49 +19,7 @@ type ChatUnreadContextValue = {
 const ChatUnreadContext = createContext<ChatUnreadContextValue | null>(null);
 
 export function ChatUnreadProvider({ children }: { children: ReactNode }) {
-  const [unreadTokens, setUnreadTokens] = useState<Set<string>>(new Set());
   const [unreadConvIds, setUnreadConvIds] = useState<Set<string>>(new Set());
-
-  const reportRounds = useCallback(
-    (rounds: Array<{ inviteToken: string; isChatUnread?: boolean }>) => {
-      setUnreadTokens((prev) => {
-        const next = new Set(prev);
-        for (const r of rounds) {
-          if (r.isChatUnread) {
-            next.add(r.inviteToken);
-          } else {
-            next.delete(r.inviteToken);
-          }
-        }
-        if (prev.size === next.size && [...next].every((t) => prev.has(t))) return prev;
-        return next;
-      });
-    },
-    [],
-  );
-
-  const markChatRead = useCallback((inviteToken: string) => {
-    setUnreadTokens((prev) => {
-      if (!prev.has(inviteToken)) return prev;
-      const next = new Set(prev);
-      next.delete(inviteToken);
-      return next;
-    });
-  }, []);
-
-  const markRoundChatUnread = useCallback((inviteToken: string) => {
-    setUnreadTokens((prev) => {
-      if (prev.has(inviteToken)) return prev;
-      const next = new Set(prev);
-      next.add(inviteToken);
-      return next;
-    });
-  }, []);
-
-  const isRoundChatUnread = useCallback(
-    (inviteToken: string) => unreadTokens.has(inviteToken),
-    [unreadTokens],
-  );
 
   const reportConversations = useCallback(
     (convos: Array<{ id: string; isUnread: boolean }>) => {
@@ -90,24 +45,29 @@ export function ChatUnreadProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const markConversationUnread = useCallback((conversationId: string) => {
+    setUnreadConvIds((prev) => {
+      if (prev.has(conversationId)) return prev;
+      const next = new Set(prev);
+      next.add(conversationId);
+      return next;
+    });
+  }, []);
+
   const resetUnread = useCallback(() => {
-    setUnreadTokens(new Set());
     setUnreadConvIds(new Set());
   }, []);
 
   const value = useMemo(
     () => ({
-      hasAnyUnreadChat: unreadTokens.size > 0 || unreadConvIds.size > 0,
-      isRoundChatUnread,
-      markChatRead,
-      markRoundChatUnread,
-      reportRounds,
+      hasAnyUnreadChat: unreadConvIds.size > 0,
       unreadConversationIds: unreadConvIds,
       markConversationRead,
+      markConversationUnread,
       reportConversations,
       resetUnread,
     }),
-    [unreadTokens, unreadConvIds, isRoundChatUnread, markChatRead, markRoundChatUnread, reportRounds, markConversationRead, reportConversations, resetUnread],
+    [unreadConvIds, markConversationRead, markConversationUnread, reportConversations, resetUnread],
   );
 
   return (

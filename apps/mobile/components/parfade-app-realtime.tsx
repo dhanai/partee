@@ -20,8 +20,8 @@ const PARFADE_EVENT = "parfade";
 export function ParfadeAppRealtime() {
   const ably = useAbly();
   const { refresh: refreshNotificationBadge } = useNotificationBadge();
-  const { showGroupChatToast, showRsvpToast } = useInAppToast();
-  const { markRoundChatUnread } = useChatUnread();
+  const { showRsvpToast, showConversationToast, showRoundInviteToast } = useInAppToast();
+  const { markConversationUnread } = useChatUnread();
   const [inboxUserId, setInboxUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,16 +50,6 @@ export function ParfadeAppRealtime() {
         }
         return;
       }
-      if (parsed.type === "group-chat-toast") {
-        markRoundChatUnread(parsed.inviteToken);
-        showGroupChatToast({
-          inviteToken: parsed.inviteToken,
-          roundTitle: parsed.roundTitle,
-          senderName: parsed.senderLabel,
-          senderAvatar: parsed.senderAvatar,
-          bodyPreview: parsed.bodyPreview,
-        });
-      }
       if (parsed.type === "rsvp-toast") {
         showRsvpToast({
           inviteToken: parsed.inviteToken,
@@ -69,8 +59,26 @@ export function ParfadeAppRealtime() {
           spotStatus: parsed.spotStatus,
         });
       }
+      if (parsed.type === "conversation-toast") {
+        markConversationUnread(parsed.conversationId);
+        showConversationToast({
+          conversationId: parsed.conversationId,
+          senderName: parsed.senderName,
+          senderAvatar: parsed.senderAvatar,
+          bodyPreview: parsed.bodyPreview,
+        });
+      }
+      if (parsed.type === "round-invite-toast") {
+        emitRoundListsShouldRefresh();
+        showRoundInviteToast({
+          inviteToken: parsed.inviteToken,
+          roundTitle: parsed.roundTitle,
+          inviterName: parsed.inviterName,
+          inviterAvatar: parsed.inviterAvatar,
+        });
+      }
     },
-    [refreshNotificationBadge, showGroupChatToast, showRsvpToast, markRoundChatUnread],
+    [refreshNotificationBadge, showRsvpToast, showConversationToast, showRoundInviteToast, markConversationUnread],
   );
 
   const onDiscoverMessage = useCallback((message: Message) => {

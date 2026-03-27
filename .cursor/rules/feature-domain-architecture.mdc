@@ -1,0 +1,66 @@
+---
+description: Feature domain architecture - shared logic in lib/, thin route wrappers, single source of truth per domain
+alwaysApply: true
+---
+
+# Feature Domain Architecture
+
+Every feature domain (conversations, games, posts, groups, rounds, etc.) must follow this pattern: **shared logic lives in `lib/`, API routes are thin wrappers, and there is exactly one implementation per concern.**
+
+## Structure
+
+Each domain gets its own set of shared modules in `lib/`:
+
+```
+lib/
+  conversation-message-helpers.ts   # getMessages, sendMessage, types, schemas
+  conversation-reaction-helpers.ts  # addReaction, removeReaction
+  conversation-read-receipt.ts      # markConversationRead
+  conversation-access.ts            # isConversationParticipant
+  conversation-ably.ts              # publishConversationMessage (realtime)
+```
+
+## API Routes Are Thin Wrappers
+
+Route files do ONLY three things: authenticate, authorize, and delegate to shared logic.
+
+```typescript
+// GOOD - thin wrapper
+export async function POST(req: Request, { params }: RouteContext) {
+  const viewer = await requireDbUser(req);
+  if (!(await isConversationParticipant(params.id, viewer.id))) {
+    return NextResponse.json({ error: "Not a participant." }, { status: 403 });
+  }
+  const parsed = messagePostSchema.parse(await req.json());
+  const message = await sendConversationMessage({ conversationId: params.id, ... });
+  return NextResponse.json({ message });
+}
+
+// BAD - business logic inline in the route
+export async function POST(req: Request, { params }: RouteContext) {
+  const viewer = await requireDbUser(req);
+  // 50 lines of DB queries, mapping, notification logic...
+}
+```
+
+## Never Duplicate Logic Across Routes
+
+If two routes (e.g., `/api/conversations/[id]/messages` and `/api/rounds/[token]/messages`) need the same behavior, they must call the same shared function. The only difference should be how they resolve the resource ID.
+
+Before adding a new route that touches an existing domain, check `lib/` for existing helpers.
+
+## One Notification Pipeline Per Domain
+
+Realtime events (Ably), push notifications, in-app toasts, and unread tracking for a domain must go through ONE code path. Never create parallel notification pipelines (e.g., `group-chat-toast` AND `conversation-toast` for the same thing).
+
+## Mobile: One Screen Per Domain
+
+Chat has one screen (`conversation/[id]/chat.tsx`), not separate screens for DMs, round chats, and group chats. The `type` field on the conversation distinguishes behavior, not separate code paths.
+
+## Checklist Before Adding a Feature
+
+1. Does a shared helper already exist in `lib/` for this domain? Use it.
+2. Is the new route a thin wrapper? No inline business logic.
+3. Are you creating a second notification path for something that already has one? Don't.
+4. Are you duplicating a type definition that exists elsewhere? Import it.
+5. Would this change need to be made in more than one file to stay consistent? Refactor first.

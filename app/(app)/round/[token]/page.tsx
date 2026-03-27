@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
+
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { ConfirmedSpotsRowWeb } from "@/components/confirmed-spots-row-web";
 import { OpenInParfadeAppBar } from "@/components/open-in-parfade-app";
@@ -33,7 +33,6 @@ type RoundDetails = {
   spotsRemaining: number;
   isHost: boolean;
   currentUserSpotStatus: string | null;
-  lastChatMessage?: { body: string; senderName: string; createdAt: string };
 };
 
 type CourseSearchResult = {
@@ -236,8 +235,6 @@ export default function RoundInvitePage({
   const isFull = round.spotsRemaining <= 0;
   const confirmedPlayers = round.confirmedPlayers ?? [];
   const declinedPlayers = round.declinedPlayers ?? [];
-  const canUseGroupChat = round.isHost || round.currentUserSpotStatus === "confirmed";
-
   return (
     <section className="space-y-5">
       <RoundDetailHostMenu inviteToken={params.token} isHost={round.isHost} />
@@ -354,45 +351,25 @@ export default function RoundInvitePage({
       </div>
 
       <SignedIn>
-        {canUseGroupChat ? (
-          <Link
-            href={`/round/${params.token}/chat`}
-            className="mb-2 flex items-center gap-3 rounded-xl border border-[#ece8e1] bg-white p-3 shadow-sm transition hover:bg-[#faf8f5] active:opacity-95"
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4ef] text-[#1a3c2a]">
-              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M8 10h8M8 14h5M6 4h12a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 3v-3H6a2 2 0 01-2-2V6a2 2 0 012-2z"
-                  stroke="currentColor"
-                  strokeWidth="1.75"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-base font-bold text-[#1c1c1e]">Group chat</p>
-              {round.lastChatMessage ? (
-                <p className="truncate text-[13px] leading-snug text-[#6e6e6e]">
-                  <span className="font-semibold">{round.lastChatMessage.senderName}</span>
-                  {": "}
-                  {round.lastChatMessage.body}
-                </p>
-              ) : (
-                <p className="text-[13px] leading-snug text-[#6e6e6e]">
-                  Host and confirmed players only.
-                </p>
-              )}
-            </div>
-            <span className="shrink-0 text-[#6e6e6e]" aria-hidden>
-              &rsaquo;
-            </span>
-          </Link>
-        ) : (
-          <div className="rounded-2xl border border-[#ece8e1] bg-[#faf8f5] px-4 py-3 text-sm text-[#6e6e6e]">
-            Group chat is for the host and players who have claimed a spot.
+        <div className="flex items-center gap-3 rounded-xl border border-[#ece8e1] bg-white p-3 shadow-sm">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4ef] text-[#1a3c2a]">
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M8 10h8M8 14h5M6 4h12a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 3v-3H6a2 2 0 01-2-2V6a2 2 0 012-2z"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-bold text-[#1c1c1e]">Group chat</p>
+            <p className="text-[13px] leading-snug text-[#6e6e6e]">
+              Open the Parfade app to chat with your group.
+            </p>
           </div>
-        )}
+        </div>
       </SignedIn>
 
       {round.isHost && (

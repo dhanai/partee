@@ -124,6 +124,8 @@ export default function ConversationChatScreen() {
     })();
   }, [conversationId, meta]);
 
+  const metaLoading = !meta;
+
   useLayoutEffect(() => {
     navigation.setOptions({
       headerTitle: () => (
@@ -131,23 +133,25 @@ export default function ConversationChatScreen() {
           type={meta?.type ?? "dm"}
           title={meta?.title ?? ""}
           avatars={meta?.participantAvatars ?? []}
+          loading={metaLoading}
         />
       ),
-      headerRight: () => (
-        <ChatHeaderInfoButton
-          onPress={() =>
-            router.push({
-              pathname: "/chat-info",
-              params: {
-                conversationId: conversationId ?? "",
-                chatType: meta?.type ?? "dm",
-              },
-            })
-          }
-        />
-      ),
+      headerRight: () =>
+        metaLoading ? null : (
+          <ChatHeaderInfoButton
+            onPress={() =>
+              router.push({
+                pathname: "/chat-info",
+                params: {
+                  conversationId: conversationId ?? "",
+                  chatType: meta?.type ?? "dm",
+                },
+              })
+            }
+          />
+        ),
     });
-  }, [navigation, meta, router, conversationId]);
+  }, [navigation, meta, metaLoading, router, conversationId]);
 
   const [msgs, setMsgs] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);

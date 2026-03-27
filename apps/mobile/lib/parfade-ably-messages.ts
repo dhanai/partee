@@ -6,21 +6,28 @@ export type ParfadeRealtimeMessageV1 =
   | { v: 1; type: "round-detail-updated"; inviteToken: string; reason?: string }
   | {
       v: 1;
-      type: "group-chat-toast";
-      inviteToken: string;
-      roundTitle: string;
-      senderLabel: string;
-      senderAvatar?: string;
-      bodyPreview: string;
-    }
-  | {
-      v: 1;
       type: "rsvp-toast";
       inviteToken: string;
       roundTitle: string;
       guestName: string;
       guestAvatar?: string;
       spotStatus: "confirmed" | "requested" | "declined";
+    }
+  | {
+      v: 1;
+      type: "conversation-toast";
+      conversationId: string;
+      senderName: string;
+      senderAvatar?: string;
+      bodyPreview: string;
+    }
+  | {
+      v: 1;
+      type: "round-invite-toast";
+      inviteToken: string;
+      roundTitle: string;
+      inviterName: string;
+      inviterAvatar?: string;
     };
 
 export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessageV1 | null {
@@ -70,31 +77,6 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
       reason: typeof reasonRaw === "string" ? reasonRaw : undefined,
     };
   }
-  if (o.type === "group-chat-toast") {
-    const r = raw as {
-      inviteToken?: unknown;
-      roundTitle?: unknown;
-      senderLabel?: unknown;
-      senderAvatar?: unknown;
-      bodyPreview?: unknown;
-    };
-    if (
-      typeof r.inviteToken === "string" &&
-      typeof r.roundTitle === "string" &&
-      typeof r.senderLabel === "string" &&
-      typeof r.bodyPreview === "string"
-    ) {
-      return {
-        v: 1,
-        type: "group-chat-toast",
-        inviteToken: r.inviteToken,
-        roundTitle: r.roundTitle,
-        senderLabel: r.senderLabel,
-        senderAvatar: typeof r.senderAvatar === "string" ? r.senderAvatar : undefined,
-        bodyPreview: r.bodyPreview,
-      };
-    }
-  }
   if (o.type === "rsvp-toast") {
     const r = raw as {
       inviteToken?: unknown;
@@ -117,6 +99,50 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
         guestName: r.guestName,
         guestAvatar: typeof r.guestAvatar === "string" ? r.guestAvatar : undefined,
         spotStatus: r.spotStatus,
+      };
+    }
+  }
+  if (o.type === "conversation-toast") {
+    const r = raw as {
+      conversationId?: unknown;
+      senderName?: unknown;
+      senderAvatar?: unknown;
+      bodyPreview?: unknown;
+    };
+    if (
+      typeof r.conversationId === "string" &&
+      typeof r.senderName === "string" &&
+      typeof r.bodyPreview === "string"
+    ) {
+      return {
+        v: 1,
+        type: "conversation-toast",
+        conversationId: r.conversationId,
+        senderName: r.senderName,
+        senderAvatar: typeof r.senderAvatar === "string" ? r.senderAvatar : undefined,
+        bodyPreview: r.bodyPreview,
+      };
+    }
+  }
+  if (o.type === "round-invite-toast") {
+    const r = raw as {
+      inviteToken?: unknown;
+      roundTitle?: unknown;
+      inviterName?: unknown;
+      inviterAvatar?: unknown;
+    };
+    if (
+      typeof r.inviteToken === "string" &&
+      typeof r.roundTitle === "string" &&
+      typeof r.inviterName === "string"
+    ) {
+      return {
+        v: 1,
+        type: "round-invite-toast",
+        inviteToken: r.inviteToken,
+        roundTitle: r.roundTitle,
+        inviterName: r.inviterName,
+        inviterAvatar: typeof r.inviterAvatar === "string" ? r.inviterAvatar : undefined,
       };
     }
   }

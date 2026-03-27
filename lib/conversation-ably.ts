@@ -13,8 +13,11 @@ export async function publishConversationMessage(input: {
   messageId: string;
   senderId: string;
   senderName: string;
+  senderAvatar: string | null;
   body: string;
 }): Promise<void> {
+  const bodyPreview = input.body.length > 100 ? input.body.slice(0, 97) + "…" : input.body;
+
   await publishParfadeMessage(parfadeConversationChannel(input.conversationId), {
     v: 1,
     type: "conversation-message",
@@ -22,7 +25,7 @@ export async function publishConversationMessage(input: {
     messageId: input.messageId,
     senderId: input.senderId,
     senderName: input.senderName,
-    bodyPreview: input.body.length > 100 ? input.body.slice(0, 97) + "…" : input.body,
+    bodyPreview,
   });
 
   const participants = await db
@@ -34,8 +37,11 @@ export async function publishConversationMessage(input: {
     if (p.userId === input.senderId) continue;
     void publishParfadeMessage(parfadeUserInboxChannel(p.userId), {
       v: 1,
-      type: "inbox-sync",
-      reason: "conversation-message",
+      type: "conversation-toast",
+      conversationId: input.conversationId,
+      senderName: input.senderName,
+      senderAvatar: input.senderAvatar ?? undefined,
+      bodyPreview,
     }).catch(() => {});
   }
 }

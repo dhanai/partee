@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 import { toAbsoluteUrl } from "../lib/api";
 import { colors } from "../lib/theme";
 import { InitialAvatar } from "./initial-avatar";
@@ -9,6 +10,7 @@ type Props = {
   type: "dm" | "round" | "group" | string;
   title: string;
   avatars: string[];
+  loading?: boolean;
   onInfoPress?: () => void;
 };
 
@@ -63,7 +65,29 @@ function Placeholder({ type, title }: { type: string; title: string }) {
   return <InitialAvatar name={title || (type === "dm" ? "?" : "G")} size={32} />;
 }
 
-export function ChatHeaderAvatars({ type, title, avatars }: Props) {
+function HeaderSkeleton() {
+  const pulse = useRef(new Animated.Value(0.35)).current;
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.7, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.35, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [pulse]);
+  return (
+    <View style={styles.headerCol}>
+      <Animated.View style={[styles.skeletonCircle, { opacity: pulse }]} />
+      <Animated.View style={[styles.skeletonBar, { opacity: pulse }]} />
+    </View>
+  );
+}
+
+export function ChatHeaderAvatars({ type, title, avatars, loading }: Props) {
+  if (loading) return <HeaderSkeleton />;
+
   const displayTitle = type === "dm" ? abbreviateName(title) : title;
 
   const avatarElement =
@@ -138,5 +162,18 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: "center",
     justifyContent: "center",
+  },
+  skeletonCircle: {
+    width: SIZE,
+    height: SIZE,
+    borderRadius: SIZE / 2,
+    backgroundColor: colors.border,
+  },
+  skeletonBar: {
+    width: 70,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.border,
+    marginTop: 2,
   },
 });

@@ -54,6 +54,13 @@ export async function GET(req: Request) {
     const cursor = Number.isFinite(parsedCursor) ? Math.max(0, Math.trunc(parsedCursor)) : 0;
     const now = new Date();
 
+    const conversationIdSubquery = sql<string | null>`(
+      SELECT ${conversations.id}
+      FROM ${conversations}
+      WHERE ${conversations.roundId} = ${rounds.id} AND ${conversations.type} = 'round'
+      LIMIT 1
+    )`;
+
     const lastChatSubquery = sql<string | null>`(
       SELECT MAX(${messages.createdAt})
       FROM ${messages}
@@ -102,6 +109,7 @@ export async function GET(req: Request) {
           sql<number>`coalesce(sum(case when ${spots.status} = 'confirmed' then 1 else 0 end), 0)`.mapWith(
             Number,
           ),
+        conversationId: conversationIdSubquery,
         lastChatMessageAt: lastChatSubquery,
         isChatUnread: isChatUnreadSubquery,
       })
@@ -132,6 +140,7 @@ export async function GET(req: Request) {
         courseId: rounds.courseId,
         hostId: rounds.hostId,
         spotStatus: spots.status,
+        conversationId: conversationIdSubquery,
         lastChatMessageAt: lastChatSubquery,
         isChatUnread: isChatUnreadSubquery,
       })
@@ -163,6 +172,7 @@ export async function GET(req: Request) {
         courseId: rounds.courseId,
         hostId: rounds.hostId,
         spotStatus: spots.status,
+        conversationId: conversationIdSubquery,
         lastChatMessageAt: lastChatSubquery,
         isChatUnread: isChatUnreadSubquery,
       })

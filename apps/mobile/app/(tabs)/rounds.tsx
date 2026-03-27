@@ -99,7 +99,7 @@ export default function MyRoundsScreen() {
   const { getToken } = useAuth();
   const { showBadge: showNotificationBadge, refresh: refreshNotificationBadge } =
     useNotificationBadge();
-  const { hasAnyUnreadChat, reportRounds } = useChatUnread();
+  const { hasAnyUnreadChat, reportConversations } = useChatUnread();
   const params = useLocalSearchParams<{
     tab?: string | string[];
     refresh?: string | string[];
@@ -374,8 +374,12 @@ export default function MyRoundsScreen() {
   }, []);
 
   useEffect(() => {
-    reportRounds([...hosting, ...joined, ...invited]);
-  }, [hosting, joined, invited, reportRounds]);
+    const allRounds = [...hosting, ...joined, ...invited];
+    const convos = allRounds
+      .filter((r) => r.conversationId)
+      .map((r) => ({ id: r.conversationId!, isUnread: !!r.isChatUnread }));
+    reportConversations(convos);
+  }, [hosting, joined, invited, reportConversations]);
 
   useEffect(() => {
     const listLen =

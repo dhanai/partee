@@ -6,21 +6,28 @@ export type ParfadeRealtimeMessageV1 =
   | { v: 1; type: "round-detail-updated"; inviteToken: string; reason?: string }
   | {
       v: 1;
-      type: "group-chat-toast";
-      inviteToken: string;
-      roundTitle: string;
-      senderLabel: string;
-      senderAvatar?: string;
-      bodyPreview: string;
-    }
-  | {
-      v: 1;
       type: "rsvp-toast";
       inviteToken: string;
       roundTitle: string;
       guestName: string;
       guestAvatar?: string;
       spotStatus: "confirmed" | "requested" | "declined";
+    }
+  | {
+      v: 1;
+      type: "conversation-toast";
+      conversationId: string;
+      senderName: string;
+      senderAvatar?: string;
+      bodyPreview: string;
+    }
+  | {
+      v: 1;
+      type: "round-invite-toast";
+      inviteToken: string;
+      roundTitle: string;
+      inviterName: string;
+      inviterAvatar?: string;
     }
   | {
       v: 1;

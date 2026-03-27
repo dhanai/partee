@@ -9,7 +9,9 @@ import { buildRoundInvitePushBody } from "@/lib/round-invite-push-message";
 import {
   publishAfterRoundDetailChanged,
   publishNotificationBadgeNudge,
+  publishRoundInviteToast,
 } from "@/lib/parfade-ably-publish";
+import { formatChatPushTitleLine } from "@/lib/round-invite-push-message";
 
 const inviteSchema = z.object({
   inviteeUserIds: z.array(z.string().uuid()).min(1).max(30),
@@ -104,8 +106,22 @@ export async function POST(req: Request, { params }: RouteContext) {
       });
     }
 
+    const roundTitle = formatChatPushTitleLine({
+      courseName: round.courseName,
+      planningLocation: round.planningLocation,
+      mode: round.mode,
+      teeTime: round.teeTime,
+      targetDate: round.targetDate,
+    });
     for (const row of inviteRows) {
       publishNotificationBadgeNudge(row.userId, "round-invite");
+      publishRoundInviteToast({
+        inviteeUserId: row.userId,
+        inviteToken: params.token,
+        roundTitle,
+        inviterName: currentUser.name,
+        inviterAvatar: currentUser.avatar,
+      });
     }
 
     publishAfterRoundDetailChanged(params.token, "invites");
