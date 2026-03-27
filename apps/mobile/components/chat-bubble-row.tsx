@@ -37,17 +37,19 @@ function ImageMosaic({
   urls,
   radii,
   onPress,
+  transition = 0,
 }: {
   urls: string[];
   radii: { borderTopLeftRadius: number; borderTopRightRadius: number; borderBottomLeftRadius: number; borderBottomRightRadius: number };
   onPress?: (index: number) => void;
+  transition?: number;
 }) {
   const count = urls.length;
 
   if (count === 1) {
     return (
       <Pressable onPress={() => onPress?.(0)} style={[mosaicStyles.single, radii]}>
-        <ExpoImage source={toAbsoluteUrl(urls[0])} style={[mosaicStyles.singleImg, radii]} contentFit="cover" transition={200} />
+        <ExpoImage source={toAbsoluteUrl(urls[0])} style={[mosaicStyles.singleImg, radii]} contentFit="cover" transition={transition} />
       </Pressable>
     );
   }
@@ -57,11 +59,11 @@ function ImageMosaic({
     return (
       <View style={[mosaicStyles.row, { width: MOSAIC_MAX_W }, radii, { overflow: "hidden" }]}>
         <Pressable onPress={() => onPress?.(0)} style={{ width: cellW, height: cellW }}>
-          <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+          <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={transition} />
         </Pressable>
         <View style={{ width: MOSAIC_GAP }} />
         <Pressable onPress={() => onPress?.(1)} style={{ width: cellW, height: cellW }}>
-          <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+          <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={transition} />
         </Pressable>
       </View>
     );
@@ -75,15 +77,15 @@ function ImageMosaic({
     return (
       <View style={[mosaicStyles.row, { width: MOSAIC_MAX_W, height: h }, radii, { overflow: "hidden" }]}>
         <Pressable onPress={() => onPress?.(0)} style={{ width: leftW, height: h }}>
-          <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: leftW, height: h }} contentFit="cover" transition={200} />
+          <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: leftW, height: h }} contentFit="cover" transition={transition} />
         </Pressable>
         <View style={{ width: MOSAIC_GAP }} />
         <View style={{ width: rightW, height: h, justifyContent: "space-between" }}>
           <Pressable onPress={() => onPress?.(1)} style={{ width: rightW, height: halfH }}>
-            <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: rightW, height: halfH }} contentFit="cover" transition={200} />
+            <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: rightW, height: halfH }} contentFit="cover" transition={transition} />
           </Pressable>
           <Pressable onPress={() => onPress?.(2)} style={{ width: rightW, height: halfH }}>
-            <ExpoImage source={toAbsoluteUrl(urls[2])} style={{ width: rightW, height: halfH }} contentFit="cover" transition={200} />
+            <ExpoImage source={toAbsoluteUrl(urls[2])} style={{ width: rightW, height: halfH }} contentFit="cover" transition={transition} />
           </Pressable>
         </View>
       </View>
@@ -96,21 +98,21 @@ function ImageMosaic({
       <View style={[{ width: MOSAIC_MAX_W }, radii, { overflow: "hidden" }]}>
         <View style={mosaicStyles.row}>
           <Pressable onPress={() => onPress?.(0)} style={{ width: cellW, height: cellW }}>
-            <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+            <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={transition} />
           </Pressable>
           <View style={{ width: MOSAIC_GAP }} />
           <Pressable onPress={() => onPress?.(1)} style={{ width: cellW, height: cellW }}>
-            <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+            <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={transition} />
           </Pressable>
         </View>
         <View style={{ height: MOSAIC_GAP }} />
         <View style={mosaicStyles.row}>
           <Pressable onPress={() => onPress?.(2)} style={{ width: cellW, height: cellW }}>
-            <ExpoImage source={toAbsoluteUrl(urls[2])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+            <ExpoImage source={toAbsoluteUrl(urls[2])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={transition} />
           </Pressable>
           <View style={{ width: MOSAIC_GAP }} />
           <Pressable onPress={() => onPress?.(3)} style={{ width: cellW, height: cellW }}>
-            <ExpoImage source={toAbsoluteUrl(urls[3])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={200} />
+            <ExpoImage source={toAbsoluteUrl(urls[3])} style={{ width: cellW, height: cellW }} contentFit="cover" transition={transition} />
           </Pressable>
         </View>
       </View>
@@ -125,11 +127,11 @@ function ImageMosaic({
     <View style={[{ width: MOSAIC_MAX_W }, radii, { overflow: "hidden" }]}>
       <View style={mosaicStyles.row}>
         <Pressable onPress={() => onPress?.(0)} style={{ width: topCellW, height: cellH }}>
-          <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: topCellW, height: cellH }} contentFit="cover" transition={200} />
+          <ExpoImage source={toAbsoluteUrl(urls[0])} style={{ width: topCellW, height: cellH }} contentFit="cover" transition={transition} />
         </Pressable>
         <View style={{ width: MOSAIC_GAP }} />
         <Pressable onPress={() => onPress?.(1)} style={{ width: topCellW, height: cellH }}>
-          <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: topCellW, height: cellH }} contentFit="cover" transition={200} />
+          <ExpoImage source={toAbsoluteUrl(urls[1])} style={{ width: topCellW, height: cellH }} contentFit="cover" transition={transition} />
         </Pressable>
       </View>
       <View style={{ height: MOSAIC_GAP }} />
@@ -138,7 +140,7 @@ function ImageMosaic({
           <View key={url} style={mosaicStyles.row}>
             {i > 0 ? <View style={{ width: MOSAIC_GAP }} /> : null}
             <Pressable onPress={() => onPress?.(i + 2)} style={{ width: botCellW, height: cellH }}>
-              <ExpoImage source={toAbsoluteUrl(url)} style={{ width: botCellW, height: cellH }} contentFit="cover" transition={200} />
+              <ExpoImage source={toAbsoluteUrl(url)} style={{ width: botCellW, height: cellH }} contentFit="cover" transition={transition} />
             </Pressable>
           </View>
         ))}
@@ -598,7 +600,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const messageBody = hasImages ? (
     <View>
       {showName && !isMine ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
-      <ImageMosaic urls={imageUrls} radii={bubbleRadii} onPress={handleMosaicPress} />
+      <ImageMosaic urls={imageUrls} radii={bubbleRadii} onPress={handleMosaicPress} transition={isMine ? 0 : 200} />
     </View>
   ) : emojiOnly ? (
     <Text style={styles.emojiOnlyText}>{bodyText.trim()}</Text>

@@ -149,7 +149,7 @@ export async function apiDelete<T>(path: string, token?: string | null): Promise
 export { ApiSessionInvalidError } from "./api-session-invalid";
 
 export function toAbsoluteUrl(urlOrPath: string): string {
-  if (/^https?:\/\//i.test(urlOrPath)) {
+  if (/^(https?|file|ph):\/\//i.test(urlOrPath)) {
     return urlOrPath;
   }
   return `${apiBaseUrl}${urlOrPath.startsWith("/") ? "" : "/"}${urlOrPath}`;

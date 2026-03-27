@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -22,6 +22,7 @@ import { getGameDefinition, type GameTypeId } from "../../lib/games-registry";
 import type { WolfTeeOff } from "../../lib/wolf-rotation";
 import type { RoundDetails } from "../../types/round";
 import { colors } from "../../lib/theme";
+import { getCachedMeProfile } from "../../lib/me-profile-cache";
 
 type NetworkFriend = { id: string; name: string; avatar: string | null };
 
@@ -29,10 +30,12 @@ export default function CreateGameScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { getToken } = useAuth();
-  const { gameType, roundInviteToken } = useLocalSearchParams<{
+  const params = useLocalSearchParams<{
     gameType?: string;
     roundInviteToken?: string;
   }>();
+  const gameType = typeof params.gameType === "string" ? params.gameType : params.gameType?.[0];
+  const roundInviteToken = typeof params.roundInviteToken === "string" ? params.roundInviteToken : params.roundInviteToken?.[0];
 
   const def = gameType ? getGameDefinition(gameType) : undefined;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -62,7 +65,6 @@ export default function CreateGameScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** One string per write-in row; server assigns stable ids. */
   const [guestInputs, setGuestInputs] = useState<string[]>([]);
   const [wolfHolesCount, setWolfHolesCount] = useState<9 | 18>(18);
   const [skinsHolesCount, setSkinsHolesCount] = useState<9 | 18>(18);
@@ -74,46 +76,64 @@ export default function CreateGameScreen() {
 
   const toggle = useCallback(
     (id: string) => {
-      if (roundLockedIds) return;
       const cap = def?.maxPlayers ?? 8;
       setSelected((prev) => {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id);
         else {
-          if (next.size >= cap - 1) return prev;
+          if (next.size >= cap) return prev;
           next.add(id);
         }
         return next;
       });
     },
-    [roundLockedIds, def?.maxPlayers],
+    [def?.maxPlayers],
   );
+
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const token = await getToken();
+        const token = await getTokenRef.current();
         if (!token) throw new Error("Not signed in");
 
-        if (roundInviteToken) {
-          const res = await apiGet<{ round: RoundDetails }>(
-            `/api/rounds/${encodeURIComponent(String(roundInviteToken))}`,
-            token,
-          );
-          const round = res.round;
-          if (cancelled) return;
+        const networkPromise = apiGet<{ friends: NetworkFriend[] }>("/api/users/me/network", token);
+        const roundPromise = roundInviteToken
+          ? apiGet<{ round: RoundDetails }>(
+              `/api/rounds/${encodeURIComponent(roundInviteToken)}`,
+              token,
+            )
+          : null;
+
+        const [networkRes, roundRes] = await Promise.all([
+          networkPromise,
+          roundPromise,
+        ]);
+        if (cancelled) return;
+
+        const me = getCachedMeProfile();
+        const meEntry: NetworkFriend | null = me
+          ? { id: me.id, name: me.name, avatar: me.avatar }
+          : null;
+        const networkFriends = networkRes.friends ?? [];
+        const friendsWithMe = meEntry
+          ? [meEntry, ...networkFriends.filter((f) => f.id !== meEntry.id)]
+          : networkFriends;
+        setFriends(friendsWithMe);
+
+        if (roundRes) {
+          const round = roundRes.round;
           const ids = new Set<string>();
           ids.add(round.hostId);
           for (const p of round.confirmedPlayers) ids.add(p.id);
-          const list = [...ids];
           setRoundDetails(round);
-          setRoundLockedIds(list);
-          setSelected(new Set(list));
-        } else {
-          const res = await apiGet<{ friends: NetworkFriend[] }>("/api/users/me/network", token);
-          if (cancelled) return;
-          setFriends(res.friends ?? []);
+          setRoundLockedIds([...ids]);
+          setSelected(ids);
+        } else if (meEntry) {
+          setSelected(new Set([meEntry.id]));
         }
       } catch (e) {
         if (!cancelled) {
@@ -126,10 +146,9 @@ export default function CreateGameScreen() {
     return () => {
       cancelled = true;
     };
-  }, [getToken, roundInviteToken]);
+  }, [roundInviteToken]);
 
-  const registeredCount =
-    roundLockedIds != null ? roundLockedIds.length : 1 + selected.size;
+  const registeredCount = selected.size;
   const maxGuestSlots = Math.max(0, rosterCap - registeredCount);
   const guestFilled = guestInputs.filter((s) => s.trim().length > 0).length;
 
@@ -167,10 +186,29 @@ export default function CreateGameScreen() {
     });
   }, []);
 
+  const allPlayers = useMemo(() => {
+    const friendMap = new Map(friends.map((f) => [f.id, f]));
+    const roundOnly: NetworkFriend[] = [];
+    if (roundLockedIds && roundDetails) {
+      for (const id of roundLockedIds) {
+        if (!friendMap.has(id)) {
+          const cp = roundDetails.confirmedPlayers.find((p) => p.id === id);
+          const name =
+            cp?.name ??
+            (roundDetails.hostId === id ? roundDetails.hostName : null) ??
+            id;
+          const avatar = cp?.avatar ?? null;
+          roundOnly.push({ id, name, avatar });
+        }
+      }
+    }
+    return [...roundOnly, ...friends];
+  }, [friends, roundLockedIds, roundDetails]);
+
   async function submit() {
     if (!def?.implemented || !gameType) return;
     setError(null);
-    const playerUserIds = roundLockedIds ?? [...selected];
+    const playerUserIds = [...selected];
     const guestNames = guestInputs.map((s) => s.trim()).filter(Boolean);
     if (totalPlayers < minPlayers) {
       setError(
@@ -232,7 +270,7 @@ export default function CreateGameScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.title}>{def.title}</Text>
-        <Text style={styles.muted}>This format isn’t available yet.</Text>
+        <Text style={styles.muted}>This format isn't available yet.</Text>
       </View>
     );
   }
@@ -245,55 +283,29 @@ export default function CreateGameScreen() {
 
       {loading ? (
         <ActivityIndicator color={colors.fairway} style={styles.loader} />
-      ) : roundLockedIds ? (
-        <>
-          <Text style={styles.label}>Players (from this round)</Text>
-          {roundLockedIds.map((id) => {
-            const label =
-              roundDetails?.confirmedPlayers.find((p) => p.id === id)?.name ??
-              (roundDetails?.hostId === id ? roundDetails.hostName : null) ??
-              id;
-            return (
-              <View key={id} style={styles.lockedRow}>
-                <Ionicons name="checkmark-circle" size={20} color={colors.fairway} />
-                <Text style={styles.lockedName} numberOfLines={1}>
-                  {label}
-                </Text>
-              </View>
-            );
-          })}
-          <Text style={styles.hint}>
-            Everyone listed is included.
-            {gameType === "wolf"
-              ? ` Wolf needs exactly ${minPlayers} golfers (this list has ${roundLockedIds.length}).`
-              : ` ${def.title} needs at least ${minPlayers} golfers.`}
-            {totalPlayers < minPlayers
-              ? ` Add people to the round or pick another format.`
-              : ""}
-          </Text>
-          {wolfRoundOverCap ? (
-            <Text style={styles.error}>
-              Wolf is limited to {rosterCap} players. Trim the group in the round or choose another
-              game.
-            </Text>
-          ) : null}
-        </>
       ) : (
         <>
-          <Text style={styles.label}>Who’s playing? (your network)</Text>
+          <Text style={styles.label}>
+            {roundLockedIds ? "Players" : "Who's playing? (your network)"}
+          </Text>
           {gameType === "wolf" ? (
             <Text style={styles.mutedSmall}>
-              Pick up to 3 other Parfade golfers (you’re the fourth).
+              Pick up to 3 other Parfade golfers (you're the fourth).
             </Text>
           ) : null}
-          {friends.length === 0 ? (
+          {roundLockedIds ? (
+            <Text style={styles.mutedSmall}>
+              Round players are pre-selected. Uncheck anyone who isn't playing.
+            </Text>
+          ) : null}
+          {allPlayers.length === 0 ? (
             <Text style={styles.muted}>
               Follow golfers in Parfade to invite them to side games here.
             </Text>
           ) : (
-            friends.map((f) => {
+            allPlayers.map((f) => {
               const on = selected.has(f.id);
-              const parfadeFull = !on && selected.size >= rosterCap - 1;
+              const parfadeFull = !on && selected.size >= rosterCap;
               return (
                 <Pressable
                   key={f.id}
@@ -324,6 +336,11 @@ export default function CreateGameScreen() {
               );
             })
           )}
+          {wolfRoundOverCap ? (
+            <Text style={styles.error}>
+              Wolf is limited to {rosterCap} players. Trim the group or choose another game.
+            </Text>
+          ) : null}
         </>
       )}
 
@@ -473,14 +490,6 @@ const styles = StyleSheet.create({
   },
   avatarInitial: { fontSize: 16, fontWeight: "700", color: colors.fairway },
   friendName: { flex: 1, fontSize: 16, fontWeight: "600", color: colors.text },
-  lockedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 8,
-  },
-  lockedName: { flex: 1, fontSize: 16, fontWeight: "600", color: colors.text },
-  hint: { fontSize: 13, color: colors.muted, marginTop: 8, marginBottom: 16 },
   mutedSmall: { fontSize: 12, color: colors.muted, lineHeight: 17, marginBottom: 10 },
   guestSection: { marginTop: 8, marginBottom: 4 },
   guestRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },

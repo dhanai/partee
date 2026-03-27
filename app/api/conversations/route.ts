@@ -172,8 +172,10 @@ export async function GET(req: Request) {
       const participants = participantsByConv.get(r.conversationId) ?? [];
       const otherParticipants = participants.filter((p) => p.userId !== viewer.id);
       const lastRead = readMap.get(r.conversationId);
+      const lastMsgIsMine = r.lastMsgSenderId === viewer.id;
       const isUnread =
-        !lastRead || new Date(r.lastMessageAt).getTime() > lastRead.getTime();
+        !lastMsgIsMine &&
+        (!lastRead || new Date(r.lastMessageAt).getTime() > lastRead.getTime());
 
       let title: string;
       let imageUrl: string | null = null;

@@ -364,11 +364,20 @@ export default function ConversationChatScreen() {
           authToken,
         );
         setMsgs((prev) => {
-          const without = prev.filter((m) => m.id !== tempId);
-          if (without.some((m) => m.id === data.message.id)) return without;
-          const merged = [...without, data.message];
-          void setCachedMessages(conversationId, merged);
-          return merged;
+          if (prev.some((m) => m.id === data.message.id)) {
+            return prev.filter((m) => m.id !== tempId);
+          }
+          const optimisticMsg = prev.find((m) => m.id === tempId);
+          const updated = prev.map((m) =>
+            m.id === tempId
+              ? { ...data.message, attachments: optimisticMsg?.attachments ?? data.message.attachments }
+              : m,
+          );
+          void setCachedMessages(
+            conversationId,
+            updated.map((m) => (m.id === tempId ? data.message : m)),
+          );
+          return updated;
         });
         return true;
       } catch {
