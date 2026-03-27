@@ -29,7 +29,7 @@ export async function publishChatRoomMessage(
     ? message.body.length > 100 ? message.body.slice(0, 97) + "…" : message.body
     : "";
 
-  await client.request("POST", `/chat/v4/rooms/${conversationId}/messages`, 4, {}, {
+  const res = await client.request("POST", `/chat/v4/rooms/${conversationId}/messages`, 4, {}, {
     text: bodyPreview,
     metadata: {
       dbId: message.id,
@@ -43,6 +43,11 @@ export async function publishChatRoomMessage(
     },
     headers: {},
   });
+
+  if (!res.success) {
+    console.error("[publishChatRoomMessage] Chat API failed:", res.statusCode, res.errorCode, res.errorMessage);
+    throw new Error(`Chat API ${res.statusCode}: ${res.errorMessage}`);
+  }
 }
 
 /**
