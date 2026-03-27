@@ -159,6 +159,7 @@ export default function GroupLandingScreen() {
 
   const [overflowItem, setOverflowItem] = useState<ActivityItem | null>(null);
   const [reportItem, setReportItem] = useState<ActivityItem | null>(null);
+  const [reportComment, setReportComment] = useState<CommentItem | null>(null);
   const [groupOverflowOpen, setGroupOverflowOpen] = useState(false);
 
   // Comments bottom sheet
@@ -1251,6 +1252,14 @@ export default function GroupLandingScreen() {
                         <Text style={styles.commentDeleteText}>Delete</Text>
                       </Pressable>
                     ) : null}
+                    {comment.user.id !== meId ? (
+                      <Pressable
+                        onPress={() => setReportComment(comment)}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.commentDeleteText}>Report</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 </View>
               </View>
@@ -1301,6 +1310,14 @@ export default function GroupLandingScreen() {
         contentId={reportItem?.id ?? ""}
         targetUserId={reportItem?.user.id}
         targetLabel="this post"
+      />
+      <ReportSheet
+        visible={!!reportComment}
+        onClose={() => setReportComment(null)}
+        contentType="comment"
+        contentId={reportComment?.id ?? ""}
+        targetUserId={reportComment?.user.id}
+        targetLabel="this comment"
       />
       <FullscreenImageViewer
         images={viewerImages}

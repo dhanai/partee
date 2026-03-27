@@ -3,6 +3,7 @@ import { and, asc, eq, exists, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { ensureDbUser } from "@/lib/auth";
+import { getDiscoverFeedConfig } from "@/lib/discover-feed-config";
 import { getViewerFollowedIds, scoreDiscoverRound } from "@/lib/feed-scoring";
 import { resolveValidatedUsLocation } from "@/lib/places";
 import { haversineMiles } from "@/lib/utils";
@@ -177,51 +178,70 @@ export async function GET(req: Request) {
       return row.distanceMiles !== null && row.distanceMiles <= distanceMiles;
     });
 
-  // Rank by social affinity + fill rate when viewer is logged in
-  const followedIds = currentUser
-    ? await getViewerFollowedIds(currentUser.id)
-    : new Set<string>();
+  const feedConfig = await getDiscoverFeedConfig();
 
-  const filteredIds = withRemaining.map((r) => r.id);
-  const confirmedUsersByRound = new Map<string, string[]>();
-  if (followedIds.size > 0 && filteredIds.length > 0) {
-    const confirmedUserRows = await db
-      .select({ roundId: spots.roundId, userId: spots.userId })
-      .from(spots)
-      .where(and(inArray(spots.roundId, filteredIds), eq(spots.status, "confirmed")));
-    for (const r of confirmedUserRows) {
-      const list = confirmedUsersByRound.get(r.roundId) ?? [];
-      list.push(r.userId);
-      confirmedUsersByRound.set(r.roundId, list);
+  let sorted: typeof withRemaining;
+
+  if (feedConfig.sortMode === "scored") {
+    const followedIds = currentUser
+      ? await getViewerFollowedIds(currentUser.id)
+      : new Set<string>();
+
+    const filteredIds = withRemaining.map((r) => r.id);
+    const confirmedUsersByRound = new Map<string, string[]>();
+    if (followedIds.size > 0 && filteredIds.length > 0) {
+      const confirmedUserRows = await db
+        .select({ roundId: spots.roundId, userId: spots.userId })
+        .from(spots)
+        .where(and(inArray(spots.roundId, filteredIds), eq(spots.status, "confirmed")));
+      for (const r of confirmedUserRows) {
+        const list = confirmedUsersByRound.get(r.roundId) ?? [];
+        list.push(r.userId);
+        confirmedUsersByRound.set(r.roundId, list);
+      }
     }
+
+    const scored = withRemaining.map((row) => ({
+      ...row,
+      _score: scoreDiscoverRound({
+        hostId: row.hostId,
+        confirmedPlayerIds: confirmedUsersByRound.get(row.id) ?? [],
+        confirmedCount: row.totalSpots - row.spotsRemaining,
+        totalSpots: row.totalSpots,
+        followedIds,
+      }),
+    }));
+
+    scored.sort((a, b) => {
+      if (a._score !== b._score) return b._score - a._score;
+      const byDate =
+        new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime();
+      if (byDate !== 0) return byDate;
+      if (hasCoords) {
+        const aDistance = a.distanceMiles ?? Number.POSITIVE_INFINITY;
+        const bDistance = b.distanceMiles ?? Number.POSITIVE_INFINITY;
+        if (aDistance !== bDistance) return aDistance - bDistance;
+      }
+      return 0;
+    });
+
+    sorted = scored;
+  } else {
+    sorted = [...withRemaining].sort((a, b) => {
+      const byDate =
+        new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime();
+      if (byDate !== 0) return byDate;
+      if (hasCoords) {
+        const aDistance = a.distanceMiles ?? Number.POSITIVE_INFINITY;
+        const bDistance = b.distanceMiles ?? Number.POSITIVE_INFINITY;
+        if (aDistance !== bDistance) return aDistance - bDistance;
+      }
+      return 0;
+    });
   }
 
-  const scored = withRemaining.map((row) => ({
-    ...row,
-    _score: scoreDiscoverRound({
-      hostId: row.hostId,
-      confirmedPlayerIds: confirmedUsersByRound.get(row.id) ?? [],
-      confirmedCount: row.totalSpots - row.spotsRemaining,
-      totalSpots: row.totalSpots,
-      followedIds,
-    }),
-  }));
-
-  scored.sort((a, b) => {
-    if (a._score !== b._score) return b._score - a._score;
-    const byDate =
-      new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime();
-    if (byDate !== 0) return byDate;
-    if (hasCoords) {
-      const aDistance = a.distanceMiles ?? Number.POSITIVE_INFINITY;
-      const bDistance = b.distanceMiles ?? Number.POSITIVE_INFINITY;
-      if (aDistance !== bDistance) return aDistance - bDistance;
-    }
-    return 0;
-  });
-
-  const page = scored.slice(cursor, cursor + limit);
-  const nextCursor = cursor + limit < scored.length ? String(cursor + limit) : null;
+  const page = sorted.slice(cursor, cursor + limit);
+  const nextCursor = cursor + limit < sorted.length ? String(cursor + limit) : null;
 
   const pageIds = page.map((r) => r.id);
   const confirmedByRound = new Map<

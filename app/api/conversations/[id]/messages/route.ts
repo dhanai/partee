@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireDbUser } from "@/lib/auth";
-import { isConversationParticipant } from "@/lib/conversation-access";
+import { isConversationParticipant, isDmBlocked } from "@/lib/conversation-access";
 import {
   getConversationMessages,
   messagePostSchema,
@@ -43,6 +43,10 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     if (!(await isConversationParticipant(conversationId, viewer.id))) {
       return NextResponse.json({ error: "Not a participant." }, { status: 403 });
+    }
+
+    if (await isDmBlocked(conversationId, viewer.id)) {
+      return NextResponse.json({ error: "You cannot send messages in this conversation." }, { status: 403 });
     }
 
     const parsed = messagePostSchema.parse(await req.json());

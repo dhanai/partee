@@ -189,6 +189,7 @@ type Props = {
   onDelete?: (messageId: string) => void;
   onAvatarPress?: (user: { id: string; name: string; avatar: string | null }) => void;
   onGoToMessage?: (messageId: string) => void;
+  onReport?: (message: EnhancedMessage) => void;
   onContextMenuOpen?: () => void;
   onContextMenuClose?: () => void;
   onlineUserIds?: Set<string>;
@@ -309,6 +310,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onReaction,
   onReply,
   onDelete,
+  onReport,
   onAvatarPress,
   onGoToMessage,
   onContextMenuOpen,
@@ -717,7 +719,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
             const screen = Dimensions.get("window");
             const PICKER_H = 54;
             const GAP = 8;
-            const actionCount = (bodyText ? 1 : 0) + (onReply ? 1 : 0) + (isMine && onDelete ? 1 : 0);
+            const actionCount = (bodyText ? 1 : 0) + (onReply ? 1 : 0) + (isMine && onDelete ? 1 : 0) + (!isMine && onReport ? 1 : 0);
             const MENU_H = actionCount * 48;
 
             let bubbleTop = bubbleLayout.y;
@@ -804,6 +806,12 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
                     <Pressable style={styles.contextAction} onPress={handleDeletePress}>
                       <Ionicons name="trash-outline" size={18} color={colors.danger} />
                       <Text style={[styles.contextActionText, { color: colors.danger }]}>Delete</Text>
+                    </Pressable>
+                  ) : null}
+                  {!isMine && onReport ? (
+                    <Pressable style={styles.contextAction} onPress={() => { closePicker(); onReport(m); }}>
+                      <Ionicons name="flag-outline" size={18} color={colors.danger} />
+                      <Text style={[styles.contextActionText, { color: colors.danger }]}>Report</Text>
                     </Pressable>
                   ) : null}
                 </View>

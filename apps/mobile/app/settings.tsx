@@ -244,6 +244,17 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.card}>
+            <Text style={styles.cardTitle}>Support</Text>
+            <Pressable
+              style={styles.legalRow}
+              onPress={() => void Linking.openURL("mailto:support@parfade.com")}
+            >
+              <Text style={styles.legalRowText}>Contact Support</Text>
+              <Ionicons name="mail-outline" size={16} color={colors.muted} />
+            </Pressable>
+          </View>
+
+          <View style={styles.card}>
             <Text style={styles.cardTitle}>Legal</Text>
             <Pressable
               style={styles.legalRow}

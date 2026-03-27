@@ -13,6 +13,7 @@ import {
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { hasBlockBetween } from "@/lib/conversation-access";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
 export async function GET(req: Request) {
@@ -277,6 +278,10 @@ export async function POST(req: Request) {
 
     if (!otherUser) {
       return NextResponse.json({ error: "User not found." }, { status: 404 });
+    }
+
+    if (await hasBlockBetween(viewer.id, participantUserId)) {
+      return NextResponse.json({ error: "Unable to create conversation." }, { status: 403 });
     }
 
     const existing = await db

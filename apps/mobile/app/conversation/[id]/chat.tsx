@@ -21,6 +21,7 @@ import { useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ChatScrollView, { ChatFreezeContext } from "../../../components/chat-scroll-view";
 import { ChatBubbleRow } from "../../../components/chat-bubble-row";
+import { ReportSheet } from "../../../components/report-sheet";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { ChatDateSeparator } from "../../../components/chat-date-separator";
 import { ChatHeaderAvatars, ChatHeaderInfoButton } from "../../../components/chat-header-avatars";
@@ -182,6 +183,7 @@ function ConversationChatContent() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ id: string; userId: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const msgsRef = useRef<ConversationMessage[]>([]);
@@ -572,6 +574,10 @@ function ConversationChatContent() {
     setReplyTo({ id: msg.id, body: msg.body ?? "", user: { name: msg.user.name } });
   }, []);
 
+  const handleReport = useCallback((msg: { id: string; user: { id: string } }) => {
+    setReportTarget({ id: msg.id, userId: msg.user.id });
+  }, []);
+
   const handleImagePress = useCallback((images: string[], index: number) => {
     setViewerImages(images);
     setViewerIndex(index);
@@ -662,6 +668,7 @@ function ConversationChatContent() {
           viewerId={viewerId}
           onReaction={handleReaction}
           onReply={handleReply}
+          onReport={handleReport}
           onAvatarPress={handleAvatarPress}
           onGoToMessage={handleGoToMessage}
           onContextMenuOpen={handleContextMenuOpen}
@@ -670,7 +677,7 @@ function ConversationChatContent() {
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuOpen, handleContextMenuClose, userAvatarMap, userInfoMap, onlineUserIds],
+    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleReport, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuOpen, handleContextMenuClose, userAvatarMap, userInfoMap, onlineUserIds],
   );
   const keyExtractor = useCallback(
     (item: ListItem) => chatItemKey(item),
@@ -802,6 +809,14 @@ function ConversationChatContent() {
       initialIndex={viewerIndex}
       visible={viewerVisible}
       onClose={() => setViewerVisible(false)}
+    />
+    <ReportSheet
+      visible={!!reportTarget}
+      onClose={() => setReportTarget(null)}
+      contentType="message"
+      contentId={reportTarget?.id ?? ""}
+      targetUserId={reportTarget?.userId}
+      targetLabel="this message"
     />
     </>
   );

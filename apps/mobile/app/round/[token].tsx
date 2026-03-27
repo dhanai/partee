@@ -54,6 +54,7 @@ function groupChatPreviewSubtitle(last: RoundDetails["lastChatMessage"]): string
 import { AnimatedBottomSheetFrame } from "../../components/animated-bottom-sheet-frame";
 import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
+import { ReportSheet } from "../../components/report-sheet";
 import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
@@ -119,6 +120,7 @@ export default function RoundDetailsScreen() {
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [roundMenuOpen, setRoundMenuOpen] = useState(false);
+  const [reportRoundOpen, setReportRoundOpen] = useState(false);
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const debouncedFinalizeQuery = useDebounce(finalizeQuery, 320);
@@ -968,8 +970,26 @@ export default function RoundDetailsScreen() {
                     void rsvp("decline");
                   },
                 },
+                {
+                  key: "report",
+                  label: "Report round",
+                  icon: "flag-outline" as const,
+                  destructive: true,
+                  onPress: () => {
+                    setTimeout(() => setReportRoundOpen(true), 350);
+                  },
+                },
               ]
         }
+      />
+
+      <ReportSheet
+        visible={reportRoundOpen}
+        onClose={() => setReportRoundOpen(false)}
+        contentType="round"
+        contentId={round?.id ?? ""}
+        targetUserId={round?.hostId}
+        targetLabel="this round"
       />
 
       <InviteFriendsSheet
