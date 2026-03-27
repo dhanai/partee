@@ -181,15 +181,8 @@ export default function GroupsScreen() {
     );
   }
 
-  if (loading && myGroups.length === 0) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.fairway} />
-      </View>
-    );
-  }
-
   const activeData = activeTab === "mine" ? myGroups : discoverGroups;
+  const initialLoading = loading && myGroups.length === 0 && discoverGroups.length === 0;
 
   const listHeader = (
     <>
@@ -257,7 +250,11 @@ export default function GroupsScreen() {
         ListHeaderComponent={listHeader}
         renderItem={({ item }) => renderGroupRow(item)}
         ListEmptyComponent={
-          error ? (
+          initialLoading ? (
+            <View style={styles.emptyWrap}>
+              <ActivityIndicator color={colors.fairway} />
+            </View>
+          ) : error ? (
             <View style={styles.emptyWrap}>
               <Ionicons name="cloud-offline-outline" size={48} color={colors.border} />
               <Text style={styles.emptyTitle}>Something went wrong</Text>

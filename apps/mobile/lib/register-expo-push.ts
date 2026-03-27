@@ -3,15 +3,19 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { apiPost } from "./api";
 
-/** Call once at startup so foreground notifications can show banners. */
+/**
+ * Configure how notifications are presented when the app is in the foreground.
+ * Native banners are suppressed since in-app toasts already cover conversations,
+ * round invites, RSVPs, etc. Badge count still updates silently.
+ */
 export function configureExpoNotificationBehavior() {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
+      shouldShowAlert: false,
+      shouldPlaySound: false,
       shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
+      shouldShowBanner: false,
+      shouldShowList: false,
     }),
   });
 }
