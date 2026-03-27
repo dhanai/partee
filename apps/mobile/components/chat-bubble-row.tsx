@@ -600,9 +600,12 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     )
   ) : null;
 
+  const nameLabel = showName && !isMine ? (
+    <Text style={styles.senderName}>{m.user.name}</Text>
+  ) : null;
+
   const messageBody = hasImages ? (
     <View>
-      {showName && !isMine ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
       <ImageMosaic urls={imageUrls} radii={bubbleRadii} onPress={handleMosaicPress} transition={isMine ? 0 : 200} />
     </View>
   ) : emojiOnly ? (
@@ -620,7 +623,6 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     </View>
   ) : (
     <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, bubbleRadii]}>
-      {showName ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
       <Autolink
         text={bodyText}
         style={legacyStyles.bubbleBody}
@@ -634,8 +636,8 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   const bubbleInnerContent = (
     <>
+      {nameLabel}
       {replyPreview}
-      {emojiOnly && showName && !isMine ? <Text style={legacyStyles.bubbleName}>{m.user.name}</Text> : null}
       {messageBody}
       {imageBodyBubble}
       {reactionChips}
@@ -1032,6 +1034,13 @@ const styles = StyleSheet.create({
   emojiOnlyText: {
     fontSize: 48,
     lineHeight: 56,
+  },
+  senderName: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: colors.muted,
+    marginBottom: 4,
+    marginLeft: 4,
   },
   linkTheirs: {
     color: colors.fairway,

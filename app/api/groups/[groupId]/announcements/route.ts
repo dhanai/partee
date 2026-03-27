@@ -98,7 +98,7 @@ export async function POST(req: Request, { params }: Ctx) {
       .from(groupMembers)
       .where(eq(groupMembers.groupId, groupId));
 
-    void notifyGroupPost({
+    await notifyGroupPost({
       groupId,
       groupName: group?.name ?? "Group",
       senderUserId: viewer.id,

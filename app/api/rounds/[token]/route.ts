@@ -339,7 +339,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       })
       .where(eq(rounds.id, existingRound.id));
 
-    publishAfterRoundDetailChanged(token, "patch");
+    await publishAfterRoundDetailChanged(token, "patch");
 
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -383,7 +383,7 @@ export async function DELETE(req: Request, { params }: RouteContext) {
       );
     }
 
-    publishAfterRoundDetailChanged(token, "delete");
+    await publishAfterRoundDetailChanged(token, "delete");
     await db.delete(rounds).where(eq(rounds.id, round.id));
     return NextResponse.json({ ok: true });
   } catch (error) {

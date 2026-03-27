@@ -110,36 +110,38 @@ export async function POST(req: Request, { params }: RouteContext) {
 
         if (updated.length > 0) {
           void syncRoundConversationParticipant(round.id, user.id, targetStatus);
-          void recordHostRoundRsvpAndMaybePush({
-            hostId: round.hostId,
-            guestId: user.id,
-            guestName: user.name,
-            roundId: round.id,
-            inviteToken: round.inviteToken,
-            courseName: round.courseName,
-            planningLocation: round.planningLocation,
-            mode: round.mode,
-            teeTime: round.teeTime,
-            targetDate: round.targetDate,
-            spotStatus: targetStatus,
-          }).catch((err) => console.error("[join] host RSVP notify", err));
-          publishAfterRoundDetailChanged(params.token, "join");
-          if (round.hostId !== user.id) {
-            publishRsvpToast({
+          await Promise.all([
+            recordHostRoundRsvpAndMaybePush({
               hostId: round.hostId,
-              inviteToken: round.inviteToken,
-              roundTitle: formatChatPushTitleLine({
-                courseName: round.courseName,
-                planningLocation: round.planningLocation,
-                mode: round.mode,
-                teeTime: round.teeTime,
-                targetDate: round.targetDate,
-              }),
+              guestId: user.id,
               guestName: user.name,
-              guestAvatar: user.avatar,
+              roundId: round.id,
+              inviteToken: round.inviteToken,
+              courseName: round.courseName,
+              planningLocation: round.planningLocation,
+              mode: round.mode,
+              teeTime: round.teeTime,
+              targetDate: round.targetDate,
               spotStatus: targetStatus,
-            });
-          }
+            }).catch((err) => console.error("[join] host RSVP notify", err)),
+            publishAfterRoundDetailChanged(params.token, "join"),
+            round.hostId !== user.id
+              ? publishRsvpToast({
+                  hostId: round.hostId,
+                  inviteToken: round.inviteToken,
+                  roundTitle: formatChatPushTitleLine({
+                    courseName: round.courseName,
+                    planningLocation: round.planningLocation,
+                    mode: round.mode,
+                    teeTime: round.teeTime,
+                    targetDate: round.targetDate,
+                  }),
+                  guestName: user.name,
+                  guestAvatar: user.avatar,
+                  spotStatus: targetStatus,
+                })
+              : Promise.resolve(),
+          ]);
           return NextResponse.json({
             ok: true,
             status: targetStatus,
@@ -154,36 +156,38 @@ export async function POST(req: Request, { params }: RouteContext) {
             status: targetStatus,
           });
           void syncRoundConversationParticipant(round.id, user.id, targetStatus);
-          void recordHostRoundRsvpAndMaybePush({
-            hostId: round.hostId,
-            guestId: user.id,
-            guestName: user.name,
-            roundId: round.id,
-            inviteToken: round.inviteToken,
-            courseName: round.courseName,
-            planningLocation: round.planningLocation,
-            mode: round.mode,
-            teeTime: round.teeTime,
-            targetDate: round.targetDate,
-            spotStatus: targetStatus,
-          }).catch((err) => console.error("[join] host RSVP notify", err));
-          publishAfterRoundDetailChanged(params.token, "join");
-          if (round.hostId !== user.id) {
-            publishRsvpToast({
+          await Promise.all([
+            recordHostRoundRsvpAndMaybePush({
               hostId: round.hostId,
-              inviteToken: round.inviteToken,
-              roundTitle: formatChatPushTitleLine({
-                courseName: round.courseName,
-                planningLocation: round.planningLocation,
-                mode: round.mode,
-                teeTime: round.teeTime,
-                targetDate: round.targetDate,
-              }),
+              guestId: user.id,
               guestName: user.name,
-              guestAvatar: user.avatar,
+              roundId: round.id,
+              inviteToken: round.inviteToken,
+              courseName: round.courseName,
+              planningLocation: round.planningLocation,
+              mode: round.mode,
+              teeTime: round.teeTime,
+              targetDate: round.targetDate,
               spotStatus: targetStatus,
-            });
-          }
+            }).catch((err) => console.error("[join] host RSVP notify", err)),
+            publishAfterRoundDetailChanged(params.token, "join"),
+            round.hostId !== user.id
+              ? publishRsvpToast({
+                  hostId: round.hostId,
+                  inviteToken: round.inviteToken,
+                  roundTitle: formatChatPushTitleLine({
+                    courseName: round.courseName,
+                    planningLocation: round.planningLocation,
+                    mode: round.mode,
+                    teeTime: round.teeTime,
+                    targetDate: round.targetDate,
+                  }),
+                  guestName: user.name,
+                  guestAvatar: user.avatar,
+                  spotStatus: targetStatus,
+                })
+              : Promise.resolve(),
+          ]);
           return NextResponse.json({
             ok: true,
             status: targetStatus,

@@ -40,12 +40,12 @@ export async function POST(req: Request, { params }: RouteContext) {
         .update(userFollows)
         .set({ status: "accepted", updatedAt: new Date() })
         .where(eq(userFollows.id, existing.id));
-      publishAfterProfileUpdated(viewer.id);
+      await publishAfterProfileUpdated(viewer.id);
       return NextResponse.json({ ok: true, status: "accepted" });
     }
 
     await db.delete(userFollows).where(eq(userFollows.id, existing.id));
-    publishAfterProfileUpdated(viewer.id);
+    await publishAfterProfileUpdated(viewer.id);
     return NextResponse.json({ ok: true, status: "declined" });
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -122,7 +122,7 @@ export async function POST(req: Request) {
         .from(groupMembers)
         .where(eq(groupMembers.groupId, input.groupId));
 
-      void notifyGroupPost({
+      await notifyGroupPost({
         groupId: input.groupId,
         groupName: group?.name ?? "Group",
         senderUserId: viewer.id,

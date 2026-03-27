@@ -32,43 +32,53 @@ function logPublishError(context: string, err: unknown) {
 }
 
 /** After a round is created: optional discover fanout + per-user inbox (host + invitees). */
-export function publishAfterRoundCreated(params: {
+export async function publishAfterRoundCreated(params: {
   visibility: "public" | "private";
   hostId: string;
   inviteeUserIds: string[];
-}): void {
+}): Promise<void> {
   const { visibility, hostId, inviteeUserIds } = params;
   const inviteeSet = new Set(inviteeUserIds);
 
+  const jobs: Promise<void>[] = [];
+
   if (visibility === "public") {
-    void publishParfadeMessage(parfadeDiscoverChannel(), {
-      v: 1,
-      type: "discover-refresh",
-      reason: "public-round-created",
-    }).catch((e) => logPublishError("discover-refresh", e));
+    jobs.push(
+      publishParfadeMessage(parfadeDiscoverChannel(), {
+        v: 1,
+        type: "discover-refresh",
+        reason: "public-round-created",
+      }).catch((e) => logPublishError("discover-refresh", e)),
+    );
   }
 
-  void publishParfadeMessage(parfadeUserInboxChannel(hostId), {
-    v: 1,
-    type: "inbox-sync",
-    roundLists: true,
-    reason: "round-created-host",
-  }).catch((e) => logPublishError("inbox host", e));
-
-  for (const uid of inviteeSet) {
-    void publishParfadeMessage(parfadeUserInboxChannel(uid), {
+  jobs.push(
+    publishParfadeMessage(parfadeUserInboxChannel(hostId), {
       v: 1,
       type: "inbox-sync",
       roundLists: true,
-      notificationBadge: true,
-      reason: "round-created-invitee",
-    }).catch((e) => logPublishError(`inbox invitee ${uid}`, e));
+      reason: "round-created-host",
+    }).catch((e) => logPublishError("inbox host", e)),
+  );
+
+  for (const uid of inviteeSet) {
+    jobs.push(
+      publishParfadeMessage(parfadeUserInboxChannel(uid), {
+        v: 1,
+        type: "inbox-sync",
+        roundLists: true,
+        notificationBadge: true,
+        reason: "round-created-invitee",
+      }).catch((e) => logPublishError(`inbox invitee ${uid}`, e)),
+    );
   }
+
+  await Promise.all(jobs);
 }
 
 /** When the profile owner updates; viewers subscribed to the profile channel refetch. */
-export function publishAfterProfileUpdated(userId: string): void {
-  void publishParfadeMessage(parfadeProfileChannel(userId), {
+export async function publishAfterProfileUpdated(userId: string): Promise<void> {
+  await publishParfadeMessage(parfadeProfileChannel(userId), {
     v: 1,
     type: "profile-updated",
     userId,
@@ -76,13 +86,13 @@ export function publishAfterProfileUpdated(userId: string): void {
 }
 
 /** Round detail screen: refetch when host edits, finalizes, spots/invites change, chat preview, etc. */
-export function publishAfterRoundDetailChanged(
+export async function publishAfterRoundDetailChanged(
   inviteToken: string,
   reason?: string,
-): void {
+): Promise<void> {
   const t = inviteToken.trim();
   if (!t) return;
-  void publishParfadeMessage(parfadeRoundDetailChannel(t), {
+  await publishParfadeMessage(parfadeRoundDetailChannel(t), {
     v: 1,
     type: "round-detail-updated",
     inviteToken: t,
@@ -93,15 +103,15 @@ export function publishAfterRoundDetailChanged(
 /**
  * In-app toast when a player RSVPs to a round the host created.
  */
-export function publishRsvpToast(input: {
+export async function publishRsvpToast(input: {
   hostId: string;
   inviteToken: string;
   roundTitle: string;
   guestName: string;
   guestAvatar: string | null;
   spotStatus: "confirmed" | "requested" | "declined";
-}): void {
-  void publishParfadeMessage(parfadeUserInboxChannel(input.hostId), {
+}): Promise<void> {
+  await publishParfadeMessage(parfadeUserInboxChannel(input.hostId), {
     v: 1,
     type: "rsvp-toast",
     inviteToken: input.inviteToken,
@@ -116,14 +126,14 @@ export function publishRsvpToast(input: {
  * In-app toast when a user is invited to a round.
  * Also piggy-backs `roundLists` so the invitee's My Rounds list refreshes.
  */
-export function publishRoundInviteToast(input: {
+export async function publishRoundInviteToast(input: {
   inviteeUserId: string;
   inviteToken: string;
   roundTitle: string;
   inviterName: string;
   inviterAvatar: string | null;
-}): void {
-  void publishParfadeMessage(parfadeUserInboxChannel(input.inviteeUserId), {
+}): Promise<void> {
+  await publishParfadeMessage(parfadeUserInboxChannel(input.inviteeUserId), {
     v: 1,
     type: "round-invite-toast",
     inviteToken: input.inviteToken,
@@ -134,8 +144,8 @@ export function publishRoundInviteToast(input: {
 }
 
 /** In-app mustard dot + open notifications list refresh (follow / RSVP / invite rows). */
-export function publishNotificationBadgeNudge(userId: string, reason?: string): void {
-  void publishParfadeMessage(parfadeUserInboxChannel(userId), {
+export async function publishNotificationBadgeNudge(userId: string, reason?: string): Promise<void> {
+  await publishParfadeMessage(parfadeUserInboxChannel(userId), {
     v: 1,
     type: "inbox-sync",
     notificationBadge: true,

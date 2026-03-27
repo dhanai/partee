@@ -84,7 +84,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         targetDate: rounds.targetDate,
       });
 
-    publishAfterRoundDetailChanged(params.token, "finalize");
+    await publishAfterRoundDetailChanged(params.token, "finalize");
 
     return NextResponse.json({ round: updated });
   } catch (error) {

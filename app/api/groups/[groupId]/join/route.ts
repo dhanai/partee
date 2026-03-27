@@ -53,7 +53,7 @@ export async function POST(req: Request, { params }: Ctx) {
         .values({ groupId, userId: viewer.id, status: "pending" })
         .onConflictDoNothing();
 
-      void notifyGroupJoinRequest({
+      await notifyGroupJoinRequest({
         groupId,
         groupName: group.name,
         requesterId: viewer.id,

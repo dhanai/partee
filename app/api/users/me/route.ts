@@ -164,7 +164,7 @@ export async function PATCH(req: Request) {
         hideHostedRoundsFromDiscover: users.hideHostedRoundsFromDiscover,
       });
 
-    publishAfterProfileUpdated(user.id);
+    await publishAfterProfileUpdated(user.id);
 
     return NextResponse.json({ user: updated });
   } catch (error) {

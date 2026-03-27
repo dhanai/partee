@@ -42,7 +42,7 @@ export async function POST(_req: Request, { params }: RouteContext) {
         status: desiredStatus,
       });
       if (desiredStatus === "requested") {
-        void notifyFollowRequest({ followedUserId: targetUserId, followerName: viewer.name });
+        await notifyFollowRequest({ followedUserId: targetUserId, followerName: viewer.name });
       }
       return NextResponse.json({ ok: true, status: desiredStatus });
     }

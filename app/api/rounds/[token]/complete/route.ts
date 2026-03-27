@@ -39,7 +39,7 @@ export async function POST(req: Request, context: RouteContext) {
       .set({ status: "completed" })
       .where(eq(rounds.id, round.id));
 
-    publishAfterRoundDetailChanged(token.trim(), "complete");
+    await publishAfterRoundDetailChanged(token.trim(), "complete");
 
     return NextResponse.json({ ok: true as const, status: "completed" as const });
   } catch (e) {

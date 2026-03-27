@@ -92,7 +92,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       await db.insert(spots).values(inviteRows).onConflictDoNothing({
         target: [spots.roundId, spots.userId],
       });
-      void notifyRoundInvites({
+      await notifyRoundInvites({
         inviteToken: params.token,
         inviteeUserIds: inviteRows.map((r) => r.userId),
         body: buildRoundInvitePushBody({
@@ -113,18 +113,19 @@ export async function POST(req: Request, { params }: RouteContext) {
       teeTime: round.teeTime,
       targetDate: round.targetDate,
     });
-    for (const row of inviteRows) {
-      publishNotificationBadgeNudge(row.userId, "round-invite");
-      publishRoundInviteToast({
-        inviteeUserId: row.userId,
-        inviteToken: params.token,
-        roundTitle,
-        inviterName: currentUser.name,
-        inviterAvatar: currentUser.avatar,
-      });
-    }
-
-    publishAfterRoundDetailChanged(params.token, "invites");
+    await Promise.all([
+      ...inviteRows.flatMap((row) => [
+        publishNotificationBadgeNudge(row.userId, "round-invite"),
+        publishRoundInviteToast({
+          inviteeUserId: row.userId,
+          inviteToken: params.token,
+          roundTitle,
+          inviterName: currentUser.name,
+          inviterAvatar: currentUser.avatar,
+        }),
+      ]),
+      publishAfterRoundDetailChanged(params.token, "invites"),
+    ]);
 
     return NextResponse.json({
       invitedCount: inviteRows.length,

@@ -221,7 +221,7 @@ export async function POST(req: Request) {
         .from(spots)
         .where(and(eq(spots.roundId, createdRound.id), eq(spots.status, "invited")));
       inviteeUserIds = invitedRows.map((r) => r.userId);
-      void notifyRoundInvites({
+      await notifyRoundInvites({
         inviteToken: createdRound.inviteToken,
         inviteeUserIds,
         body: buildRoundInvitePushBody({
@@ -241,18 +241,20 @@ export async function POST(req: Request) {
         teeTime: createdRound.teeTime,
         targetDate: createdRound.targetDate,
       });
-      for (const uid of inviteeUserIds) {
-        publishRoundInviteToast({
-          inviteeUserId: uid,
-          inviteToken: createdRound.inviteToken,
-          roundTitle,
-          inviterName: user.name,
-          inviterAvatar: user.avatar,
-        });
-      }
+      await Promise.all(
+        inviteeUserIds.map((uid) =>
+          publishRoundInviteToast({
+            inviteeUserId: uid,
+            inviteToken: createdRound.inviteToken,
+            roundTitle,
+            inviterName: user.name,
+            inviterAvatar: user.avatar,
+          }),
+        ),
+      );
     }
 
-    publishAfterRoundCreated({
+    await publishAfterRoundCreated({
       visibility: createdRound.visibility,
       hostId: user.id,
       inviteeUserIds,
