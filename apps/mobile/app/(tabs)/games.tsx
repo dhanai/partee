@@ -16,7 +16,7 @@ import { useAbly } from "ably/react";
 import { Ionicons } from "@expo/vector-icons";
 import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
 import { deleteGameSession, listMyGameSessions, type GameSessionSummary } from "../../lib/games-api";
-import { GAME_DEFINITIONS, getGameDefinition } from "../../lib/games-registry";
+import { getGameDefinitions, getGameDefinition } from "../../lib/games-registry";
 import { subscribeGamesListRefresh } from "../../lib/games-list-refresh";
 import { parfadeGameSessionChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
@@ -168,7 +168,7 @@ export default function GamesScreen() {
 
       <Text style={styles.sectionLabel}>Start a game</Text>
       <View style={styles.gameGrid}>
-        {GAME_DEFINITIONS.filter((g) => g.implemented).map((g) => (
+        {getGameDefinitions().filter((g) => g.implemented).map((g) => (
           <Pressable
             key={g.id}
             style={({ pressed }) => [styles.gameCard, pressed && styles.gameCardPressed]}

@@ -17,6 +17,7 @@ import {
 import { apiGet, toAbsoluteUrl } from "../lib/api";
 import type { InviteSelectionUser } from "../lib/invite-selection-store";
 import { colors } from "../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 
 type NetworkFriend = {
   id: string;
@@ -246,15 +247,17 @@ export function InviteFriendsSheet({
             </View>
           )
         ) : (
-          rows.map((user) => (
+          rows.map((user) => {
+            const displayAvatar = parfadeUserAvatarUrlForDisplay(user.avatar);
+            return (
             <Pressable
               key={user.id}
               style={styles.listRow}
               onPress={() => toggleUser(user)}
             >
-              {user.avatar ? (
+              {displayAvatar ? (
                 <Image
-                  source={{ uri: toAbsoluteUrl(user.avatar) }}
+                  source={{ uri: toAbsoluteUrl(displayAvatar) }}
                   style={styles.avatar}
                 />
               ) : (
@@ -278,7 +281,8 @@ export function InviteFriendsSheet({
                 />
               </View>
             </Pressable>
-          ))
+            );
+          })
         )}
       </BottomSheetScrollView>
 

@@ -17,6 +17,7 @@ import { apiGet, toAbsoluteUrl } from "../lib/api";
 import { subscribeChatListsRefresh } from "../lib/chat-lists-refresh";
 import { useChatUnread } from "../lib/chat-unread-context";
 import { colors } from "../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 
 type ConversationRow = {
   id: string;
@@ -97,7 +98,7 @@ function ChatAvatar({ item }: { item: ConversationRow }) {
   }
 
   if (item.type === "round" && item.roundMode === "scheduled" && item.imageUrl) {
-    const first = item.participantAvatars[0];
+    const first = parfadeUserAvatarUrlForDisplay(item.participantAvatars[0] ?? null);
     if (!first) {
       return (
         <Image
@@ -122,7 +123,9 @@ function ChatAvatar({ item }: { item: ConversationRow }) {
     );
   }
 
-  const avatars = item.participantAvatars;
+  const avatars = item.participantAvatars.map((a) => parfadeUserAvatarUrlForDisplay(a)).filter(
+    (a): a is string => Boolean(a),
+  );
 
   if (avatars.length === 0) {
     return <InitialAvatar name={item.title || "?"} size={50} />;

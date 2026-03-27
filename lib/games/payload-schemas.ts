@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { deriveWolfHoleOutcome } from "@/lib/games/wolf-outcome";
 
-export type GameTypeKey = "skins" | "wolf" | "best_ball" | "nassau";
+export type GameTypeKey = string;
 
 /**
  * Skins: tap everyone who shot the lowest gross on the hole.
@@ -105,13 +105,27 @@ function canonicalizeSkinsWinnerIds(ids: string[], rosterUserIds: string[]): str
   return out;
 }
 
+/** enter_strokes: numeric score per player per hole */
+export const enterStrokesPayloadSchema = z.object({
+  scores: z.record(z.string(), z.number().int().min(0).max(99)),
+});
+
+export type EnterStrokesPayload = z.infer<typeof enterStrokesPayloadSchema>;
+
+/**
+ * Parse and validate a hole payload.
+ * `scoringMode` overrides legacy `gameType`-based branching when provided.
+ */
 export function parseHolePayload(
   gameType: GameTypeKey,
   raw: unknown,
   playerUserIds: string[],
+  scoringMode?: string,
 ): Record<string, unknown> {
   const set = new Set(playerUserIds);
-  if (gameType === "skins") {
+  const mode = scoringMode ?? gameType;
+
+  if (mode === "pick_lowest" || gameType === "skins") {
     const data = skinsHolePayloadSchema.parse(raw);
     const winnerUserIds = canonicalizeSkinsWinnerIds(data.winnerUserIds, playerUserIds);
     if (data.result === "won") {
@@ -128,7 +142,7 @@ export function parseHolePayload(
     }
     return { result: data.result, winnerUserIds } as Record<string, unknown>;
   }
-  if (gameType === "wolf") {
+  if (mode === "wolf_pick" || gameType === "wolf") {
     const data = wolfHolePayloadSchema.parse(raw);
     assertSubset(set, [data.wolfUserId], "wolfUserId");
     if (data.partnerUserId) {
@@ -164,5 +178,14 @@ export function parseHolePayload(
       outcome: data.outcome,
     } as unknown as Record<string, unknown>;
   }
-  throw new Error(`Hole payloads for game type "${gameType}" are not implemented yet`);
+  if (mode === "enter_strokes") {
+    const data = enterStrokesPayloadSchema.parse(raw);
+    for (const uid of Object.keys(data.scores)) {
+      if (!set.has(uid)) {
+        throw new Error("scores keys must be session player IDs");
+      }
+    }
+    return data as unknown as Record<string, unknown>;
+  }
+  throw new Error(`Hole payloads for scoring mode "${mode}" are not implemented yet`);
 }

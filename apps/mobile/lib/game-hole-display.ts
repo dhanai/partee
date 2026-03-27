@@ -1,14 +1,15 @@
 import type { GamePlayerRow } from "./games-api";
-import type { GameTypeId } from "./games-registry";
 
 /** User ids to show on a completed hole tile (avatars); empty → fall back to checkmark. */
 export function holeCompletionAvatarUserIds(
-  gameType: GameTypeId,
+  gameType: string,
   payload: Record<string, unknown>,
   players: GamePlayerRow[],
+  scoringMode?: string,
 ): string[] {
-  if (gameType === "skins") return skinsHoleAvatarUserIds(payload);
-  if (gameType === "wolf") return wolfHoleAvatarUserIds(payload, players);
+  const mode = scoringMode ?? gameType;
+  if (mode === "pick_lowest" || gameType === "skins") return skinsHoleAvatarUserIds(payload);
+  if (mode === "wolf_pick" || gameType === "wolf") return wolfHoleAvatarUserIds(payload, players);
   return [];
 }
 

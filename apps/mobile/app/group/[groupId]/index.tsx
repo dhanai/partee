@@ -31,6 +31,7 @@ import { parseParfadeRealtimeMessage } from "../../../lib/parfade-ably-messages"
 import { uploadImage, AVATAR_MAX_BYTES, COVER_MAX_BYTES } from "../../../lib/upload-image";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { colors } from "../../../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../../../lib/user-avatar-display";
 
 type GroupDetail = {
   id: string;
@@ -625,7 +626,11 @@ export default function GroupLandingScreen() {
   function goToProfile(user: { id: string; name: string; avatar: string | null }) {
     router.push({
       pathname: "/profile/[userId]",
-      params: { userId: user.id, userName: user.name, userAvatar: user.avatar ?? "" },
+      params: {
+        userId: user.id,
+        userName: user.name,
+        userAvatar: parfadeUserAvatarUrlForDisplay(user.avatar) ?? "",
+      },
     });
   }
 
@@ -807,16 +812,15 @@ export default function GroupLandingScreen() {
           if (item.type === "post") {
             const liked = item.viewerLiked ?? false;
             const likeCount = item.likeCount ?? 0;
+            const postAuthorAvatar = parfadeUserAvatarUrlForDisplay(item.user.avatar);
             return (
               <View style={styles.postCard}>
                 <View style={styles.postHeader}>
                   <Pressable style={styles.postAuthorTap} onPress={() => goToProfile(item.user)}>
-                    {item.user.avatar ? (
-                      <Image source={item.user.avatar} style={styles.postAvatar} transition={0} />
+                    {postAuthorAvatar ? (
+                      <Image source={postAuthorAvatar} style={styles.postAvatar} transition={0} />
                     ) : (
-                      <View style={[styles.postAvatar, styles.postAvatarFallback]}>
-                        <Ionicons name="person" size={16} color={colors.muted} />
-                      </View>
+                      <InitialAvatar name={item.user.name} size={40} maxInitials={2} />
                     )}
                     <View style={styles.postHeaderText}>
                       <Text style={styles.postAuthor}>{item.user.name}</Text>
@@ -876,6 +880,7 @@ export default function GroupLandingScreen() {
           }
 
           if (item.type === "round_created") {
+            const actAvatar = parfadeUserAvatarUrlForDisplay(item.user.avatar);
             return (
               <Pressable
                 style={styles.activityRow}
@@ -886,16 +891,14 @@ export default function GroupLandingScreen() {
                 }}
               >
                 <Pressable onPress={() => goToProfile(item.user)}>
-                  {item.user.avatar ? (
+                  {actAvatar ? (
                     <Image
-                      source={item.user.avatar}
+                      source={actAvatar}
                       style={styles.activityAvatar}
                       transition={0}
                     />
                   ) : (
-                    <View style={[styles.activityAvatar, styles.activityAvatarFallback]}>
-                      <Ionicons name="person" size={14} color={colors.muted} />
-                    </View>
+                    <InitialAvatar name={item.user.name} size={36} maxInitials={2} />
                   )}
                 </Pressable>
                 <View style={styles.activityInfo}>
@@ -913,18 +916,17 @@ export default function GroupLandingScreen() {
           }
 
           if (item.type === "member_joined") {
+            const joinAvatar = parfadeUserAvatarUrlForDisplay(item.user.avatar);
             return (
               <Pressable style={styles.activityRow} onPress={() => goToProfile(item.user)}>
-                {item.user.avatar ? (
+                {joinAvatar ? (
                   <Image
-                    source={item.user.avatar}
+                    source={joinAvatar}
                     style={styles.activityAvatar}
                     transition={0}
                   />
                 ) : (
-                  <View style={[styles.activityAvatar, styles.activityAvatarFallback]}>
-                    <Ionicons name="person" size={14} color={colors.muted} />
-                  </View>
+                  <InitialAvatar name={item.user.name} size={36} maxInitials={2} />
                 )}
                 <View style={styles.activityInfo}>
                   <Text style={styles.activityText}>
@@ -1064,15 +1066,15 @@ export default function GroupLandingScreen() {
           ) : comments.length === 0 ? (
             <Text style={styles.commentEmpty}>No comments yet. Be the first!</Text>
           ) : (
-            comments.map((comment) => (
+            comments.map((comment) => {
+              const commentAvatar = parfadeUserAvatarUrlForDisplay(comment.user.avatar);
+              return (
               <View key={comment.id} style={styles.commentRow}>
                 <Pressable onPress={() => goToProfile(comment.user)}>
-                  {comment.user.avatar ? (
-                    <Image source={comment.user.avatar} style={styles.commentAvatar} transition={0} />
+                  {commentAvatar ? (
+                    <Image source={commentAvatar} style={styles.commentAvatar} transition={0} />
                   ) : (
-                    <View style={[styles.commentAvatar, styles.commentAvatarFallback]}>
-                      <Ionicons name="person" size={12} color={colors.muted} />
-                    </View>
+                    <InitialAvatar name={comment.user.name} size={32} maxInitials={2} />
                   )}
                 </Pressable>
                 <View style={styles.commentContent}>
@@ -1101,7 +1103,8 @@ export default function GroupLandingScreen() {
                   </View>
                 </View>
               </View>
-            ))
+              );
+            })
           )}
         </BottomSheetScrollView>
         <View style={styles.commentInputRow}>

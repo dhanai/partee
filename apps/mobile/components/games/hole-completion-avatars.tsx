@@ -2,6 +2,7 @@ import { Image } from "expo-image";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { toAbsoluteUrl } from "../../lib/api";
+import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 import type { GamePlayerRow } from "../../lib/games-api";
 import { colors } from "../../lib/theme";
 
@@ -99,6 +100,7 @@ export function HoleCompletionAvatars({
 /** Single circle for standings rows */
 export function StandingAvatar({ player, size = 32 }: { player: GamePlayerRow; size?: number }) {
   const initial = (player.name ?? "?").trim().charAt(0).toUpperCase() || "?";
+  const displayAvatar = parfadeUserAvatarUrlForDisplay(player.avatar);
   return (
     <View
       style={[
@@ -110,9 +112,9 @@ export function StandingAvatar({ player, size = 32 }: { player: GamePlayerRow; s
         },
       ]}
     >
-      {player.avatar ? (
+      {displayAvatar ? (
         <Image
-          source={{ uri: toAbsoluteUrl(player.avatar) }}
+          source={{ uri: toAbsoluteUrl(displayAvatar) }}
           style={{ width: size, height: size, borderRadius: size / 2 }}
           contentFit="cover"
           accessibilityIgnoresInvertColors

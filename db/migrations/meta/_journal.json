@@ -225,6 +225,13 @@
       "when": 1776200000000,
       "tag": "0031_reaction_emoji_expand",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1776300000000,
+      "tag": "0032_game_types",
+      "breakpoints": true
     }
   ]
 }

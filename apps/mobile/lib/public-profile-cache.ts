@@ -1,4 +1,5 @@
 import { apiGet } from "./api";
+import { parfadeUserAvatarUrlForDisplay } from "./user-avatar-display";
 
 export type PublicProfile = {
   user: {
@@ -41,6 +42,17 @@ function isFresh(entry: CacheEntry | undefined) {
   return Date.now() - entry.updatedAt < CACHE_TTL_MS;
 }
 
+function normalizePublicProfile(p: PublicProfile): PublicProfile {
+  return {
+    ...p,
+    user: { ...p.user, avatar: parfadeUserAvatarUrlForDisplay(p.user.avatar) },
+    friends: p.friends.map((f) => ({
+      ...f,
+      avatar: parfadeUserAvatarUrlForDisplay(f.avatar),
+    })),
+  };
+}
+
 export function clearPublicProfileCache() {
   profileCache.clear();
   inflightPrefetch.clear();
@@ -49,7 +61,7 @@ export function clearPublicProfileCache() {
 export function getCachedPublicProfile(userId: string): PublicProfile | null {
   const entry = profileCache.get(userId);
   if (!entry) return null;
-  return entry.data;
+  return normalizePublicProfile(entry.data);
 }
 
 export function hasFreshPublicProfile(userId: string): boolean {
@@ -58,7 +70,7 @@ export function hasFreshPublicProfile(userId: string): boolean {
 
 export function setCachedPublicProfile(profile: PublicProfile) {
   profileCache.set(profile.user.id, {
-    data: profile,
+    data: normalizePublicProfile(profile),
     updatedAt: Date.now(),
   });
 }
@@ -67,9 +79,9 @@ export function updateCachedPublicProfile(
   userId: string,
   updater: (current: PublicProfile) => PublicProfile,
 ) {
-  const current = getCachedPublicProfile(userId);
-  if (!current) return;
-  setCachedPublicProfile(updater(current));
+  const entry = profileCache.get(userId);
+  if (!entry) return;
+  setCachedPublicProfile(updater(normalizePublicProfile(entry.data)));
 }
 
 export async function fetchPublicProfileAndCache(
@@ -77,8 +89,9 @@ export async function fetchPublicProfileAndCache(
   token: string | null,
 ): Promise<PublicProfile> {
   const profile = await apiGet<PublicProfile>(`/api/users/${userId}/profile`, token);
-  setCachedPublicProfile(profile);
-  return profile;
+  const normalized = normalizePublicProfile(profile);
+  setCachedPublicProfile(normalized);
+  return normalized;
 }
 
 export function prefetchPublicProfile(

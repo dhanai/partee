@@ -4,13 +4,13 @@ import { z } from "zod";
 import { db } from "@/db";
 import { gameHoleEvents, gameSessions } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
-import type { GameTypeKey } from "@/lib/games/payload-schemas";
 import type { WolfHolePayload } from "@/lib/games/payload-schemas";
 import { parseHolePayload } from "@/lib/games/payload-schemas";
 import { validateWolfPayloadWolfUser } from "@/lib/games/wolf-hole-validation";
 import { toIso } from "@/lib/games/serialize";
 import { loadSessionWithPlayers, userIsGameParticipant } from "@/lib/games/session-queries";
 import { publishGameSessionUpdated } from "@/lib/parfade-ably-publish";
+import { getGameTypeBySlug } from "@/lib/game-types-config";
 
 type RouteContext = { params: Promise<{ id: string; holeNumber: string }> };
 
@@ -54,14 +54,18 @@ export async function PUT(req: Request, context: RouteContext) {
     const playerUserIds = players.map((p) => p.userId);
     const body = putBodySchema.parse(await req.json());
 
+    const gameDef = await getGameTypeBySlug(session.gameType);
+    const scoringMode = gameDef?.scoringMode;
+
     let validatedPayload: Record<string, unknown>;
     try {
       validatedPayload = parseHolePayload(
-        session.gameType as GameTypeKey,
+        session.gameType,
         body.payload,
         playerUserIds,
+        scoringMode,
       );
-      if (session.gameType === "wolf") {
+      if (scoringMode === "wolf_pick" || session.gameType === "wolf") {
         const wolfErr = validateWolfPayloadWolfUser(
           session.settings as Record<string, unknown>,
           holeNumber,

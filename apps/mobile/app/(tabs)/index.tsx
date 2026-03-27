@@ -37,6 +37,7 @@ import { getHousePromosCached, type HousePromoSlotClient } from "../../lib/house
 import { parfadeRoundDetailChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { colors } from "../../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 import { DiscoverRound } from "../../types/round";
 
 type DiscoverResponse = {
@@ -644,7 +645,7 @@ export default function DiscoverScreen() {
                   params: {
                     userId: player.id,
                     userName: player.name,
-                    userAvatar: player.avatar ?? "",
+                    userAvatar: parfadeUserAvatarUrlForDisplay(player.avatar) ?? "",
                   },
                 })
               }

@@ -1,5 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { toAbsoluteUrl } from "../lib/api";
+import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 import { colors } from "../lib/theme";
 
 export type ConfirmedSpotPlayer = {
@@ -48,10 +49,12 @@ export function ConfirmedSpotsRow({
           );
         }
 
+        const displayAvatar = parfadeUserAvatarUrlForDisplay(player.avatar);
+
         const avatarInner =
-          player.avatar ? (
+          displayAvatar ? (
             <Image
-              source={{ uri: toAbsoluteUrl(player.avatar) }}
+              source={{ uri: toAbsoluteUrl(displayAvatar) }}
               style={[styles.avatarBase, dimStyle]}
             />
           ) : (

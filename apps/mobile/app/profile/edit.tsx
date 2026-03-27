@@ -17,7 +17,9 @@ import {
 import { apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../../lib/api";
 import { uploadImage, AVATAR_MAX_BYTES } from "../../lib/upload-image";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
+import { InitialAvatar } from "../../components/initial-avatar";
 import { colors } from "../../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 
 type MeResponse = {
   user: {
@@ -303,6 +305,8 @@ export default function EditProfileScreen() {
     email,
   ]);
 
+  const displayAvatar = parfadeUserAvatarUrlForDisplay(avatar);
+
   return (
     <ScrollView
       style={styles.container}
@@ -325,20 +329,17 @@ export default function EditProfileScreen() {
             accessibilityLabel="Change profile photo"
             accessibilityRole="button"
           >
-            {avatar ? (
+            {displayAvatar ? (
               <View style={styles.avatar} pointerEvents="none">
                 <Image
-                  source={{ uri: toAbsoluteUrl(avatar) }}
+                  source={{ uri: toAbsoluteUrl(displayAvatar) }}
                   style={StyleSheet.absoluteFill}
                   resizeMode="cover"
                 />
               </View>
             ) : (
-              <View
-                style={[styles.avatar, styles.avatarPlaceholder]}
-                pointerEvents="none"
-              >
-                <Text style={styles.avatarInitial}>P</Text>
+              <View style={styles.avatar} pointerEvents="none">
+                <InitialAvatar name={name || "Parfade"} size={104} maxInitials={2} />
               </View>
             )}
             <View style={styles.avatarCameraBadge} pointerEvents="none">

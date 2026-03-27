@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { OpenInParfadeGamesCreateLink } from "@/components/open-in-parfade-games-create";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
-import { getGameDefinition, type GameTypeId } from "@/lib/games-registry";
+import { getGameDefinition } from "@/lib/games-registry";
 
 type RoundForGame = {
   hostId: string;
@@ -80,7 +80,7 @@ export function GamesCreateWeb() {
       }
 
       const body: Record<string, unknown> = {
-        gameType: gameTypeRaw as GameTypeId,
+        gameType: gameTypeRaw,
         playerUserIds,
         holesCount: 18,
       };

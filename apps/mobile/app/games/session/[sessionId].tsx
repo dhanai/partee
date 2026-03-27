@@ -31,6 +31,7 @@ import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { SkinsHoleEditor, type SkinsPayload } from "../../../components/games/skins-hole-editor";
 import { WolfRecapFunBlock } from "../../../components/games/wolf-recap-fun-block";
 import { WolfHoleEditor, type WolfPayload } from "../../../components/games/wolf-hole-editor";
+import { EnterStrokesEditor, type EnterStrokesPayload } from "../../../components/games/enter-strokes-editor";
 import {
   deleteGameSession,
   getGameSession,
@@ -42,7 +43,7 @@ import {
   type GameSessionSummary,
 } from "../../../lib/games-api";
 import { holeCompletionAvatarUserIds } from "../../../lib/game-hole-display";
-import { getGameDefinition, type GameTypeId } from "../../../lib/games-registry";
+import { getGameDefinition } from "../../../lib/games-registry";
 import { letterLabelForUser } from "../../../lib/wolf-rotation";
 import type { WolfTeeOff } from "../../../lib/wolf-rotation";
 import { computeSkinsTotals, type SkinsTieHandling } from "../../../lib/skins-scoring";
@@ -103,11 +104,9 @@ export default function GameSessionScreen() {
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
-  const [settingsHolesCount, setSettingsHolesCount] = useState<9 | 18>(18);
+  const [settingsHolesCount, setSettingsHolesCount] = useState<number>(18);
   const [settingsHolesTouched, setSettingsHolesTouched] = useState(false);
-  const [settingsWolfTeeOff, setSettingsWolfTeeOff] = useState<"first" | "last">("first");
-  const [settingsWolfTieHandling, setSettingsWolfTieHandling] = useState<"carry" | "wash">("carry");
-  const [settingsSkinsTieHandling, setSettingsSkinsTieHandling] = useState<"carry" | "wash">("carry");
+  const [settingsValues, setSettingsValues] = useState<Record<string, unknown>>({});
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -378,12 +377,9 @@ export default function GameSessionScreen() {
 
   function openSettingsSheet() {
     if (!session) return;
-    const hc: 9 | 18 = session.holesCount === 9 || session.holesCount === 18 ? session.holesCount : 18;
-    setSettingsHolesCount(hc);
+    setSettingsHolesCount(session.holesCount);
     setSettingsHolesTouched(false);
-    setSettingsWolfTeeOff(session.settings?.wolfTeeOff === "last" ? "last" : "first");
-    setSettingsWolfTieHandling(session.settings?.wolfTieHandling === "wash" ? "wash" : "carry");
-    setSettingsSkinsTieHandling(session.settings?.skinsTieHandling === "wash" ? "wash" : "carry");
+    setSettingsValues({ ...(session.settings ?? {}) });
     setSettingsSheetOpen(true);
   }
 
@@ -392,30 +388,20 @@ export default function GameSessionScreen() {
     setSettingsSaving(true);
     try {
       const token = await getToken();
-      const gameType = session.gameType as GameTypeId;
       const body: Parameters<typeof patchGameSession>[2] = {};
 
-      if (
-        (gameType === "skins" || gameType === "wolf") &&
-        settingsHolesTouched &&
-        settingsHolesCount !== session.holesCount
-      ) {
-        body.holesCount = settingsHolesCount;
+      if (settingsHolesTouched && settingsHolesCount !== session.holesCount) {
+        body.holesCount = settingsHolesCount as 9 | 18;
       }
 
-      if (gameType === "wolf") {
-        const tee = session.settings?.wolfTeeOff === "last" ? "last" : "first";
-        const wt = session.settings?.wolfTieHandling === "wash" ? "wash" : "carry";
-        if (settingsWolfTeeOff !== tee || settingsWolfTieHandling !== wt) {
-          body.settings = { wolfTeeOff: settingsWolfTeeOff, wolfTieHandling: settingsWolfTieHandling };
-        }
+      const currentSettings = session.settings ?? {};
+      const changed: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(settingsValues)) {
+        if (key === "guestPlayers" || key === "wolfLetterOrder") continue;
+        if (currentSettings[key] !== val) changed[key] = val;
       }
-
-      if (gameType === "skins") {
-        const st = session.settings?.skinsTieHandling === "wash" ? "wash" : "carry";
-        if (settingsSkinsTieHandling !== st) {
-          body.settings = { skinsTieHandling: settingsSkinsTieHandling };
-        }
+      if (Object.keys(changed).length > 0) {
+        body.settings = changed as Parameters<typeof patchGameSession>[2]["settings"];
       }
 
       if (Object.keys(body).length > 0) {
@@ -473,10 +459,12 @@ export default function GameSessionScreen() {
   }
 
   const def = getGameDefinition(session.gameType);
+  const scoringMode = def?.scoringMode ?? session.gameType;
+  const standingsMode = def?.standingsMode ?? session.gameType;
   const holesCount = session.holesCount;
   const holeNumbers = Array.from({ length: holesCount }, (_, i) => i + 1);
   const wolfLetterOrder =
-    session.gameType === "wolf" ? parseWolfLetterOrder(session.settings) : [];
+    scoringMode === "wolf_pick" ? parseWolfLetterOrder(session.settings) : [];
   const wolfTeeOffUi: WolfTeeOff =
     session.settings?.wolfTeeOff === "last" ? "last" : "first";
 
@@ -506,13 +494,13 @@ export default function GameSessionScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {session.gameType === "wolf" || session.gameType === "skins" ? (
+          {def ? (
             <View style={styles.wolfHero}>
               <View style={styles.wolfHeroTop}>
                 <View>
                   <Text style={styles.wolfHeroEyebrow}>Side game</Text>
                   <Text style={styles.wolfHeroTitle}>
-                    {session.gameType === "wolf" ? "Wolf" : "Skins"}
+                    {def.title}
                   </Text>
                 </View>
                 <View
@@ -538,9 +526,7 @@ export default function GameSessionScreen() {
                 </View>
               </View>
               <Text style={styles.wolfHeroSub} numberOfLines={2}>
-                {session.gameType === "wolf"
-                  ? def?.subtitle ?? "Rotating wolf, pick a partner or go lone each hole."
-                  : def?.subtitle ?? "Tap who shot lowest on each hole."}
+                {def?.subtitle ?? session.gameType}
               </Text>
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
@@ -561,7 +547,7 @@ export default function GameSessionScreen() {
 
           {error ? <Text style={styles.banner}>{error}</Text> : null}
 
-          {session.gameType === "wolf" && wolfTotals ? (
+          {standingsMode === "wolf_points" && wolfTotals ? (
             <View style={styles.scoreCard}>
               <View style={styles.scoreCardHead}>
                 <Ionicons name="trophy-outline" size={20} color={colors.fairway} />
@@ -608,11 +594,11 @@ export default function GameSessionScreen() {
             </View>
           ) : null}
 
-          {recapOnly && session.gameType === "wolf" ? (
+          {recapOnly && standingsMode === "wolf_points" ? (
             <WolfRecapFunBlock highlights={wolfRecapHighlightLines} />
           ) : null}
 
-          {session.gameType === "skins" && skinsTotals ? (
+          {standingsMode === "skins_count" && skinsTotals ? (
             <View style={styles.scoreCard}>
               <View style={styles.scoreCardHead}>
                 <Ionicons name="trophy-outline" size={20} color={colors.fairway} />
@@ -695,9 +681,10 @@ export default function GameSessionScreen() {
                     const completionIds =
                       h != null
                         ? holeCompletionAvatarUserIds(
-                            session.gameType as GameTypeId,
+                            session.gameType,
                             h.payload as Record<string, unknown>,
                             players,
+                            scoringMode,
                           )
                         : [];
                     return (
@@ -770,7 +757,7 @@ export default function GameSessionScreen() {
           >
             {saving ? (
               <ActivityIndicator color={colors.fairway} style={{ marginVertical: 20 }} />
-            ) : session.gameType === "skins" && editorHole != null ? (
+            ) : scoringMode === "pick_lowest" && editorHole != null ? (
               <SkinsHoleEditor
                 holeNumber={editorHole}
                 players={players}
@@ -782,7 +769,7 @@ export default function GameSessionScreen() {
                 onCancel={() => setEditorHole(null)}
                 onSave={(p) => void saveHole(p)}
               />
-            ) : session.gameType === "wolf" && editorHole != null ? (
+            ) : scoringMode === "wolf_pick" && editorHole != null ? (
               <WolfHoleEditor
                 holeNumber={editorHole}
                 letterOrderUserIds={wolfLetterOrder}
@@ -794,9 +781,17 @@ export default function GameSessionScreen() {
                 onCancel={() => setEditorHole(null)}
                 onSave={(p) => void saveHole(p)}
               />
+            ) : scoringMode === "enter_strokes" && editorHole != null ? (
+              <EnterStrokesEditor
+                holeNumber={editorHole}
+                players={players}
+                initial={(editorPayload?.payload as EnterStrokesPayload) ?? null}
+                onCancel={() => setEditorHole(null)}
+                onSave={(p) => void saveHole(p)}
+              />
             ) : (
               <Text style={styles.muted}>
-                Editing for {session.gameType} is not available in the app yet.
+                Editing for this game is not supported in this app version.
               </Text>
             )}
           </ScrollView>
@@ -850,15 +845,14 @@ export default function GameSessionScreen() {
         >
           <Text style={gameSettingsSheetStyles.title}>Game settings</Text>
           <GameSettingsSheetContent
-            gameType={session.gameType}
+            holesOptions={(def?.holesOptions ?? [9, 18]) as number[]}
             holesCount={settingsHolesCount}
             onHolesCountChange={(n) => { setSettingsHolesCount(n); setSettingsHolesTouched(true); }}
-            skinsTieHandling={settingsSkinsTieHandling}
-            onSkinsTieHandlingChange={setSettingsSkinsTieHandling}
-            wolfTeeOff={settingsWolfTeeOff}
-            onWolfTeeOffChange={setSettingsWolfTeeOff}
-            wolfTieHandling={settingsWolfTieHandling}
-            onWolfTieHandlingChange={setSettingsWolfTieHandling}
+            settingsSchema={def?.settingsSchema ?? []}
+            settings={settingsValues}
+            onSettingChange={(key, value) =>
+              setSettingsValues((prev) => ({ ...prev, [key]: value }))
+            }
           />
           <Pressable
             style={[styles.settingsSaveBtn, settingsSaving && { opacity: 0.5 }]}

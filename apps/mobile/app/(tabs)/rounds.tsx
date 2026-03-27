@@ -37,6 +37,7 @@ import { useChatUnread } from "../../lib/chat-unread-context";
 import { parfadeRoundDetailChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { colors } from "../../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 import { MineRound } from "../../types/round";
 
 type MineTab = "hosting" | "joined" | "invited";
@@ -753,7 +754,7 @@ export default function MyRoundsScreen() {
                     params: {
                       userId: player.id,
                       userName: player.name,
-                      userAvatar: player.avatar ?? "",
+                      userAvatar: parfadeUserAvatarUrlForDisplay(player.avatar) ?? "",
                     },
                   })
                 }

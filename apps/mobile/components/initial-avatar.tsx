@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { userAvatarCornerRadius } from "../lib/user-avatar-display";
 
 const PALETTE = [
   "#4A7C59", // sage
@@ -58,7 +59,7 @@ export const InitialAvatar = memo(function InitialAvatar({
         {
           width: size,
           height: size,
-          borderRadius: borderRadius ?? size / 2,
+          borderRadius: borderRadius ?? userAvatarCornerRadius(size),
           backgroundColor: bg,
         },
       ]}

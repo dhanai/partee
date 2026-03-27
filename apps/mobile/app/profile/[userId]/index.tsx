@@ -39,6 +39,7 @@ import {
   type ProfileStatsGrouped,
 } from "../../../lib/profile-stats-api";
 import { colors } from "../../../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../../../lib/user-avatar-display";
 
 const AVATAR_RADIUS = 28;
 
@@ -57,7 +58,10 @@ function computeBootstrapProfile(
   const rawName = Array.isArray(userName) ? userName[0] : userName;
   const rawAvatar = Array.isArray(userAvatar) ? userAvatar[0] : userAvatar;
   const hasName = typeof rawName === "string" && rawName.trim().length > 0;
-  const hasAvatar = typeof rawAvatar === "string" && rawAvatar.trim().length > 0;
+  const displayAvatar = parfadeUserAvatarUrlForDisplay(
+    typeof rawAvatar === "string" ? rawAvatar : null,
+  );
+  const hasAvatar = displayAvatar != null;
 
   if (!cached) {
     if (!hasName && !hasAvatar) return null;
@@ -65,7 +69,7 @@ function computeBootstrapProfile(
       user: {
         id: userId,
         name: hasName ? rawName.trim() : "Profile",
-        avatar: hasAvatar ? rawAvatar.trim() : null,
+        avatar: displayAvatar,
         handicap: null,
         location: null,
         followVisibility: "public",
@@ -84,7 +88,7 @@ function computeBootstrapProfile(
     user: {
       ...cached.user,
       ...(hasName ? { name: rawName.trim() } : {}),
-      ...(hasAvatar ? { avatar: rawAvatar.trim() } : {}),
+      ...(hasAvatar ? { avatar: displayAvatar } : {}),
     },
   };
 }

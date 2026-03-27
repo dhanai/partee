@@ -42,6 +42,8 @@ import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calend
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-last-initial";
 import { colors } from "../../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
+import { InitialAvatar } from "../../components/initial-avatar";
 import { RoundDetails } from "../../types/round";
 
 function groupChatPreviewSubtitle(last: RoundDetails["lastChatMessage"]): string {
@@ -59,7 +61,7 @@ import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
-import { GAME_DEFINITIONS } from "../../lib/games-registry";
+import { getGameDefinitions } from "../../lib/games-registry";
 
 type CourseResult = { id: string; name: string; address: string };
 
@@ -618,7 +620,7 @@ export default function RoundDetailsScreen() {
               params: {
                 userId: player.id,
                 userName: player.name,
-                userAvatar: player.avatar ?? "",
+                userAvatar: parfadeUserAvatarUrlForDisplay(player.avatar) ?? "",
               },
             })
           }
@@ -631,7 +633,9 @@ export default function RoundDetailsScreen() {
         <View style={styles.declinedRow}>
           <Text style={styles.claimedLabel}>Declined</Text>
           <View style={styles.declinedList}>
-            {round.declinedPlayers.map((player) => (
+            {round.declinedPlayers.map((player) => {
+              const declinedDisplay = parfadeUserAvatarUrlForDisplay(player.avatar);
+              return (
               <Pressable
                 key={player.id}
                 style={styles.declinedChip}
@@ -642,23 +646,20 @@ export default function RoundDetailsScreen() {
                     params: {
                       userId: player.id,
                       userName: player.name,
-                      userAvatar: player.avatar ?? "",
+                      userAvatar: declinedDisplay ?? "",
                     },
                   })
                 }
               >
-                {player.avatar ? (
-                  <Image source={toAbsoluteUrl(player.avatar)} style={styles.declinedAvatar} transition={0} />
+                {declinedDisplay ? (
+                  <Image source={toAbsoluteUrl(declinedDisplay)} style={styles.declinedAvatar} transition={0} />
                 ) : (
-                  <View style={[styles.declinedAvatar, styles.claimedThumbFallback]}>
-                    <Text style={styles.claimedThumbInitial}>
-                      {player.name.trim().charAt(0).toUpperCase() || "?"}
-                    </Text>
-                  </View>
+                  <InitialAvatar name={player.name} size={22} maxInitials={1} />
                 )}
                 <Text style={styles.declinedName}>{player.name}</Text>
               </Pressable>
-            ))}
+              );
+            })}
           </View>
         </View>
       ) : null}
@@ -1014,7 +1015,7 @@ export default function RoundDetailsScreen() {
           Pick a game — confirmed players are added automatically.
         </Text>
         <View style={styles.sideGamesGrid}>
-          {GAME_DEFINITIONS.filter((g) => g.implemented).map((g) => (
+          {getGameDefinitions().filter((g) => g.implemented).map((g) => (
             <Pressable
               key={g.id}
               style={({ pressed }) => [

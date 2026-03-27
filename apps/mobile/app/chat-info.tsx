@@ -14,6 +14,8 @@ import { Image } from "expo-image";
 import { apiGet, toAbsoluteUrl } from "../lib/api";
 import { fetchRoundDetailsAndCache } from "../lib/round-details-cache";
 import { colors } from "../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
+import { InitialAvatar } from "../components/initial-avatar";
 
 type Participant = { id: string; name: string; avatar: string | null };
 
@@ -201,6 +203,7 @@ export default function ChatInfoScreen() {
         keyExtractor={(p) => p.id}
         renderItem={({ item }) => {
           const isOnline = onlineUserIds.has(item.id);
+          const displayAvatar = parfadeUserAvatarUrlForDisplay(item.avatar);
           return (
             <Pressable
               style={({ pressed }) => [styles.participantRow, pressed && styles.participantRowPressed]}
@@ -210,23 +213,21 @@ export default function ChatInfoScreen() {
                   params: {
                     userId: item.id,
                     userName: item.name,
-                    userAvatar: item.avatar ?? "",
+                    userAvatar: displayAvatar ?? "",
                   },
                 })
               }
             >
               <View style={styles.avatarWrap}>
-                {item.avatar ? (
+                {displayAvatar ? (
                   <Image
-                    source={toAbsoluteUrl(item.avatar)}
+                    source={toAbsoluteUrl(displayAvatar)}
                     style={styles.participantAvatar}
                     contentFit="cover"
                     transition={0}
                   />
                 ) : (
-                  <View style={[styles.participantAvatar, styles.participantPlaceholder]}>
-                    <Ionicons name="person-outline" size={16} color={colors.muted} />
-                  </View>
+                  <InitialAvatar name={item.name} size={40} maxInitials={2} />
                 )}
                 {isOnline ? <View style={styles.onlineDot} /> : null}
               </View>

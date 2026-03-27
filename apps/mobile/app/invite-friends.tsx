@@ -21,6 +21,7 @@ import {
   setInviteSelection,
 } from "../lib/invite-selection-store";
 import { colors } from "../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 
 type NetworkFriend = {
   id: string;
@@ -252,10 +253,12 @@ export default function InviteFriendsScreen() {
           </View>
         )
       ) : (
-        rows.map((user) => (
+        rows.map((user) => {
+          const displayAvatar = parfadeUserAvatarUrlForDisplay(user.avatar);
+          return (
           <Pressable key={user.id} style={styles.listRow} onPress={() => toggleUser(user)}>
-            {user.avatar ? (
-              <Image source={{ uri: toAbsoluteUrl(user.avatar) }} style={styles.avatar} />
+            {displayAvatar ? (
+              <Image source={{ uri: toAbsoluteUrl(displayAvatar) }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
                 <Text style={styles.avatarInitial}>{user.name.trim().charAt(0).toUpperCase() || "?"}</Text>
@@ -270,7 +273,8 @@ export default function InviteFriendsScreen() {
               />
             </View>
           </Pressable>
-        ))
+          );
+        })
       )}
     </ScrollView>
   );

@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { colors } from "../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 
 type Friend = {
   id: string;
@@ -76,14 +77,13 @@ export default function NewChatScreen() {
           { participantUserId: friend.id },
           authToken,
         );
+        const displayAvatar = parfadeUserAvatarUrlForDisplay(friend.avatar);
         router.replace({
           pathname: "/conversation/[id]/chat",
           params: {
             id: data.conversationId,
             chatTitle: friend.name,
-            chatAvatars: JSON.stringify(
-              friend.avatar ? [friend.avatar] : [],
-            ),
+            chatAvatars: JSON.stringify(displayAvatar ? [displayAvatar] : []),
             chatType: "dm",
           },
         });
@@ -95,15 +95,17 @@ export default function NewChatScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: Friend }) => (
+    ({ item }: { item: Friend }) => {
+      const displayAvatar = parfadeUserAvatarUrlForDisplay(item.avatar);
+      return (
       <Pressable
         style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
         onPress={() => void onSelectFriend(item)}
         disabled={creating === item.id}
       >
-        {item.avatar ? (
+        {displayAvatar ? (
           <Image
-            source={{ uri: toAbsoluteUrl(item.avatar) }}
+            source={{ uri: toAbsoluteUrl(displayAvatar) }}
             style={styles.avatar}
           />
         ) : (
@@ -125,7 +127,8 @@ export default function NewChatScreen() {
           <ActivityIndicator color={colors.fairway} size="small" />
         ) : null}
       </Pressable>
-    ),
+      );
+    },
     [creating, onSelectFriend],
   );
 

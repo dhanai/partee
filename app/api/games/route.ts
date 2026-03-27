@@ -13,17 +13,15 @@ import {
 import { buildGuestPlayersFromNames } from "@/lib/games/guest-players";
 import { shuffleUserIds } from "@/lib/games/wolf-rotation";
 import { serializeGameSessionForApi } from "@/lib/games/serialize";
+import { getGameTypeBySlug } from "@/lib/game-types-config";
 
 const createGameSchema = z
   .object({
-    gameType: z.enum(["skins", "wolf", "best_ball", "nassau"]),
-    /** Parfade accounts only (mobile omits the creator; server adds `createdBy`). */
-    playerUserIds: z.array(z.string().uuid()).max(8).default([]),
-    /** Write-in names; stored in `settings.guestPlayers` with server-generated ids. */
-    guestNames: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
+    gameType: z.string().min(1).max(60),
+    playerUserIds: z.array(z.string().uuid()).max(20).default([]),
+    guestNames: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
     roundInviteToken: z.string().trim().min(8).max(64).optional(),
     roundId: z.string().uuid().optional(),
-    /** Skins/Wolf: must be 9 or 18. Other types: 1–27 (when added). */
     holesCount: z.number().int().min(1).max(27).optional(),
     settings: z.record(z.string(), z.any()).optional(),
   })
@@ -40,6 +38,14 @@ export async function POST(req: Request) {
   try {
     const user = await requireDbUser(req);
     const body = createGameSchema.parse(await req.json());
+
+    const gameDef = await getGameTypeBySlug(body.gameType);
+    if (!gameDef || !gameDef.enabled) {
+      return NextResponse.json(
+        { error: `Unknown or disabled game type "${body.gameType}".` },
+        { status: 400 },
+      );
+    }
 
     let roundId: string | null = null;
     if (body.roundInviteToken) {
@@ -67,24 +73,13 @@ export async function POST(req: Request) {
     }
 
     const playerIds = [...new Set([user.id, ...body.playerUserIds])];
+    const rosterCap = gameDef.maxPlayers;
+    const gameLabel = gameDef.title;
 
-    const minPlayersForGame: Record<(typeof body)["gameType"], number> = {
-      skins: 2,
-      wolf: 4,
-      best_ball: 2,
-      nassau: 2,
-    };
-    const maxPlayersForGame: Record<(typeof body)["gameType"], number> = {
-      skins: 8,
-      wolf: 4,
-      best_ball: 8,
-      nassau: 8,
-    };
-    const rosterCap = maxPlayersForGame[body.gameType];
     if (playerIds.length > rosterCap) {
       return NextResponse.json(
         {
-          error: `At most ${rosterCap} golfers for ${body.gameType.replace(/_/g, " ")} (Parfade accounts, including you).`,
+          error: `At most ${rosterCap} golfers for ${gameLabel} (Parfade accounts, including you).`,
         },
         { status: 400 },
       );
@@ -102,18 +97,17 @@ export async function POST(req: Request) {
     const guestPlayers = buildGuestPlayersFromNames(body.guestNames);
     const totalRoster = playerIds.length + guestPlayers.length;
 
-    const requiredPlayers = minPlayersForGame[body.gameType];
-    if (totalRoster < requiredPlayers) {
+    if (totalRoster < gameDef.minPlayers) {
       return NextResponse.json(
         {
-          error: `At least ${requiredPlayers} golfers are required for ${body.gameType.replace(/_/g, " ")} (Parfade + guests).`,
+          error: `At least ${gameDef.minPlayers} golfers are required for ${gameLabel} (Parfade + guests).`,
         },
         { status: 400 },
       );
     }
     if (totalRoster > rosterCap) {
       return NextResponse.json(
-        { error: `At most ${rosterCap} players total for ${body.gameType.replace(/_/g, " ")}.` },
+        { error: `At most ${rosterCap} players total for ${gameLabel}.` },
         { status: 400 },
       );
     }
@@ -141,7 +135,7 @@ export async function POST(req: Request) {
         : {};
     delete (baseSettings as { guestPlayers?: unknown }).guestPlayers;
 
-    if (body.gameType === "wolf") {
+    if (gameDef.scoringMode === "wolf_pick") {
       const teeRaw = (baseSettings as { wolfTeeOff?: unknown }).wolfTeeOff;
       const tieRaw = (baseSettings as { wolfTieHandling?: unknown }).wolfTieHandling;
       (baseSettings as { wolfTeeOff: string }).wolfTeeOff = teeRaw === "last" ? "last" : "first";
@@ -151,20 +145,19 @@ export async function POST(req: Request) {
       (baseSettings as { wolfLetterOrder: string[] }).wolfLetterOrder = shuffleUserIds(rosterIds);
     }
 
-    if (body.gameType === "skins") {
+    if (gameDef.scoringMode === "pick_lowest" && gameDef.slug === "skins") {
       const st = (baseSettings as { skinsTieHandling?: unknown }).skinsTieHandling;
       (baseSettings as { skinsTieHandling: string }).skinsTieHandling =
         st === "wash" ? "wash" : "carry";
     }
 
-    const requestedHoles = body.holesCount ?? 18;
-    if (body.gameType === "skins" || body.gameType === "wolf") {
-      if (requestedHoles !== 9 && requestedHoles !== 18) {
-        return NextResponse.json(
-          { error: "holesCount must be 9 or 18 for Skins and Wolf." },
-          { status: 400 },
-        );
-      }
+    const holesOptions = (gameDef.holesOptions ?? [9, 18]) as number[];
+    const requestedHoles = body.holesCount ?? holesOptions[holesOptions.length - 1] ?? 18;
+    if (holesOptions.length > 0 && !holesOptions.includes(requestedHoles)) {
+      return NextResponse.json(
+        { error: `holesCount must be one of [${holesOptions.join(", ")}] for ${gameLabel}.` },
+        { status: 400 },
+      );
     }
 
     const now = new Date();

@@ -23,6 +23,7 @@ import { apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
 import { InitialAvatar } from "./initial-avatar";
 import { prefetchPublicProfile } from "../lib/public-profile-cache";
 import { colors } from "../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 
 export type ConnectionRelationship =
   | "self"
@@ -197,6 +198,7 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
               const disabled = actionDisabled(u.relationship) || busyId === u.id;
               const isFollowingStyle =
                 u.relationship === "following" || u.relationship === "mutual";
+              const displayAvatar = parfadeUserAvatarUrlForDisplay(u.avatar);
 
               return (
                 <View key={u.id} style={styles.row}>
@@ -204,7 +206,7 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
                     style={styles.rowMain}
                     onPressIn={() => {
                       prefetchPublicProfile(u.id, () => getTokenRef.current());
-                      if (u.avatar) Image.prefetch(toAbsoluteUrl(u.avatar));
+                      if (displayAvatar) Image.prefetch(toAbsoluteUrl(displayAvatar));
                     }}
                     onPress={() =>
                       router.push({
@@ -212,13 +214,13 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
                         params: {
                           userId: u.id,
                           userName: u.name,
-                          userAvatar: u.avatar ?? "",
+                          userAvatar: displayAvatar ?? "",
                         },
                       })
                     }
                   >
-                    {u.avatar ? (
-                      <Image source={toAbsoluteUrl(u.avatar)} style={styles.avatar} />
+                    {displayAvatar ? (
+                      <Image source={toAbsoluteUrl(displayAvatar)} style={styles.avatar} />
                     ) : (
                       <InitialAvatar name={u.name} size={44} />
                     )}

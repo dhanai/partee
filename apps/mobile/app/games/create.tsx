@@ -18,11 +18,12 @@ import { GameSettingsSheetContent, gameSettingsSheetStyles } from "../../compone
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { createGameSession } from "../../lib/games-api";
-import { getGameDefinition, type GameTypeId } from "../../lib/games-registry";
-import type { WolfTeeOff } from "../../lib/wolf-rotation";
+import { getGameDefinition } from "../../lib/games-registry";
+
 import type { RoundDetails } from "../../types/round";
 import { colors } from "../../lib/theme";
 import { getCachedMeProfile } from "../../lib/me-profile-cache";
+import { parfadeUserAvatarUrlForDisplay } from "../../lib/user-avatar-display";
 
 type NetworkFriend = { id: string; name: string; avatar: string | null };
 
@@ -41,7 +42,7 @@ export default function CreateGameScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
-  const hasSettings = gameType === "wolf" || gameType === "skins";
+  const hasSettings = (def?.settingsSchema ?? []).length > 0;
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -66,11 +67,11 @@ export default function CreateGameScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guestInputs, setGuestInputs] = useState<string[]>([]);
-  const [wolfHolesCount, setWolfHolesCount] = useState<9 | 18>(18);
-  const [skinsHolesCount, setSkinsHolesCount] = useState<9 | 18>(18);
-  const [skinsTieHandling, setSkinsTieHandling] = useState<"carry" | "wash">("carry");
-  const [wolfTeeOff, setWolfTeeOff] = useState<WolfTeeOff>("first");
-  const [wolfTieHandling, setWolfTieHandling] = useState<"carry" | "wash">("carry");
+  const holesOptions = (def?.holesOptions ?? [9, 18]) as number[];
+  const [holesCount, setHolesCount] = useState<number>(holesOptions[holesOptions.length - 1] ?? 18);
+  const [gameSettings, setGameSettings] = useState<Record<string, unknown>>(
+    () => ({ ...(def?.defaultSettings ?? {}) }),
+  );
 
   const rosterCap = def?.maxPlayers ?? 8;
 
@@ -160,15 +161,15 @@ export default function CreateGameScreen() {
 
   const minPlayers = def?.minPlayers ?? 2;
   const totalPlayers = registeredCount + guestFilled;
-  const wolfRoundOverCap =
-    gameType === "wolf" && roundLockedIds != null && roundLockedIds.length > rosterCap;
+  const roundOverCap =
+    roundLockedIds != null && roundLockedIds.length > rosterCap;
   const hasEnoughPlayers = Boolean(def) && totalPlayers >= minPlayers;
   const canStart =
     Boolean(def) &&
     !loading &&
     !submitting &&
     hasEnoughPlayers &&
-    !wolfRoundOverCap;
+    !roundOverCap;
 
   const addGuestRow = useCallback(() => {
     setGuestInputs((prev) => (prev.length < maxGuestSlots ? [...prev, ""] : prev));
@@ -226,23 +227,12 @@ export default function CreateGameScreen() {
     try {
       const token = await getToken();
       const body: Parameters<typeof createGameSession>[1] = {
-        gameType: gameType as GameTypeId,
+        gameType: gameType!,
         playerUserIds,
+        holesCount,
         ...(guestNames.length > 0 ? { guestNames } : {}),
+        ...(Object.keys(gameSettings).length > 0 ? { settings: gameSettings } : {}),
       };
-      if (gameType === "wolf") {
-        body.holesCount = wolfHolesCount;
-        body.settings = {
-          wolfTeeOff,
-          wolfTieHandling,
-        };
-      }
-      if (gameType === "skins") {
-        body.holesCount = skinsHolesCount;
-        body.settings = {
-          skinsTieHandling,
-        };
-      }
       if (roundInviteToken) {
         body.roundInviteToken = String(roundInviteToken);
       }
@@ -288,9 +278,9 @@ export default function CreateGameScreen() {
           <Text style={styles.label}>
             {roundLockedIds ? "Players" : "Who's playing? (your network)"}
           </Text>
-          {gameType === "wolf" ? (
+          {def && def.maxPlayers <= 4 ? (
             <Text style={styles.mutedSmall}>
-              Pick up to 3 other Parfade golfers (you're the fourth).
+              Pick up to {def.maxPlayers - 1} other Parfade golfers (you're #{def.maxPlayers}).
             </Text>
           ) : null}
           {roundLockedIds ? (
@@ -306,6 +296,7 @@ export default function CreateGameScreen() {
             allPlayers.map((f) => {
               const on = selected.has(f.id);
               const parfadeFull = !on && selected.size >= rosterCap;
+              const displayAvatar = parfadeUserAvatarUrlForDisplay(f.avatar);
               return (
                 <Pressable
                   key={f.id}
@@ -317,8 +308,8 @@ export default function CreateGameScreen() {
                   onPress={() => toggle(f.id)}
                   disabled={parfadeFull}
                 >
-                  {f.avatar ? (
-                    <Image source={{ uri: toAbsoluteUrl(f.avatar) }} style={styles.avatar} />
+                  {displayAvatar ? (
+                    <Image source={{ uri: toAbsoluteUrl(displayAvatar) }} style={styles.avatar} />
                   ) : (
                     <View style={[styles.avatar, styles.avatarFallback]}>
                       <Text style={styles.avatarInitial}>
@@ -336,9 +327,9 @@ export default function CreateGameScreen() {
               );
             })
           )}
-          {wolfRoundOverCap ? (
+          {roundOverCap ? (
             <Text style={styles.error}>
-              Wolf is limited to {rosterCap} players. Trim the group or choose another game.
+              {def.title} is limited to {rosterCap} players. Trim the group or choose another game.
             </Text>
           ) : null}
         </>
@@ -431,18 +422,14 @@ export default function CreateGameScreen() {
     >
       <Text style={gameSettingsSheetStyles.title}>Game settings</Text>
       <GameSettingsSheetContent
-        gameType={gameType}
-        holesCount={gameType === "wolf" ? wolfHolesCount : skinsHolesCount}
-        onHolesCountChange={(n) => {
-          if (gameType === "wolf") setWolfHolesCount(n);
-          else setSkinsHolesCount(n);
-        }}
-        skinsTieHandling={skinsTieHandling}
-        onSkinsTieHandlingChange={setSkinsTieHandling}
-        wolfTeeOff={wolfTeeOff}
-        onWolfTeeOffChange={setWolfTeeOff}
-        wolfTieHandling={wolfTieHandling}
-        onWolfTieHandlingChange={setWolfTieHandling}
+        holesOptions={holesOptions}
+        holesCount={holesCount}
+        onHolesCountChange={setHolesCount}
+        settingsSchema={def?.settingsSchema ?? []}
+        settings={gameSettings}
+        onSettingChange={(key, value) =>
+          setGameSettings((prev) => ({ ...prev, [key]: value }))
+        }
       />
     </AnimatedBottomSheetFrame>
 

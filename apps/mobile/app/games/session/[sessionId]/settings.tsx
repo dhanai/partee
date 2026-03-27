@@ -14,7 +14,6 @@ import {
   patchGameSession,
   type GameSessionSummary,
 } from "../../../../lib/games-api";
-import type { GameTypeId } from "../../../../lib/games-registry";
 import type { WolfTeeOff } from "../../../../lib/wolf-rotation";
 import { colors } from "../../../../lib/theme";
 
@@ -77,7 +76,7 @@ export default function GameSessionSettingsScreen() {
     setError(null);
     try {
       const token = await getTokenRef.current();
-      const gameType = session.gameType as GameTypeId;
+      const gameType = session.gameType;
       const body: Parameters<typeof patchGameSession>[2] = {};
 
       if (

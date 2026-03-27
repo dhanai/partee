@@ -8,6 +8,7 @@ import { apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../lib/api";
 import { buildRoundListHint, prefetchRoundOpen } from "../lib/round-details-cache";
 import { useNotificationBadge } from "../lib/notification-badge-context";
 import { colors } from "../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 import { MineRound } from "../types/round";
 
 type MineTabResponse = {
@@ -239,7 +240,9 @@ export default function NotificationsScreen() {
               <Text style={styles.sectionMiniTitle}>Group requests</Text>
               {activityItems
                 .filter((i) => i.type === "group_join_request")
-                .map((item) => (
+                .map((item) => {
+                  const actorDisplay = parfadeUserAvatarUrlForDisplay(item.actorAvatar);
+                  return (
                   <View key={`gjr-${item.id}`} style={styles.notificationCard}>
                     <Pressable
                       style={styles.notificationRow}
@@ -247,13 +250,17 @@ export default function NotificationsScreen() {
                         if (item.actorUserId) {
                           router.push({
                             pathname: "/profile/[userId]",
-                            params: { userId: item.actorUserId, userName: item.actorName, userAvatar: item.actorAvatar ?? "" },
+                            params: {
+                              userId: item.actorUserId,
+                              userName: item.actorName,
+                              userAvatar: actorDisplay ?? "",
+                            },
                           });
                         }
                       }}
                     >
-                      {item.actorAvatar ? (
-                        <Image source={{ uri: toAbsoluteUrl(item.actorAvatar) }} style={styles.notificationAvatar} />
+                      {actorDisplay ? (
+                        <Image source={{ uri: toAbsoluteUrl(actorDisplay) }} style={styles.notificationAvatar} />
                       ) : (
                         <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
                           <Text style={styles.notificationAvatarInitial}>
@@ -287,7 +294,8 @@ export default function NotificationsScreen() {
                       <Text style={[styles.notificationPill, styles.notificationPillMuted]}>Handled</Text>
                     ) : null}
                   </View>
-                ))}
+                  );
+                })}
             </View>
           ) : null}
 
@@ -328,14 +336,25 @@ export default function NotificationsScreen() {
           {followRequestNotifications.length > 0 ? (
             <View style={styles.notificationsList}>
               <Text style={styles.sectionMiniTitle}>Follow requests</Text>
-              {followRequestNotifications.map((request) => (
+              {followRequestNotifications.map((request) => {
+                const reqDisplay = parfadeUserAvatarUrlForDisplay(request.avatar);
+                return (
                 <View key={`follow-${request.id}`} style={styles.notificationCard}>
                   <Pressable
                     style={styles.notificationRow}
-                    onPress={() => router.push({ pathname: "/profile/[userId]", params: { userId: request.followerId, userName: request.name, userAvatar: request.avatar ?? "" } })}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/profile/[userId]",
+                        params: {
+                          userId: request.followerId,
+                          userName: request.name,
+                          userAvatar: reqDisplay ?? "",
+                        },
+                      })
+                    }
                   >
-                    {request.avatar ? (
-                      <Image source={{ uri: toAbsoluteUrl(request.avatar) }} style={styles.notificationAvatar} />
+                    {reqDisplay ? (
+                      <Image source={{ uri: toAbsoluteUrl(reqDisplay) }} style={styles.notificationAvatar} />
                     ) : (
                       <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
                         <Text style={styles.notificationAvatarInitial}>
@@ -365,7 +384,8 @@ export default function NotificationsScreen() {
                     </Pressable>
                   </View>
                 </View>
-              ))}
+                );
+              })}
             </View>
           ) : null}
 

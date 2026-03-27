@@ -51,6 +51,34 @@ export const gameTypeEnum = pgEnum("game_type", [
   "nassau",
 ]);
 
+/** Dynamic game type definitions — managed via admin; replaces hardcoded registries. */
+export const gameTypes = pgTable("game_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  subtitle: text("subtitle").notNull(),
+  description: text("description").notNull().default(""),
+  enabled: boolean("enabled").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  minPlayers: integer("min_players").notNull().default(2),
+  maxPlayers: integer("max_players").notNull().default(8),
+  holesOptions: jsonb("holes_options").$type<number[]>().notNull().default([9, 18]),
+  scoringMode: text("scoring_mode").notNull(),
+  standingsMode: text("standings_mode").notNull(),
+  hasTeams: boolean("has_teams").notNull().default(false),
+  teamFormation: text("team_formation"),
+  settingsSchema: jsonb("settings_schema")
+    .$type<Array<{ key: string; label: string; type: string; options?: string[]; default?: string | boolean }>>()
+    .notNull()
+    .default([]),
+  defaultSettings: jsonb("default_settings")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const gameSessionStatusEnum = pgEnum("game_session_status", [
   "active",
   "completed",
@@ -242,7 +270,7 @@ export const gameSessions = pgTable(
   "game_sessions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    gameType: gameTypeEnum("game_type").notNull(),
+    gameType: text("game_type").notNull(),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -720,3 +748,4 @@ export type GroupJoinRequest = typeof groupJoinRequests.$inferSelect;
 export type Post = typeof posts.$inferSelect;
 export type UserBlock = typeof userBlocks.$inferSelect;
 export type ContentReport = typeof contentReports.$inferSelect;
+export type GameType = typeof gameTypes.$inferSelect;

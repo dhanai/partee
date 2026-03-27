@@ -17,6 +17,8 @@ import {
 import { InviteFriendsSheet } from "../../../components/invite-friends-sheet";
 import { apiDelete, apiGet, apiPost } from "../../../lib/api";
 import { colors } from "../../../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../../../lib/user-avatar-display";
+import { InitialAvatar } from "../../../components/initial-avatar";
 
 type Member = {
   id: string;
@@ -137,7 +139,9 @@ export default function GroupMembersScreen() {
           />
         }
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          const displayAvatar = parfadeUserAvatarUrlForDisplay(item.avatar);
+          return (
           <View style={styles.memberRow}>
             <Pressable
               style={styles.memberTap}
@@ -147,17 +151,15 @@ export default function GroupMembersScreen() {
                   params: {
                     userId: item.userId,
                     userName: item.name,
-                    userAvatar: item.avatar ?? "",
+                    userAvatar: displayAvatar ?? "",
                   },
                 })
               }
             >
-              {item.avatar ? (
-                <Image source={{ uri: item.avatar }} style={styles.avatar} />
+              {displayAvatar ? (
+                <Image source={{ uri: displayAvatar }} style={styles.avatar} />
               ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Ionicons name="person" size={18} color={colors.muted} />
-                </View>
+                <InitialAvatar name={item.name} size={42} maxInitials={2} />
               )}
               <View style={styles.memberInfo}>
                 <Text style={styles.memberName}>{item.name}</Text>
@@ -175,7 +177,8 @@ export default function GroupMembersScreen() {
               </Pressable>
             ) : null}
           </View>
-        )}
+          );
+        }}
       />
 
       <InviteFriendsSheet

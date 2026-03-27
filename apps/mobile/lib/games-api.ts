@@ -1,9 +1,8 @@
 import { apiGet, apiPatch, apiPost, apiPut } from "./api";
-import type { GameTypeId } from "./games-registry";
 
 export type GameSessionSummary = {
   id: string;
-  gameType: GameTypeId;
+  gameType: string;
   createdBy: string;
   roundId: string | null;
   /** Present when the session is linked to a round; used to open round recap. */
@@ -38,7 +37,7 @@ export type GameHoleRow = {
 export async function createGameSession(
   token: string | null,
   body: {
-    gameType: GameTypeId;
+    gameType: string;
     playerUserIds: string[];
     /** Display names only; server assigns ids and stores under session `settings.guestPlayers`. */
     guestNames?: string[];

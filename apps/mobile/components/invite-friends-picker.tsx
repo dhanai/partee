@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { toAbsoluteUrl } from "../lib/api";
 import { colors } from "../lib/theme";
+import { parfadeUserAvatarUrlForDisplay } from "../lib/user-avatar-display";
 
 export type InviteFriendUser = {
   id: string;
@@ -78,10 +79,12 @@ export function InviteFriendsPicker({
       </View>
 
       {isSearching
-        ? searchingRows.map((user) => (
+        ? searchingRows.map((user) => {
+            const displayAvatar = parfadeUserAvatarUrlForDisplay(user.avatar);
+            return (
           <Pressable key={user.id} style={styles.listRow} onPress={() => onToggleUser(user)}>
-            {user.avatar ? (
-              <Image source={{ uri: toAbsoluteUrl(user.avatar) }} style={styles.avatar} />
+            {displayAvatar ? (
+              <Image source={{ uri: toAbsoluteUrl(displayAvatar) }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
                 <Text style={styles.avatarInitial}>{user.name.trim().charAt(0).toUpperCase() || "?"}</Text>
@@ -96,14 +99,16 @@ export function InviteFriendsPicker({
               />
             </View>
           </Pressable>
-          ))
+          );
+          })
         : selected.map((user) => {
             const resolved = selectedMap.get(user.id) ?? user;
+            const resolvedDisplay = parfadeUserAvatarUrlForDisplay(resolved.avatar);
             return (
               <View key={resolved.id} style={styles.selectedRow}>
                 <View style={styles.selectedInfo}>
-                  {resolved.avatar ? (
-                    <Image source={{ uri: toAbsoluteUrl(resolved.avatar) }} style={styles.selectedAvatar} />
+                  {resolvedDisplay ? (
+                    <Image source={{ uri: toAbsoluteUrl(resolvedDisplay) }} style={styles.selectedAvatar} />
                   ) : (
                     <View style={[styles.selectedAvatar, styles.avatarFallback]}>
                       <Text style={styles.avatarInitial}>

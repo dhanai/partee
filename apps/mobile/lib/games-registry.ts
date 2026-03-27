@@ -1,61 +1,55 @@
-export type GameTypeId = "skins" | "wolf" | "best_ball" | "nassau";
+/**
+ * Backward-compatible API for game definitions, backed by the API-driven cache.
+ */
+import type { GameTypeConfig } from "./game-types-cache";
+import {
+  getCachedGameTypes,
+  getGameDefinition as lookupDefinition,
+} from "./game-types-cache";
+
+export type GameTypeId = string;
 
 export type GameDefinition = {
-  id: GameTypeId;
+  id: string;
   title: string;
   subtitle: string;
   howToPlay: string;
-  /** When false, create screen shows coming soon. */
   implemented: boolean;
-  /** Total golfers including you (enforced on create + API). */
   minPlayers: number;
-  /** Upper bound including you; default 8 when omitted. */
-  maxPlayers?: number;
+  maxPlayers: number;
+  scoringMode: string;
+  standingsMode: string;
+  hasTeams: boolean;
+  teamFormation: string | null;
+  holesOptions: number[];
+  settingsSchema: GameTypeConfig["settingsSchema"];
+  defaultSettings: Record<string, unknown>;
 };
 
-export const GAME_DEFINITIONS: GameDefinition[] = [
-  {
-    id: "skins",
-    title: "Skins",
-    subtitle: "Tap who shot lowest — one takes the skin; two+ tied and it carries.",
-    howToPlay:
-      "Each hole is worth one skin. The player with the lowest score on a hole wins the skin. " +
-      "If two or more players tie for the lowest score, the skin carries over to the next hole " +
-      "(or washes, depending on your settings). At the end, the player with the most skins wins.",
-    implemented: true,
-    minPlayers: 2,
-  },
-  {
-    id: "wolf",
-    title: "Wolf",
-    subtitle: "Rotating wolf picks a partner or goes lone each hole.",
-    howToPlay:
-      "Players rotate as the Wolf each hole. After everyone tees off, the Wolf chooses a partner " +
-      "for that hole or goes Lone Wolf. Wolf + partner play against the other two as a team. " +
-      "If the Wolf's side wins, they each earn 2 points. If the other side wins, they each earn 3. " +
-      "Lone Wolf earns 3 points for a win, but the other three earn 3 each if the Lone Wolf loses.",
-    implemented: true,
-    minPlayers: 4,
-    maxPlayers: 4,
-  },
-  {
-    id: "best_ball",
-    title: "Best ball",
-    subtitle: "Team low ball per hole — coming soon.",
-    howToPlay: "Each team takes the best individual score on every hole. Lowest team total wins.",
-    implemented: false,
-    minPlayers: 2,
-  },
-  {
-    id: "nassau",
-    title: "Nassau",
-    subtitle: "Front, back, and total — coming soon.",
-    howToPlay: "Three separate bets: front nine, back nine, and overall 18. Win each independently.",
-    implemented: false,
-    minPlayers: 2,
-  },
-];
+function toCompat(g: GameTypeConfig): GameDefinition {
+  return {
+    id: g.slug,
+    title: g.title,
+    subtitle: g.subtitle,
+    howToPlay: g.description,
+    implemented: g.enabled,
+    minPlayers: g.minPlayers,
+    maxPlayers: g.maxPlayers,
+    scoringMode: g.scoringMode,
+    standingsMode: g.standingsMode,
+    hasTeams: g.hasTeams,
+    teamFormation: g.teamFormation,
+    holesOptions: g.holesOptions,
+    settingsSchema: g.settingsSchema,
+    defaultSettings: g.defaultSettings,
+  };
+}
 
-export function getGameDefinition(id: string): GameDefinition | undefined {
-  return GAME_DEFINITIONS.find((g) => g.id === id);
+export function getGameDefinitions(): GameDefinition[] {
+  return getCachedGameTypes().map(toCompat);
+}
+
+export function getGameDefinition(slug: string): GameDefinition | undefined {
+  const g = lookupDefinition(slug);
+  return g ? toCompat(g) : undefined;
 }
