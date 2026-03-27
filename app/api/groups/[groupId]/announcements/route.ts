@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { groupAnnouncements, groupMembers, groups, users } from "@/db/schema";
+import { posts, groupMembers, groups, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
-import { notifyGroupAnnouncement } from "@/lib/notify-user";
+import { notifyGroupPost } from "@/lib/notify-user";
 
 type Ctx = { params: { groupId: string } };
 
@@ -15,18 +15,18 @@ export async function GET(req: Request, { params }: Ctx) {
 
     const rows = await db
       .select({
-        id: groupAnnouncements.id,
-        body: groupAnnouncements.body,
-        isPinned: groupAnnouncements.isPinned,
-        createdAt: groupAnnouncements.createdAt,
-        userId: groupAnnouncements.userId,
+        id: posts.id,
+        body: posts.body,
+        isPinned: posts.isPinned,
+        createdAt: posts.createdAt,
+        userId: posts.userId,
         userName: users.name,
         userAvatar: users.avatar,
       })
-      .from(groupAnnouncements)
-      .innerJoin(users, eq(users.id, groupAnnouncements.userId))
-      .where(eq(groupAnnouncements.groupId, groupId))
-      .orderBy(desc(groupAnnouncements.createdAt))
+      .from(posts)
+      .innerJoin(users, eq(users.id, posts.userId))
+      .where(eq(posts.groupId, groupId))
+      .orderBy(desc(posts.createdAt))
       .limit(20);
 
     return NextResponse.json({
@@ -75,11 +75,12 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const canPin = membership.role === "owner" || membership.role === "admin";
 
-    const [announcement] = await db
-      .insert(groupAnnouncements)
+    const [post] = await db
+      .insert(posts)
       .values({
         groupId,
         userId: viewer.id,
+        scope: "group",
         body: input.body,
         imageUrl: input.imageUrl ?? null,
         isPinned: canPin && input.isPinned,
@@ -97,7 +98,7 @@ export async function POST(req: Request, { params }: Ctx) {
       .from(groupMembers)
       .where(eq(groupMembers.groupId, groupId));
 
-    void notifyGroupAnnouncement({
+    void notifyGroupPost({
       groupId,
       groupName: group?.name ?? "Group",
       senderUserId: viewer.id,
@@ -108,10 +109,10 @@ export async function POST(req: Request, { params }: Ctx) {
 
     return NextResponse.json({
       announcement: {
-        id: announcement.id,
-        body: announcement.body,
-        isPinned: announcement.isPinned,
-        createdAt: announcement.createdAt.toISOString(),
+        id: post.id,
+        body: post.body,
+        isPinned: post.isPinned,
+        createdAt: post.createdAt.toISOString(),
         user: { id: viewer.id, name: viewer.name, avatar: viewer.avatar },
       },
     });
@@ -123,7 +124,7 @@ export async function POST(req: Request, { params }: Ctx) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[POST /api/groups/[groupId]/announcements]", error);
-    return NextResponse.json({ error: "Unable to create announcement." }, { status: 500 });
+    return NextResponse.json({ error: "Unable to create post." }, { status: 500 });
   }
 }
 
@@ -157,9 +158,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const isAdminOrOwner = membership.role === "owner" || membership.role === "admin";
 
     const [existing] = await db
-      .select({ userId: groupAnnouncements.userId })
-      .from(groupAnnouncements)
-      .where(eq(groupAnnouncements.id, input.id))
+      .select({ userId: posts.userId })
+      .from(posts)
+      .where(eq(posts.id, input.id))
       .limit(1);
 
     const isAuthor = existing?.userId === viewer.id;
@@ -174,12 +175,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     if (Object.keys(updates).length > 0) {
       await db
-        .update(groupAnnouncements)
+        .update(posts)
         .set(updates)
         .where(
           and(
-            eq(groupAnnouncements.id, input.id),
-            eq(groupAnnouncements.groupId, groupId),
+            eq(posts.id, input.id),
+            eq(posts.groupId, groupId),
           ),
         );
     }
@@ -193,7 +194,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[PATCH /api/groups/[groupId]/announcements]", error);
-    return NextResponse.json({ error: "Unable to edit announcement." }, { status: 500 });
+    return NextResponse.json({ error: "Unable to edit post." }, { status: 500 });
   }
 }
 
@@ -203,9 +204,9 @@ export async function DELETE(req: Request, { params }: Ctx) {
     const { groupId } = params;
 
     const url = new URL(req.url);
-    const announcementId = url.searchParams.get("id");
-    if (!announcementId) {
-      return NextResponse.json({ error: "Missing announcement id." }, { status: 400 });
+    const postId = url.searchParams.get("id");
+    if (!postId) {
+      return NextResponse.json({ error: "Missing post id." }, { status: 400 });
     }
 
     const [membership] = await db
@@ -222,24 +223,24 @@ export async function DELETE(req: Request, { params }: Ctx) {
 
     const isAdminOrOwner = membership.role === "owner" || membership.role === "admin";
     const [existing] = await db
-      .select({ userId: groupAnnouncements.userId })
-      .from(groupAnnouncements)
-      .where(eq(groupAnnouncements.id, announcementId))
+      .select({ userId: posts.userId })
+      .from(posts)
+      .where(eq(posts.id, postId))
       .limit(1);
 
     if (!existing) {
-      return NextResponse.json({ error: "Announcement not found." }, { status: 404 });
+      return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
     if (existing.userId !== viewer.id && !isAdminOrOwner) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
     await db
-      .delete(groupAnnouncements)
+      .delete(posts)
       .where(
         and(
-          eq(groupAnnouncements.id, announcementId),
-          eq(groupAnnouncements.groupId, groupId),
+          eq(posts.id, postId),
+          eq(posts.groupId, groupId),
         ),
       );
 
@@ -249,6 +250,6 @@ export async function DELETE(req: Request, { params }: Ctx) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[DELETE /api/groups/[groupId]/announcements]", error);
-    return NextResponse.json({ error: "Unable to delete announcement." }, { status: 500 });
+    return NextResponse.json({ error: "Unable to delete post." }, { status: 500 });
   }
 }

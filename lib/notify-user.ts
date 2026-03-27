@@ -162,7 +162,7 @@ export async function notifyRoundInvites(input: {
   );
 }
 
-export async function notifyGroupAnnouncement(input: {
+export async function notifyGroupPost(input: {
   groupId: string;
   groupName: string;
   senderUserId: string;
@@ -190,9 +190,9 @@ export async function notifyGroupAnnouncement(input: {
     tokens.map((to) => ({
       to,
       sound: "default" as const,
-      title: `${input.groupName} — Announcement`,
+      title: `${input.groupName} — Post`,
       body: `${input.senderName}: ${preview}`,
-      data: { type: "group_announcement", groupId: input.groupId },
+      data: { type: "group_post", groupId: input.groupId },
     })),
   );
 }

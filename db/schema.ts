@@ -565,16 +565,17 @@ export const groupJoinRequests = pgTable(
   }),
 );
 
-export const groupAnnouncements = pgTable(
-  "group_announcements",
+// ── Posts (formerly group_announcements) ──────────────────────────────────
+
+export const posts = pgTable(
+  "posts",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    groupId: uuid("group_id")
-      .notNull()
-      .references(() => groups.id, { onDelete: "cascade" }),
+    groupId: uuid("group_id").references(() => groups.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull().default("group"),
     body: text("body").notNull(),
     imageUrl: text("image_url"),
     isPinned: boolean("is_pinned").notNull().default(true),
@@ -583,21 +584,25 @@ export const groupAnnouncements = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    groupIdx: index("group_announcements_group_idx").on(table.groupId),
-    groupCreatedIdx: index("group_announcements_group_created_idx").on(
+    groupIdx: index("posts_group_idx").on(table.groupId),
+    groupCreatedIdx: index("posts_group_created_idx").on(
       table.groupId,
+      table.createdAt,
+    ),
+    userCreatedIdx: index("posts_user_created_idx").on(
+      table.userId,
       table.createdAt,
     ),
   }),
 );
 
-export const announcementLikes = pgTable(
-  "announcement_likes",
+export const postLikes = pgTable(
+  "post_likes",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    announcementId: uuid("announcement_id")
+    postId: uuid("post_id")
       .notNull()
-      .references(() => groupAnnouncements.id, { onDelete: "cascade" }),
+      .references(() => posts.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -606,23 +611,21 @@ export const announcementLikes = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    uniqueLike: uniqueIndex("announcement_likes_unique").on(
-      table.announcementId,
+    uniqueLike: uniqueIndex("post_likes_unique").on(
+      table.postId,
       table.userId,
     ),
-    announcementIdx: index("announcement_likes_announcement_idx").on(
-      table.announcementId,
-    ),
+    postIdx: index("post_likes_post_idx").on(table.postId),
   }),
 );
 
-export const announcementComments = pgTable(
-  "announcement_comments",
+export const postComments = pgTable(
+  "post_comments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    announcementId: uuid("announcement_id")
+    postId: uuid("post_id")
       .notNull()
-      .references(() => groupAnnouncements.id, { onDelete: "cascade" }),
+      .references(() => posts.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -632,11 +635,9 @@ export const announcementComments = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    announcementIdx: index("announcement_comments_announcement_idx").on(
-      table.announcementId,
-    ),
-    createdIdx: index("announcement_comments_created_idx").on(
-      table.announcementId,
+    postIdx: index("post_comments_post_idx").on(table.postId),
+    createdIdx: index("post_comments_created_idx").on(
+      table.postId,
       table.createdAt,
     ),
   }),
@@ -713,6 +714,6 @@ export type PageContentConfigRow = typeof pageContentConfig.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type GroupMember = typeof groupMembers.$inferSelect;
 export type GroupJoinRequest = typeof groupJoinRequests.$inferSelect;
-export type GroupAnnouncement = typeof groupAnnouncements.$inferSelect;
+export type Post = typeof posts.$inferSelect;
 export type UserBlock = typeof userBlocks.$inferSelect;
 export type ContentReport = typeof contentReports.$inferSelect;

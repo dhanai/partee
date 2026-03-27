@@ -1,0 +1,38 @@
+---
+description: Enforce DRY components, shared patterns, and cross-screen UI consistency
+globs: apps/mobile/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# DRY Components & UI Consistency
+
+## Reuse Before Rebuild
+
+Before building any UI pattern inline, search the codebase for existing shared components that solve the same problem. Common shared components live in `apps/mobile/components/`.
+
+- **Bottom sheet menus**: Use `OverflowMenuSheet` from `components/overflow-menu-sheet.tsx` for any action sheet with a list of icon + label rows. Never hand-roll `AnimatedBottomSheetFrame` with manual `Pressable` rows for simple menus.
+- **List cards, avatars, badges**: Check `components/` for existing building blocks before creating one-off versions in a screen file.
+
+## Cross-Screen Consistency
+
+When building a feature that already exists on another screen, match its layout and behavior exactly. Examples:
+
+- A group detail page and a round detail page should use the same overflow menu component, header icon style, and card patterns.
+- If one tab uses silent background reloads on refocus, all tabs should do the same.
+- If one list uses `expo-image` with `transition={0}` and `onPressIn` prefetch, all similar lists should follow suit.
+
+**Before implementing**: Search for 2–3 existing screens that do something similar and adopt their patterns rather than inventing a new one.
+
+## Extract, Don't Duplicate
+
+If you find yourself copying styles, JSX blocks, or logic across files:
+
+1. Extract it into a shared component or utility in `components/` or `lib/`.
+2. Keep the API surface small — props for the variable parts, sensible defaults for the rest.
+3. Update all existing call sites to use the shared version.
+
+## Icons & Visual Language
+
+- Overflow/more buttons use `ellipsis-horizontal` (never vertical).
+- Destructive actions use `colors.danger` for both icon and text.
+- All overflow menus follow the same row layout: 20px icon, 14px gap, 600-weight 16px label.

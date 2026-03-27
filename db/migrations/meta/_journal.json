@@ -211,6 +211,13 @@
       "when": 1776000000000,
       "tag": "0029_message_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1776100000000,
+      "tag": "0030_posts_rename",
+      "breakpoints": true
     }
   ]
 }

@@ -43,7 +43,7 @@ type GroupDetail = {
 };
 
 type ActivityItem = {
-  type: "announcement" | "round_created" | "member_joined";
+  type: "post" | "round_created" | "member_joined";
   id: string;
   body?: string;
   imageUrl?: string | null;
@@ -355,11 +355,11 @@ export default function GroupLandingScreen() {
     setShowAnnounceSheet(true);
   }, []);
 
-  const rawAnnouncementId = (item: ActivityItem) => item.id.replace(/^ann-/, "");
+  const rawPostId = (item: ActivityItem) => item.id.replace(/^(post|ann)-/, "");
 
   const openEditAnnouncement = useCallback((item: ActivityItem) => {
     setOverflowItem(null);
-    setEditingAnnouncement({ id: rawAnnouncementId(item), body: item.body ?? "" });
+    setEditingAnnouncement({ id: rawPostId(item), body: item.body ?? "" });
     setAnnounceDraft(item.body ?? "");
     setPostImageUri(item.imageUrl ?? null);
     setShowAnnounceSheet(true);
@@ -444,7 +444,7 @@ export default function GroupLandingScreen() {
   const handleDeleteAnnouncement = useCallback(
     (item: ActivityItem) => {
       setOverflowItem(null);
-      const id = rawAnnouncementId(item);
+      const id = rawPostId(item);
       Alert.alert("Delete post", "This cannot be undone.", [
         { text: "Cancel", style: "cancel" },
         {
@@ -471,7 +471,7 @@ export default function GroupLandingScreen() {
   const handleToggleLike = useCallback(
     async (item: ActivityItem) => {
       hapticLight();
-      const id = rawAnnouncementId(item);
+      const id = rawPostId(item);
       const wasLiked = item.viewerLiked ?? false;
       setActivity((prev) =>
         prev.map((a) =>
@@ -506,7 +506,7 @@ export default function GroupLandingScreen() {
 
   const handleTogglePin = useCallback(
     async (item: ActivityItem) => {
-      const id = rawAnnouncementId(item);
+      const id = rawPostId(item);
       const newPinned = !item.isPinned;
       setOverflowItem(null);
       setActivity((prev) =>
@@ -539,7 +539,7 @@ export default function GroupLandingScreen() {
       setLoadingComments(true);
       try {
         const token = await getTokenRef.current();
-        const annId = rawAnnouncementId(item);
+        const annId = rawPostId(item);
         const data = await apiGet<{ comments: CommentItem[] }>(
           `/api/groups/${groupId}/announcements/comments?announcementId=${annId}`,
           token,
@@ -562,7 +562,7 @@ export default function GroupLandingScreen() {
     setPostingComment(true);
     try {
       const token = await getTokenRef.current();
-      const annId = rawAnnouncementId(commentSheetItem);
+      const annId = rawPostId(commentSheetItem);
       const data = await apiPost<{ comment: CommentItem }>(
         `/api/groups/${groupId}/announcements/comments`,
         { announcementId: annId, body },
@@ -822,7 +822,7 @@ export default function GroupLandingScreen() {
         }
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
-          if (item.type === "announcement") {
+          if (item.type === "post") {
             const liked = item.viewerLiked ?? false;
             const likeCount = item.likeCount ?? 0;
             return (

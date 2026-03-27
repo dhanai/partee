@@ -158,6 +158,9 @@ const mosaicStyles = StyleSheet.create({
 const REACTION_EMOJIS = [
   { key: "heart", display: String.fromCodePoint(0x2764, 0xFE0F) },
   { key: "laugh", display: String.fromCodePoint(0x1F602) },
+  { key: "shocked", display: String.fromCodePoint(0x1F62E) },
+  { key: "cry", display: String.fromCodePoint(0x1F622) },
+  { key: "angry", display: String.fromCodePoint(0x1F621) },
   { key: "thumbs_up", display: String.fromCodePoint(0x1F44D) },
   { key: "thumbs_down", display: String.fromCodePoint(0x1F44E) },
 ] as const;

@@ -47,7 +47,7 @@
     "react-native-autolink": "^4.2.0",
     "react-native-gesture-handler": "~2.30.0",
     "react-native-google-mobile-ads": "^16.3.0",
-    "react-native-keyboard-controller": "1.20.7",
+    "react-native-keyboard-controller": "^1.21.2",
     "react-native-reanimated": "4.2.1",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",

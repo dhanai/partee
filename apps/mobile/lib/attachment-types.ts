@@ -2,7 +2,7 @@ export type ImageAttachment = { type: "image"; url: string };
 
 // Future attachment types:
 // export type RoundPreviewAttachment = { type: "round_preview"; roundToken: string };
-// export type PostAttachment = { type: "post"; announcementId: string };
+// export type PostAttachment = { type: "post"; postId: string };
 // export type PollAttachment = { type: "poll"; question: string; options: string[] };
 
 export type MessageAttachment = ImageAttachment;

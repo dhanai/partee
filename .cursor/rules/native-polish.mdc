@@ -1,0 +1,20 @@
+---
+description: Enforce polished, native-feeling UX for all mobile app work
+globs: apps/mobile/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Native App Polish Standards
+
+Every UI change must feel like a polished, production-grade native app — not a quick hack or prototype.
+
+## Principles
+
+- **Match platform conventions**: Use iOS/Android native patterns (e.g. keyboard handling, gestures, haptics, transitions). Reference how Instagram, iMessage, or Apple's own apps handle the same interaction before implementing.
+- **Animation sync**: Never use JS-thread animations (`Animated.timing` with `useNativeDriver: false`) for interactions that need to track native system animations (keyboard, navigation transitions). Use `LayoutAnimation.Types.keyboard` for keyboard-synced layouts, or `react-native-reanimated` when sub-frame precision matters.
+- **No jarring transitions**: Screens, modals, and bottom sheets must animate smoothly on open/close. Content should not jump, flash, or re-layout visibly after appearing.
+- **Keyboard handling**: Text inputs near the bottom of the screen must stay pinned above the keyboard and move in lockstep with it. Test this on iOS specifically.
+- **Touch feedback**: Interactive elements need appropriate hit slop, press states, and haptic feedback where expected (swipe actions, toggles, destructive confirmations).
+- **Loading states**: Prefer skeleton/placeholder UIs or cached data over full-screen spinners. If a spinner is unavoidable, keep it small and inline.
+- **Optimistic updates**: Apply local state changes immediately on user action (likes, comments, deletes) and reconcile with the server in the background. Revert gracefully on failure.
+- **Scroll behavior**: Lists must feel natural — rubber-band scrolling, proper inertia, `keyboardDismissMode="interactive"` where applicable.

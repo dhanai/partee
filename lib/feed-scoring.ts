@@ -68,8 +68,8 @@ export function scoreDiscoverGroup(opts: {
   return score;
 }
 
-/** Score a group-activity announcement item. */
-export function scoreAnnouncement(opts: {
+/** Score a group-activity post item (formerly "announcement"). */
+export function scorePost(opts: {
   likeCount: number;
   commentCount: number;
   createdAt: string;

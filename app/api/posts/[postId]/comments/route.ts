@@ -1,32 +1,16 @@
 import { NextResponse } from "next/server";
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { postComments, posts, groupMembers, users } from "@/db/schema";
+import { postComments, posts, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 
-type Ctx = { params: { groupId: string } };
+type Ctx = { params: { postId: string } };
 
 export async function GET(req: Request, { params }: Ctx) {
   try {
-    const viewer = await requireDbUser(req);
-    const { groupId } = params;
-
-    const url = new URL(req.url);
-    const announcementId = url.searchParams.get("announcementId");
-    if (!announcementId) {
-      return NextResponse.json({ error: "Missing announcementId." }, { status: 400 });
-    }
-
-    const [membership] = await db
-      .select({ role: groupMembers.role })
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, viewer.id)))
-      .limit(1);
-
-    if (!membership) {
-      return NextResponse.json({ error: "Must be a group member." }, { status: 403 });
-    }
+    await requireDbUser(req);
+    const { postId } = params;
 
     const rows = await db
       .select({
@@ -39,7 +23,7 @@ export async function GET(req: Request, { params }: Ctx) {
       })
       .from(postComments)
       .innerJoin(users, eq(users.id, postComments.userId))
-      .where(eq(postComments.postId, announcementId))
+      .where(eq(postComments.postId, postId))
       .orderBy(asc(postComments.createdAt))
       .limit(100);
 
@@ -55,52 +39,36 @@ export async function GET(req: Request, { params }: Ctx) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    console.error("[GET comments]", error);
+    console.error("[GET /api/posts/[postId]/comments]", error);
     return NextResponse.json({ error: "Unable to load comments." }, { status: 500 });
   }
 }
 
 const createSchema = z.object({
-  announcementId: z.string().uuid(),
   body: z.string().min(1).max(2000),
 });
 
 export async function POST(req: Request, { params }: Ctx) {
   try {
     const viewer = await requireDbUser(req);
-    const { groupId } = params;
-
-    const [membership] = await db
-      .select({ role: groupMembers.role })
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, viewer.id)))
-      .limit(1);
-
-    if (!membership) {
-      return NextResponse.json({ error: "Must be a group member." }, { status: 403 });
-    }
-
-    const input = createSchema.parse(await req.json());
+    const { postId } = params;
 
     const [post] = await db
       .select({ id: posts.id })
       .from(posts)
-      .where(
-        and(
-          eq(posts.id, input.announcementId),
-          eq(posts.groupId, groupId),
-        ),
-      )
+      .where(eq(posts.id, postId))
       .limit(1);
 
     if (!post) {
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
 
+    const input = createSchema.parse(await req.json());
+
     const [comment] = await db
       .insert(postComments)
       .values({
-        postId: input.announcementId,
+        postId,
         userId: viewer.id,
         body: input.body,
       })
@@ -121,7 +89,7 @@ export async function POST(req: Request, { params }: Ctx) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    console.error("[POST comments]", error);
+    console.error("[POST /api/posts/[postId]/comments]", error);
     return NextResponse.json({ error: "Unable to create comment." }, { status: 500 });
   }
 }
@@ -129,22 +97,11 @@ export async function POST(req: Request, { params }: Ctx) {
 export async function DELETE(req: Request, { params }: Ctx) {
   try {
     const viewer = await requireDbUser(req);
-    const { groupId } = params;
 
     const url = new URL(req.url);
     const commentId = url.searchParams.get("id");
     if (!commentId) {
       return NextResponse.json({ error: "Missing comment id." }, { status: 400 });
-    }
-
-    const [membership] = await db
-      .select({ role: groupMembers.role })
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, viewer.id)))
-      .limit(1);
-
-    if (!membership) {
-      return NextResponse.json({ error: "Must be a group member." }, { status: 403 });
     }
 
     const [existing] = await db
@@ -157,8 +114,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
       return NextResponse.json({ error: "Comment not found." }, { status: 404 });
     }
 
-    const isAdminOrOwner = membership.role === "owner" || membership.role === "admin";
-    if (existing.userId !== viewer.id && !isAdminOrOwner) {
+    if (existing.userId !== viewer.id) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
@@ -169,7 +125,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    console.error("[DELETE comments]", error);
+    console.error("[DELETE /api/posts/[postId]/comments]", error);
     return NextResponse.json({ error: "Unable to delete comment." }, { status: 500 });
   }
 }

@@ -2,20 +2,20 @@ import { NextResponse } from "next/server";
 import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  announcementComments,
-  announcementLikes,
-  groupAnnouncements,
+  postComments,
+  postLikes,
+  posts,
   groupMembers,
   rounds,
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
-import { getViewerFollowedIds, scoreAnnouncement } from "@/lib/feed-scoring";
+import { getViewerFollowedIds, scorePost } from "@/lib/feed-scoring";
 
 type Ctx = { params: { groupId: string } };
 
 type ActivityItem =
-  | { type: "announcement"; id: string; body: string; imageUrl: string | null; isPinned: boolean; createdAt: string; likeCount: number; commentCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
+  | { type: "post"; id: string; body: string; imageUrl: string | null; isPinned: boolean; createdAt: string; likeCount: number; commentCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
   | { type: "round_created"; id: string; roundId: string; courseName: string | null; targetDate: string; createdAt: string; user: { id: string; name: string; avatar: string | null } }
   | { type: "member_joined"; id: string; joinedAt: string; user: { id: string; name: string; avatar: string | null } };
 
@@ -26,81 +26,80 @@ export async function GET(req: Request, { params }: Ctx) {
 
     const url = new URL(req.url);
     const pageSize = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") ?? "20")));
-    const cursor = url.searchParams.get("cursor"); // ISO date string
+    const cursor = url.searchParams.get("cursor");
 
     const cursorDate = cursor ? new Date(cursor) : null;
 
-    // ── Announcements ───────────────────────────────────────────
-    const annWhere = cursorDate
-      ? and(eq(groupAnnouncements.groupId, groupId), lt(groupAnnouncements.createdAt, cursorDate))
-      : eq(groupAnnouncements.groupId, groupId);
+    // ── Posts ────────────────────────────────────────────────────
+    const postWhere = cursorDate
+      ? and(eq(posts.groupId, groupId), lt(posts.createdAt, cursorDate))
+      : eq(posts.groupId, groupId);
 
-    const announcementRows = await db
+    const postRows = await db
       .select({
-        id: groupAnnouncements.id,
-        body: groupAnnouncements.body,
-        imageUrl: groupAnnouncements.imageUrl,
-        isPinned: groupAnnouncements.isPinned,
-        createdAt: groupAnnouncements.createdAt,
-        userId: groupAnnouncements.userId,
+        id: posts.id,
+        body: posts.body,
+        imageUrl: posts.imageUrl,
+        isPinned: posts.isPinned,
+        createdAt: posts.createdAt,
+        userId: posts.userId,
         userName: users.name,
         userAvatar: users.avatar,
       })
-      .from(groupAnnouncements)
-      .innerJoin(users, eq(users.id, groupAnnouncements.userId))
-      .where(annWhere)
-      .orderBy(desc(groupAnnouncements.createdAt))
+      .from(posts)
+      .innerJoin(users, eq(users.id, posts.userId))
+      .where(postWhere)
+      .orderBy(desc(posts.createdAt))
       .limit(pageSize);
 
-    const annIds = announcementRows.map((r) => r.id);
+    const postIds = postRows.map((r) => r.id);
 
-    // Batch like counts, comment counts, and viewer likes in 3 queries instead of N per metric
     let likeCountMap = new Map<string, number>();
     let commentCountMap = new Map<string, number>();
     let viewerLikeSet = new Set<string>();
 
-    if (annIds.length > 0) {
+    if (postIds.length > 0) {
       const [likeCounts, commentCounts, viewerLikes] = await Promise.all([
         db
           .select({
-            announcementId: announcementLikes.announcementId,
+            postId: postLikes.postId,
             count: count(),
           })
-          .from(announcementLikes)
-          .where(inArray(announcementLikes.announcementId, annIds))
-          .groupBy(announcementLikes.announcementId),
+          .from(postLikes)
+          .where(inArray(postLikes.postId, postIds))
+          .groupBy(postLikes.postId),
 
         db
           .select({
-            announcementId: announcementComments.announcementId,
+            postId: postComments.postId,
             count: count(),
           })
-          .from(announcementComments)
-          .where(inArray(announcementComments.announcementId, annIds))
-          .groupBy(announcementComments.announcementId),
+          .from(postComments)
+          .where(inArray(postComments.postId, postIds))
+          .groupBy(postComments.postId),
 
         db
-          .select({ announcementId: announcementLikes.announcementId })
-          .from(announcementLikes)
+          .select({ postId: postLikes.postId })
+          .from(postLikes)
           .where(
             and(
-              inArray(announcementLikes.announcementId, annIds),
-              eq(announcementLikes.userId, viewer.id),
+              inArray(postLikes.postId, postIds),
+              eq(postLikes.userId, viewer.id),
             ),
           ),
       ]);
 
-      likeCountMap = new Map(likeCounts.map((r) => [r.announcementId, Number(r.count)]));
-      commentCountMap = new Map(commentCounts.map((r) => [r.announcementId, Number(r.count)]));
-      viewerLikeSet = new Set(viewerLikes.map((r) => r.announcementId));
+      likeCountMap = new Map(likeCounts.map((r) => [r.postId, Number(r.count)]));
+      commentCountMap = new Map(commentCounts.map((r) => [r.postId, Number(r.count)]));
+      viewerLikeSet = new Set(viewerLikes.map((r) => r.postId));
     }
 
     const items: ActivityItem[] = [];
 
-    for (const r of announcementRows) {
+    for (const r of postRows) {
       items.push({
-        type: "announcement",
-        id: `ann-${r.id}`,
+        type: "post",
+        id: `post-${r.id}`,
         body: r.body,
         imageUrl: r.imageUrl,
         isPinned: r.isPinned,
@@ -174,14 +173,14 @@ export async function GET(req: Request, { params }: Ctx) {
       });
     }
 
-    // ── Score announcements & sort ─────────────────────────────
+    // ── Score posts & sort ──────────────────────────────────────
     const followedIds = await getViewerFollowedIds(viewer.id);
 
     const scoredItems = items.map((item) => {
-      if (item.type !== "announcement") return { item, _score: 0 };
+      if (item.type !== "post") return { item, _score: 0 };
       return {
         item,
-        _score: scoreAnnouncement({
+        _score: scorePost({
           likeCount: item.likeCount,
           commentCount: item.commentCount,
           createdAt: item.createdAt,
@@ -192,12 +191,12 @@ export async function GET(req: Request, { params }: Ctx) {
     });
 
     scoredItems.sort((a, b) => {
-      const pinA = a.item.type === "announcement" && a.item.isPinned ? 1 : 0;
-      const pinB = b.item.type === "announcement" && b.item.isPinned ? 1 : 0;
+      const pinA = a.item.type === "post" && a.item.isPinned ? 1 : 0;
+      const pinB = b.item.type === "post" && b.item.isPinned ? 1 : 0;
       if (pinA !== pinB) return pinB - pinA;
 
-      const bothAnnouncements = a.item.type === "announcement" && b.item.type === "announcement";
-      if (bothAnnouncements && (a._score > 0 || b._score > 0)) {
+      const bothPosts = a.item.type === "post" && b.item.type === "post";
+      if (bothPosts && (a._score > 0 || b._score > 0)) {
         if (a._score !== b._score) return b._score - a._score;
       }
 

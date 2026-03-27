@@ -48,7 +48,7 @@ function openNotificationData(
       return;
     }
   }
-  if (type === "group_announcement") {
+  if (type === "group_post" || type === "group_announcement") {
     const groupId = typeof data.groupId === "string" ? data.groupId.trim() : "";
     if (groupId.length > 0) {
       router.push({

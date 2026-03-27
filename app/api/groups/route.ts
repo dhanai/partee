@@ -5,7 +5,7 @@ import { db } from "@/db";
 import {
   conversations,
   conversationParticipants,
-  groupAnnouncements,
+  posts,
   groupMembers,
   groups,
 } from "@/db/schema";
@@ -124,17 +124,17 @@ export async function GET(req: Request) {
           : Promise.resolve([]),
         db
           .select({
-            groupId: groupAnnouncements.groupId,
+            groupId: posts.groupId,
             count: count().as("count"),
           })
-          .from(groupAnnouncements)
+          .from(posts)
           .where(
             and(
-              inArray(groupAnnouncements.groupId, discoverGroupIds),
-              gte(groupAnnouncements.createdAt, twoWeeksAgo),
+              inArray(posts.groupId, discoverGroupIds),
+              gte(posts.createdAt, twoWeeksAgo),
             ),
           )
-          .groupBy(groupAnnouncements.groupId),
+          .groupBy(posts.groupId),
       ]);
 
       followerOverlapMap = new Map(overlapRows.map((r) => [r.groupId, Number(r.count)]));
