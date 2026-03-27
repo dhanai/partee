@@ -138,7 +138,7 @@ export async function GET(req: Request) {
       ]);
 
       followerOverlapMap = new Map(overlapRows.map((r) => [r.groupId, Number(r.count)]));
-      recentActivityMap = new Map(activityRows.map((r) => [r.groupId, Number(r.count)]));
+      recentActivityMap = new Map(activityRows.filter((r) => r.groupId != null).map((r) => [r.groupId!, Number(r.count)]));
     }
 
     const discoverGroups: GroupListItem[] = discoverRows
