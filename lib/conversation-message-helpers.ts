@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { messages, messageReactions, users } from "@/db/schema";
 import { type MessageAttachment, getImageUrls } from "@/lib/attachment-types";
-import { publishConversationMessage } from "@/lib/conversation-ably";
+import { publishChatRoomMessage, publishConversationInboxToasts } from "@/lib/conversation-ably";
 import { notifyConversationMessage } from "@/lib/notify-user";
 
 export const MAX_BODY = 2000;
@@ -258,24 +258,6 @@ export async function sendConversationMessage(input: {
         ? `Sent ${imageCount} photos`
         : "";
 
-  await Promise.all([
-    publishConversationMessage({
-      conversationId: input.conversationId,
-      messageId: inserted.id,
-      senderId: input.viewerId,
-      senderName: input.viewerName,
-      senderAvatar: input.viewerAvatar,
-      body: pushBody,
-    }).catch((err) => console.error("[sendConversationMessage] ably", err)),
-
-    notifyConversationMessage({
-      conversationId: input.conversationId,
-      senderUserId: input.viewerId,
-      senderName: input.viewerName,
-      messageBody: pushBody,
-    }).catch((err) => console.error("[sendConversationMessage] push", err)),
-  ]);
-
   let parentPreview: MappedMessage["parentPreview"] = null;
   if (inserted.parentId) {
     const [parent] = await db
@@ -292,7 +274,7 @@ export async function sendConversationMessage(input: {
     }
   }
 
-  return {
+  const mappedMessage: MappedMessage = {
     id: inserted.id,
     body: inserted.body,
     attachments: (inserted.attachments as MessageAttachment[] | null) ?? null,
@@ -303,4 +285,28 @@ export async function sendConversationMessage(input: {
     user: { id: input.viewerId, name: input.viewerName, avatar: input.viewerAvatar },
     reactions: {},
   };
+
+  await Promise.all([
+    publishChatRoomMessage(
+      input.conversationId,
+      mappedMessage,
+    ).catch((err) => console.error("[sendConversationMessage] ably-chat", err)),
+
+    publishConversationInboxToasts({
+      conversationId: input.conversationId,
+      senderId: input.viewerId,
+      senderName: input.viewerName,
+      senderAvatar: input.viewerAvatar,
+      body: pushBody,
+    }).catch((err) => console.error("[sendConversationMessage] inbox-toast", err)),
+
+    notifyConversationMessage({
+      conversationId: input.conversationId,
+      senderUserId: input.viewerId,
+      senderName: input.viewerName,
+      messageBody: pushBody,
+    }).catch((err) => console.error("[sendConversationMessage] push", err)),
+  ]);
+
+  return mappedMessage;
 }

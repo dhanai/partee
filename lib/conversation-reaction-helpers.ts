@@ -2,7 +2,6 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { messages, messageReactions } from "@/db/schema";
-import { publishConversationReaction } from "@/lib/conversation-ably";
 import { VALID_EMOJIS, reactionPostSchema } from "@/lib/conversation-message-helpers";
 
 /**
@@ -44,14 +43,6 @@ export async function addReaction(input: {
     .values({ messageId: input.messageId, userId: input.userId, emoji: emoji as typeof VALID_EMOJIS[number] })
     .onConflictDoNothing();
 
-  await publishConversationReaction({
-    conversationId: input.conversationId,
-    messageId: input.messageId,
-    userId: input.userId,
-    emoji,
-    action: "add",
-  }).catch(() => {});
-
   return { ok: true };
 }
 
@@ -77,14 +68,6 @@ export async function removeReaction(input: {
         eq(messageReactions.emoji, input.emoji as typeof VALID_EMOJIS[number]),
       ),
     );
-
-  await publishConversationReaction({
-    conversationId: input.conversationId,
-    messageId: input.messageId,
-    userId: input.userId,
-    emoji: input.emoji,
-    action: "remove",
-  }).catch(() => {});
 
   return { ok: true };
 }

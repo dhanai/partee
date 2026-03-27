@@ -1,32 +1,61 @@
+import Ably from "ably";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { conversationParticipants } from "@/db/schema";
 import { publishParfadeMessage } from "@/lib/parfade-ably-publish";
 import { parfadeUserInboxChannel } from "@/lib/parfade-ably-channels";
+import type { MappedMessage } from "@/lib/conversation-message-helpers";
 
-export function parfadeConversationChannel(conversationId: string): string {
-  return `parfade:v1:conversation:${conversationId}`;
+let rest: Ably.Rest | null = null;
+function getAblyRest(): Ably.Rest | null {
+  const key = process.env.ABLY_API_KEY?.trim();
+  if (!key) return null;
+  if (!rest) rest = new Ably.Rest({ key });
+  return rest;
 }
 
-export async function publishConversationMessage(input: {
+/**
+ * Publish a message to an Ably Chat room via the Chat REST API.
+ * Subscribers using the Chat SDK's useMessages hook receive it instantly.
+ */
+export async function publishChatRoomMessage(
+  conversationId: string,
+  message: MappedMessage,
+): Promise<void> {
+  const client = getAblyRest();
+  if (!client) return;
+
+  const bodyPreview = message.body
+    ? message.body.length > 100 ? message.body.slice(0, 97) + "…" : message.body
+    : "";
+
+  await client.request("POST", `/chat/v4/rooms/${conversationId}/messages`, 4, {}, {
+    text: bodyPreview,
+    metadata: {
+      dbId: message.id,
+      body: message.body,
+      attachments: message.attachments ?? null,
+      parentId: message.parentId ?? null,
+      parentPreview: message.parentPreview ?? null,
+      user: message.user,
+      reactions: message.reactions,
+      createdAt: message.createdAt,
+    },
+    headers: {},
+  });
+}
+
+/**
+ * Send inbox toast to each non-sender participant (for in-app toast + unread dot).
+ */
+export async function publishConversationInboxToasts(input: {
   conversationId: string;
-  messageId: string;
   senderId: string;
   senderName: string;
   senderAvatar: string | null;
   body: string;
 }): Promise<void> {
   const bodyPreview = input.body.length > 100 ? input.body.slice(0, 97) + "…" : input.body;
-
-  await publishParfadeMessage(parfadeConversationChannel(input.conversationId), {
-    v: 1,
-    type: "conversation-message",
-    conversationId: input.conversationId,
-    messageId: input.messageId,
-    senderId: input.senderId,
-    senderName: input.senderName,
-    bodyPreview,
-  });
 
   const participants = await db
     .select({ userId: conversationParticipants.userId })
@@ -47,22 +76,4 @@ export async function publishConversationMessage(input: {
         }).catch(() => {}),
       ),
   );
-}
-
-export async function publishConversationReaction(input: {
-  conversationId: string;
-  messageId: string;
-  userId: string;
-  emoji: string;
-  action: "add" | "remove";
-}): Promise<void> {
-  await publishParfadeMessage(parfadeConversationChannel(input.conversationId), {
-    v: 1,
-    type: "conversation-reaction",
-    conversationId: input.conversationId,
-    messageId: input.messageId,
-    userId: input.userId,
-    emoji: input.emoji,
-    action: input.action,
-  });
 }
