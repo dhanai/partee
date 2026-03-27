@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { postComments, posts, groupMembers, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { publishPostCommentAdded } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { groupId: string } };
 
@@ -106,14 +107,18 @@ export async function POST(req: Request, { params }: Ctx) {
       })
       .returning();
 
-    return NextResponse.json({
-      comment: {
-        id: comment.id,
-        body: comment.body,
-        createdAt: comment.createdAt.toISOString(),
-        user: { id: viewer.id, name: viewer.name, avatar: viewer.avatar },
-      },
-    });
+    const commentPayload = {
+      id: comment.id,
+      body: comment.body,
+      createdAt: comment.createdAt.toISOString(),
+      user: { id: viewer.id, name: viewer.name, avatar: viewer.avatar },
+    };
+
+    await publishPostCommentAdded(input.announcementId, commentPayload).catch((e) =>
+      console.error("[POST comments] ably publish", e),
+    );
+
+    return NextResponse.json({ comment: commentPayload });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid input." }, { status: 400 });

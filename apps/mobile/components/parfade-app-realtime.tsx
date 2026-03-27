@@ -79,6 +79,7 @@ export function ParfadeAppRealtime() {
           userId: parsed.userId,
           action: parsed.action,
         });
+        emitChatListsShouldRefresh();
       }
       if (parsed.type === "round-invite-toast") {
         emitRoundListsShouldRefresh();

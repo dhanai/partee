@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -12,10 +12,14 @@ import {
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useAbly } from "ably/react";
 import { Ionicons } from "@expo/vector-icons";
 import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
 import { deleteGameSession, listMyGameSessions, type GameSessionSummary } from "../../lib/games-api";
 import { GAME_DEFINITIONS, getGameDefinition } from "../../lib/games-registry";
+import { subscribeGamesListRefresh } from "../../lib/games-list-refresh";
+import { parfadeGameSessionChannel } from "../../lib/parfade-ably-channels";
+import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { colors } from "../../lib/theme";
 
 function statusLabel(s: GameSessionSummary["status"]) {
@@ -101,6 +105,35 @@ export default function GamesScreen() {
       void load();
     }, [load]),
   );
+
+  useEffect(() => subscribeGamesListRefresh(() => void load()), [load]);
+
+  const ably = useAbly();
+  const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
+  useEffect(() => {
+    if (sessionIds.length === 0) return;
+    const subs: { channel: ReturnType<typeof ably.channels.get>; handler: (msg: import("ably").Message) => void }[] = [];
+    for (const id of sessionIds) {
+      const channel = ably.channels.get(parfadeGameSessionChannel(id));
+      const handler = (msg: import("ably").Message) => {
+        const parsed = parseParfadeRealtimeMessage(msg.data);
+        if (parsed?.type === "game-session-updated") {
+          if (parsed.reason === "deleted") {
+            setSessions((prev) => prev.filter((s) => s.id !== id));
+          } else {
+            void load();
+          }
+        }
+      };
+      void channel.subscribe("parfade", handler);
+      subs.push({ channel, handler });
+    }
+    return () => {
+      for (const { channel, handler } of subs) {
+        void channel.unsubscribe("parfade", handler);
+      }
+    };
+  }, [ably, sessionIds, load]);
 
   return (
     <ScrollView

@@ -1,5 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -22,9 +22,12 @@ import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput }
 import { InitialAvatar } from "../../../components/initial-avatar";
 import { OverflowMenuSheet, type OverflowMenuItem } from "../../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../../components/report-sheet";
+import { useAbly } from "ably/react";
 import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin } from "../../../lib/api";
 import { hapticLight } from "../../../lib/haptics";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
+import { parfadeGroupChannel, parfadePostChannel } from "../../../lib/parfade-ably-channels";
+import { parseParfadeRealtimeMessage } from "../../../lib/parfade-ably-messages";
 import { uploadImage, AVATAR_MAX_BYTES, COVER_MAX_BYTES, POST_MAX_BYTES } from "../../../lib/upload-image";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { colors } from "../../../lib/theme";
@@ -184,6 +187,8 @@ export default function GroupLandingScreen() {
     getTokenRef.current = getToken;
   }, [getToken]);
 
+  const ably = useAbly();
+  const rawPostId = (item: ActivityItem) => item.id.replace(/^(post|ann)-/, "");
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -248,6 +253,68 @@ export default function GroupLandingScreen() {
       }
     }, [load]),
   );
+
+  // Real-time: group activity feed updates
+  useEffect(() => {
+    if (!groupId) return;
+    const channel = ably.channels.get(parfadeGroupChannel(groupId));
+    const handler = (msg: import("ably").Message) => {
+      const parsed = parseParfadeRealtimeMessage(msg.data);
+      if (parsed?.type === "group-activity-updated") {
+        void load({ silent: true });
+      }
+    };
+    void channel.subscribe("parfade", handler);
+    return () => { void channel.unsubscribe("parfade", handler); };
+  }, [ably, groupId, load]);
+
+  // Real-time: comment counts on all loaded post cards + live comments when sheet is open
+  const postIds = useMemo(
+    () => activity.filter((a) => a.type === "post").map((a) => rawPostId(a)),
+    [activity],
+  );
+  const openPostId = commentSheetItem ? rawPostId(commentSheetItem) : null;
+  useEffect(() => {
+    if (postIds.length === 0) return;
+    const subs: { channel: ReturnType<typeof ably.channels.get>; handler: (msg: import("ably").Message) => void }[] = [];
+    for (const pid of postIds) {
+      const channel = ably.channels.get(parfadePostChannel(pid));
+      const handler = (msg: import("ably").Message) => {
+        const parsed = parseParfadeRealtimeMessage(msg.data);
+        if (parsed?.type === "post-comment-added" && parsed.postId === pid && parsed.comment.user.id !== meId) {
+          setActivity((prev) =>
+            prev.map((a) =>
+              rawPostId(a) === pid
+                ? { ...a, commentCount: (a.commentCount ?? 0) + 1 }
+                : a,
+            ),
+          );
+          if (pid === openPostId) {
+            setComments((prev) => {
+              if (prev.some((c) => c.id === parsed.comment.id)) return prev;
+              return [...prev, parsed.comment];
+            });
+          }
+        }
+        if (parsed?.type === "post-like-updated" && parsed.postId === pid && parsed.userId !== meId) {
+          setActivity((prev) =>
+            prev.map((a) =>
+              rawPostId(a) === pid
+                ? { ...a, likeCount: (a.likeCount ?? 0) + (parsed.liked ? 1 : -1) }
+                : a,
+            ),
+          );
+        }
+      };
+      void channel.subscribe("parfade", handler);
+      subs.push({ channel, handler });
+    }
+    return () => {
+      for (const { channel, handler } of subs) {
+        void channel.unsubscribe("parfade", handler);
+      }
+    };
+  }, [ably, postIds, meId, openPostId]);
 
   useLayoutEffect(() => {
     if (bootstrap?.name) {
@@ -354,8 +421,6 @@ export default function GroupLandingScreen() {
     setPostImageUri(null);
     setShowAnnounceSheet(true);
   }, []);
-
-  const rawPostId = (item: ActivityItem) => item.id.replace(/^(post|ann)-/, "");
 
   const openEditAnnouncement = useCallback((item: ActivityItem) => {
     setOverflowItem(null);

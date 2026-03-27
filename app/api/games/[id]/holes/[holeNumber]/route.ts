@@ -10,6 +10,7 @@ import { parseHolePayload } from "@/lib/games/payload-schemas";
 import { validateWolfPayloadWolfUser } from "@/lib/games/wolf-hole-validation";
 import { toIso } from "@/lib/games/serialize";
 import { loadSessionWithPlayers, userIsGameParticipant } from "@/lib/games/session-queries";
+import { publishGameSessionUpdated } from "@/lib/parfade-ably-publish";
 
 type RouteContext = { params: Promise<{ id: string; holeNumber: string }> };
 
@@ -126,6 +127,10 @@ export async function PUT(req: Request, context: RouteContext) {
         .set({ updatedAt: now })
         .where(eq(gameSessions.id, sessionId));
 
+      await publishGameSessionUpdated(sessionId, "hole").catch((e) =>
+        console.error("[PUT hole] ably", e),
+      );
+
       return NextResponse.json({
         hole: {
           holeNumber: row!.holeNumber,
@@ -160,6 +165,10 @@ export async function PUT(req: Request, context: RouteContext) {
       .update(gameSessions)
       .set({ updatedAt: now })
       .where(eq(gameSessions.id, sessionId));
+
+    await publishGameSessionUpdated(sessionId, "hole").catch((e) =>
+      console.error("[PUT hole] ably", e),
+    );
 
     return NextResponse.json({
       hole: {

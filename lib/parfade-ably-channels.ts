@@ -29,3 +29,27 @@ export function parfadeRoundDetailChannel(inviteToken: string): string {
 export function parfadeRoundDetailChannelsCapabilityPattern(): string {
   return `${PARFADE_ABLY_NS}:round-detail:*`;
 }
+
+export function parfadePostChannel(postId: string): string {
+  return `${PARFADE_ABLY_NS}:post:${postId}`;
+}
+
+export function parfadePostChannelsCapabilityPattern(): string {
+  return `${PARFADE_ABLY_NS}:post:*`;
+}
+
+export function parfadeGameSessionChannel(sessionId: string): string {
+  return `${PARFADE_ABLY_NS}:game-session:${sessionId}`;
+}
+
+export function parfadeGameSessionChannelsCapabilityPattern(): string {
+  return `${PARFADE_ABLY_NS}:game-session:*`;
+}
+
+export function parfadeGroupChannel(groupId: string): string {
+  return `${PARFADE_ABLY_NS}:group:${groupId}`;
+}
+
+export function parfadeGroupChannelsCapabilityPattern(): string {
+  return `${PARFADE_ABLY_NS}:group:*`;
+}

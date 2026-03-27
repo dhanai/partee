@@ -8,6 +8,7 @@ import {
   groups,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { groupId: string } };
 
@@ -108,6 +109,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     if (Object.keys(updates).length > 0) {
       await db.update(groups).set(updates).where(eq(groups.id, groupId));
+      await publishGroupActivityUpdated(groupId, "settings").catch((e) =>
+        console.error("[PATCH group] ably", e),
+      );
     }
 
     return NextResponse.json({ ok: true });

@@ -37,4 +37,34 @@ export type ParfadeRealtimeMessageV1 =
       emoji: string;
       userId: string;
       action: "add" | "remove";
+    }
+  | {
+      v: 1;
+      type: "post-comment-added";
+      postId: string;
+      comment: {
+        id: string;
+        body: string;
+        createdAt: string;
+        user: { id: string; name: string; avatar: string | null };
+      };
+    }
+  | {
+      v: 1;
+      type: "post-like-updated";
+      postId: string;
+      userId: string;
+      liked: boolean;
+    }
+  | {
+      v: 1;
+      type: "game-session-updated";
+      sessionId: string;
+      reason: string;
+    }
+  | {
+      v: 1;
+      type: "group-activity-updated";
+      groupId: string;
+      reason: string;
     };

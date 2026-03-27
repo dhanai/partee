@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { posts, groupMembers, groups, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyGroupPost } from "@/lib/notify-user";
+import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { groupId: string } };
 
@@ -98,14 +99,19 @@ export async function POST(req: Request, { params }: Ctx) {
       .from(groupMembers)
       .where(eq(groupMembers.groupId, groupId));
 
-    await notifyGroupPost({
-      groupId,
-      groupName: group?.name ?? "Group",
-      senderUserId: viewer.id,
-      senderName: viewer.name,
-      body: input.body,
-      memberUserIds: memberRows.map((m) => m.userId),
-    });
+    await Promise.all([
+      notifyGroupPost({
+        groupId,
+        groupName: group?.name ?? "Group",
+        senderUserId: viewer.id,
+        senderName: viewer.name,
+        body: input.body,
+        memberUserIds: memberRows.map((m) => m.userId),
+      }),
+      publishGroupActivityUpdated(groupId, "post").catch((e) =>
+        console.error("[POST announcements] group-activity ably", e),
+      ),
+    ]);
 
     return NextResponse.json({
       announcement: {

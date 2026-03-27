@@ -37,6 +37,36 @@ export type ParfadeRealtimeMessageV1 =
       emoji: string;
       userId: string;
       action: "add" | "remove";
+    }
+  | {
+      v: 1;
+      type: "post-comment-added";
+      postId: string;
+      comment: {
+        id: string;
+        body: string;
+        createdAt: string;
+        user: { id: string; name: string; avatar: string | null };
+      };
+    }
+  | {
+      v: 1;
+      type: "post-like-updated";
+      postId: string;
+      userId: string;
+      liked: boolean;
+    }
+  | {
+      v: 1;
+      type: "game-session-updated";
+      sessionId: string;
+      reason: string;
+    }
+  | {
+      v: 1;
+      type: "group-activity-updated";
+      groupId: string;
+      reason: string;
     };
 
 export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessageV1 | null {
@@ -178,6 +208,56 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
         emoji: r.emoji,
         userId: r.userId,
         action: r.action,
+      };
+    }
+  }
+  if (o.type === "post-like-updated") {
+    const r = raw as { postId?: unknown; userId?: unknown; liked?: unknown };
+    if (typeof r.postId === "string" && typeof r.userId === "string" && typeof r.liked === "boolean") {
+      return { v: 1, type: "post-like-updated", postId: r.postId, userId: r.userId, liked: r.liked };
+    }
+  }
+  if (o.type === "post-comment-added") {
+    const r = raw as { postId?: unknown; comment?: unknown };
+    if (typeof r.postId === "string" && r.comment && typeof r.comment === "object") {
+      const c = r.comment as { id?: unknown; body?: unknown; createdAt?: unknown; user?: unknown };
+      if (typeof c.id === "string" && typeof c.body === "string" && typeof c.createdAt === "string" && c.user && typeof c.user === "object") {
+        const u = c.user as { id?: unknown; name?: unknown; avatar?: unknown };
+        if (typeof u.id === "string" && typeof u.name === "string") {
+          return {
+            v: 1,
+            type: "post-comment-added",
+            postId: r.postId,
+            comment: {
+              id: c.id,
+              body: c.body,
+              createdAt: c.createdAt,
+              user: { id: u.id, name: u.name, avatar: typeof u.avatar === "string" ? u.avatar : null },
+            },
+          };
+        }
+      }
+    }
+  }
+  if (o.type === "game-session-updated") {
+    const r = raw as { sessionId?: unknown; reason?: unknown };
+    if (typeof r.sessionId === "string") {
+      return {
+        v: 1,
+        type: "game-session-updated",
+        sessionId: r.sessionId,
+        reason: typeof r.reason === "string" ? r.reason : "unknown",
+      };
+    }
+  }
+  if (o.type === "group-activity-updated") {
+    const r = raw as { groupId?: unknown; reason?: unknown };
+    if (typeof r.groupId === "string") {
+      return {
+        v: 1,
+        type: "group-activity-updated",
+        groupId: r.groupId,
+        reason: typeof r.reason === "string" ? r.reason : "unknown",
       };
     }
   }

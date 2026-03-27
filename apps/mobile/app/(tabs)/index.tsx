@@ -1,4 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
+import { useAbly } from "ably/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,6 +34,8 @@ import {
 import { buildDiscoverFeedRows } from "../../lib/discover-feed-ad-rows";
 import { resolveDiscoverAdDisplay, shouldShowDiscoverHouseAd } from "../../lib/discover-house-ad";
 import { getHousePromosCached, type HousePromoSlotClient } from "../../lib/house-promo-api";
+import { parfadeRoundDetailChannel } from "../../lib/parfade-ably-channels";
+import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { colors } from "../../lib/theme";
 import { DiscoverRound } from "../../types/round";
 
@@ -284,6 +287,30 @@ export default function DiscoverScreen() {
       void loadRoundsRef.current?.({ reset: true });
     }, [locationHydrated]),
   );
+
+  // Subscribe to round-detail channels for loaded rounds so individual cards update in real-time
+  const ably = useAbly();
+  const roundTokens = useMemo(() => rounds.map((r) => r.inviteToken), [rounds]);
+  useEffect(() => {
+    if (roundTokens.length === 0) return;
+    const subs: { channel: ReturnType<typeof ably.channels.get>; handler: (msg: import("ably").Message) => void }[] = [];
+    for (const token of roundTokens) {
+      const channel = ably.channels.get(parfadeRoundDetailChannel(token));
+      const handler = (msg: import("ably").Message) => {
+        const parsed = parseParfadeRealtimeMessage(msg.data);
+        if (parsed?.type === "round-detail-updated") {
+          void loadRoundsRef.current?.({ reset: true });
+        }
+      };
+      void channel.subscribe("parfade", handler);
+      subs.push({ channel, handler });
+    }
+    return () => {
+      for (const { channel, handler } of subs) {
+        void channel.unsubscribe("parfade", handler);
+      }
+    };
+  }, [ably, roundTokens]);
 
   useFocusEffect(
     useCallback(() => {

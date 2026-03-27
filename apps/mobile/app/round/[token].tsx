@@ -98,6 +98,7 @@ export default function RoundDetailsScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [apiResolved, setApiResolved] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const isFirstFocusRef = useRef(true);
   const [busy, setBusy] = useState(false);
@@ -157,6 +158,7 @@ export default function RoundDetailsScreen() {
         const authToken = await getTokenRef.current();
         const data = await fetchRoundDetailsAndCache(token, authToken);
         setRound(data);
+        setApiResolved(true);
         if (data.mode === "planning") {
           const target = new Date(data.targetDate);
           target.setHours(0, 0, 0, 0);
@@ -190,6 +192,7 @@ export default function RoundDetailsScreen() {
       return;
     }
     isFirstFocusRef.current = true;
+    setApiResolved(false);
     const hintRaw = coerceRoundHintParam(roundHint);
     const next = computeBootstrapRound(token, hintRaw);
     setRound(next);
@@ -220,7 +223,7 @@ export default function RoundDetailsScreen() {
   }, [round]);
 
   useLayoutEffect(() => {
-    if (loading || !round) {
+    if (loading || !round || !apiResolved) {
       navigation.setOptions({
         headerRight: undefined,
         headerRightContainerStyle: undefined,
@@ -249,7 +252,7 @@ export default function RoundDetailsScreen() {
         </Pressable>
       ),
     });
-  }, [navigation, loading, round]);
+  }, [navigation, loading, round, apiResolved]);
 
   useEffect(() => {
     let active = true;
@@ -509,9 +512,10 @@ export default function RoundDetailsScreen() {
     );
   }
 
-  const canInviteUsers = round.isHost || round.currentUserSpotStatus === "confirmed";
-  const canUseGroupChat = round.isHost || round.currentUserSpotStatus === "confirmed";
+  const canInviteUsers = apiResolved && (round.isHost || round.currentUserSpotStatus === "confirmed");
+  const canUseGroupChat = apiResolved && (round.isHost || round.currentUserSpotStatus === "confirmed");
   const showRsvpActions =
+    apiResolved &&
     !round.isHost &&
     (!round.currentUserSpotStatus ||
       round.currentUserSpotStatus === "invited" ||
@@ -681,7 +685,7 @@ export default function RoundDetailsScreen() {
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {message ? <Text style={styles.successText}>{message}</Text> : null}
 
-      {round.isHost && round.mode === "planning" ? (
+      {apiResolved && round.isHost && round.mode === "planning" ? (
         <RoundDetailSection
           title="Finalize details"
           hint="Pick course and tee time for your group."

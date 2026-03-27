@@ -9,6 +9,7 @@ import {
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { groupId: string } };
 
@@ -116,6 +117,10 @@ export async function POST(req: Request, { params }: Ctx) {
       }
     }
 
+    await publishGroupActivityUpdated(groupId, "member").catch((e) =>
+      console.error("[POST members] group-activity ably", e),
+    );
+
     return NextResponse.json({ ok: true, added: userIds.length });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -184,6 +189,10 @@ export async function DELETE(req: Request, { params }: Ctx) {
           ),
         );
     }
+
+    await publishGroupActivityUpdated(groupId, "member").catch((e) =>
+      console.error("[DELETE members] group-activity ably", e),
+    );
 
     return NextResponse.json({ ok: true });
   } catch (error) {

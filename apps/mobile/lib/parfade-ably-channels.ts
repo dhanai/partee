@@ -20,3 +20,15 @@ export function parfadeProfileChannelsCapabilityPattern(): string {
 export function parfadeRoundDetailChannel(inviteToken: string): string {
   return `${PARFADE_ABLY_NS}:round-detail:${inviteToken.trim()}`;
 }
+
+export function parfadePostChannel(postId: string): string {
+  return `${PARFADE_ABLY_NS}:post:${postId}`;
+}
+
+export function parfadeGameSessionChannel(sessionId: string): string {
+  return `${PARFADE_ABLY_NS}:game-session:${sessionId}`;
+}
+
+export function parfadeGroupChannel(groupId: string): string {
+  return `${PARFADE_ABLY_NS}:group:${groupId}`;
+}

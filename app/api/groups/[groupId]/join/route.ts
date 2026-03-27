@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyGroupJoinRequest } from "@/lib/notify-user";
+import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { groupId: string } };
 
@@ -83,6 +84,10 @@ export async function POST(req: Request, { params }: Ctx) {
         .values({ conversationId: conv.id, userId: viewer.id })
         .onConflictDoNothing();
     }
+
+    await publishGroupActivityUpdated(groupId, "member").catch((e) =>
+      console.error("[join] group-activity ably", e),
+    );
 
     return NextResponse.json({ status: "joined" });
   } catch (error) {

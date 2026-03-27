@@ -1,8 +1,9 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useAbly } from "ably/react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -33,6 +34,8 @@ import {
   subscribeRoundListsRefresh,
 } from "../../lib/round-lists-refresh";
 import { useChatUnread } from "../../lib/chat-unread-context";
+import { parfadeRoundDetailChannel } from "../../lib/parfade-ably-channels";
+import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { colors } from "../../lib/theme";
 import { MineRound } from "../../types/round";
 
@@ -204,6 +207,37 @@ export default function MyRoundsScreen() {
       void loadTabRoundsRef.current(activeTabRef.current, { reset: true });
     });
   }, []);
+
+  // Subscribe to round-detail channels for loaded rounds so cards update in real-time
+  const ably = useAbly();
+  const allRoundTokens = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of hosting) set.add(r.inviteToken);
+    for (const r of joined) set.add(r.inviteToken);
+    for (const r of invited) set.add(r.inviteToken);
+    return Array.from(set);
+  }, [hosting, joined, invited]);
+
+  useEffect(() => {
+    if (allRoundTokens.length === 0) return;
+    const subs: { channel: ReturnType<typeof ably.channels.get>; handler: (msg: import("ably").Message) => void }[] = [];
+    for (const token of allRoundTokens) {
+      const channel = ably.channels.get(parfadeRoundDetailChannel(token));
+      const handler = (msg: import("ably").Message) => {
+        const parsed = parseParfadeRealtimeMessage(msg.data);
+        if (parsed?.type === "round-detail-updated") {
+          void loadTabRoundsRef.current(activeTabRef.current, { reset: true, silent: true });
+        }
+      };
+      void channel.subscribe("parfade", handler);
+      subs.push({ channel, handler });
+    }
+    return () => {
+      for (const { channel, handler } of subs) {
+        void channel.unsubscribe("parfade", handler);
+      }
+    };
+  }, [ably, allRoundTokens]);
 
   const roundsListFocusCountRef = useRef(0);
   useFocusEffect(

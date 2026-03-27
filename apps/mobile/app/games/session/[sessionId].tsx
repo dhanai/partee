@@ -50,6 +50,10 @@ import { computeWolfTotals, type WolfTieHandling } from "../../../lib/wolf-scori
 import { buildWolfSessionRecapHighlights } from "../../../lib/wolf-session-recap-copy";
 import { getHousePromosCached, isGameEndHousePromoReady, type HousePromoSlotClient } from "../../../lib/house-promo-api";
 import { showGameFinishedInterstitialAd } from "../../../lib/parfade-admob";
+import { useAbly } from "ably/react";
+import { parfadeGameSessionChannel } from "../../../lib/parfade-ably-channels";
+import { parseParfadeRealtimeMessage } from "../../../lib/parfade-ably-messages";
+import { emitGamesListShouldRefresh } from "../../../lib/games-list-refresh";
 import { colors } from "../../../lib/theme";
 
 function parseWolfLetterOrder(settings: Record<string, unknown>): string[] {
@@ -166,6 +170,25 @@ export default function GameSessionScreen() {
       void load();
     }, [load]),
   );
+
+  const ably = useAbly();
+  useEffect(() => {
+    if (!sessionId) return;
+    const channel = ably.channels.get(parfadeGameSessionChannel(sessionId));
+    const handler = (msg: import("ably").Message) => {
+      const parsed = parseParfadeRealtimeMessage(msg.data);
+      if (parsed?.type === "game-session-updated" && parsed.sessionId === sessionId) {
+        if (parsed.reason === "deleted") {
+          router.back();
+        } else {
+          void load();
+        }
+        emitGamesListShouldRefresh();
+      }
+    };
+    void channel.subscribe("parfade", handler);
+    return () => { void channel.unsubscribe("parfade", handler); };
+  }, [ably, sessionId, load, router]);
 
   const recapOnly =
     Boolean(sessionId) &&

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { userFollows } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
-import { publishAfterProfileUpdated } from "@/lib/parfade-ably-publish";
+import { publishAfterProfileUpdated, publishNotificationBadgeNudge } from "@/lib/parfade-ably-publish";
 
 const actionSchema = z.object({
   action: z.enum(["approve", "decline"]),
@@ -40,7 +40,10 @@ export async function POST(req: Request, { params }: RouteContext) {
         .update(userFollows)
         .set({ status: "accepted", updatedAt: new Date() })
         .where(eq(userFollows.id, existing.id));
-      await publishAfterProfileUpdated(viewer.id);
+      await Promise.all([
+        publishAfterProfileUpdated(viewer.id),
+        publishNotificationBadgeNudge(params.followerId, "follow-accepted"),
+      ]);
       return NextResponse.json({ ok: true, status: "accepted" });
     }
 

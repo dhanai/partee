@@ -6,6 +6,9 @@ import {
   parfadeDiscoverChannel,
   parfadeProfileChannelsCapabilityPattern,
   parfadeRoundDetailChannelsCapabilityPattern,
+  parfadePostChannelsCapabilityPattern,
+  parfadeGameSessionChannelsCapabilityPattern,
+  parfadeGroupChannelsCapabilityPattern,
   parfadeUserInboxChannel,
 } from "@/lib/parfade-ably-channels";
 
@@ -27,6 +30,9 @@ function clientCapability(userId: string): { [key: string]: capabilityOp[] } {
     [parfadeUserInboxChannel(userId)]: ["subscribe"],
     [parfadeProfileChannelsCapabilityPattern()]: ["subscribe"],
     [parfadeRoundDetailChannelsCapabilityPattern()]: ["subscribe"],
+    [parfadePostChannelsCapabilityPattern()]: ["subscribe"],
+    [parfadeGameSessionChannelsCapabilityPattern()]: ["subscribe"],
+    [parfadeGroupChannelsCapabilityPattern()]: ["subscribe"],
   };
 }
 

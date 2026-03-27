@@ -7,6 +7,7 @@ import { requireDbUser } from "@/lib/auth";
 import { serializeGameSessionForApi, toIso } from "@/lib/games/serialize";
 import { deleteGameSessionIfAllowed } from "@/lib/games/delete-session";
 import { loadSessionWithPlayers, userIsGameParticipant } from "@/lib/games/session-queries";
+import { publishGameSessionUpdated } from "@/lib/parfade-ably-publish";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -199,6 +200,11 @@ export async function PATCH(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    const reason = body.status ? "status" : "settings";
+    await publishGameSessionUpdated(id, reason).catch((e) =>
+      console.error("[PATCH game] ably", e),
+    );
+
     return NextResponse.json({ session: serializeGameSessionForApi(updated) });
   } catch (e) {
     if (e instanceof z.ZodError) {
@@ -221,6 +227,9 @@ export async function DELETE(req: Request, context: RouteContext) {
     const { id } = await context.params;
     const result = await deleteGameSessionIfAllowed(id, user.id);
     if ("ok" in result) {
+      await publishGameSessionUpdated(id, "deleted").catch((e) =>
+        console.error("[DELETE game] ably", e),
+      );
       return NextResponse.json({ ok: true as const });
     }
     return NextResponse.json({ error: result.error }, { status: result.status });

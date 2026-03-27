@@ -1,6 +1,9 @@
 import Ably from "ably";
 import {
   parfadeDiscoverChannel,
+  parfadeGameSessionChannel,
+  parfadeGroupChannel,
+  parfadePostChannel,
   parfadeProfileChannel,
   parfadeRoundDetailChannel,
   parfadeUserInboxChannel,
@@ -170,5 +173,49 @@ export async function publishNotificationBadgeNudge(userId: string, reason?: str
     notificationBadge: true,
     reason,
   }).catch((e) => logPublishError("notification-badge-nudge", e));
+}
+
+export async function publishPostLikeUpdated(
+  postId: string,
+  userId: string,
+  liked: boolean,
+): Promise<void> {
+  await publishParfadeMessage(parfadePostChannel(postId), {
+    v: 1,
+    type: "post-like-updated",
+    postId,
+    userId,
+    liked,
+  }).catch((e) => logPublishError("post-like-updated", e));
+}
+
+export async function publishPostCommentAdded(
+  postId: string,
+  comment: { id: string; body: string; createdAt: string; user: { id: string; name: string; avatar: string | null } },
+): Promise<void> {
+  await publishParfadeMessage(parfadePostChannel(postId), {
+    v: 1,
+    type: "post-comment-added",
+    postId,
+    comment,
+  }).catch((e) => logPublishError("post-comment-added", e));
+}
+
+export async function publishGameSessionUpdated(sessionId: string, reason: string): Promise<void> {
+  await publishParfadeMessage(parfadeGameSessionChannel(sessionId), {
+    v: 1,
+    type: "game-session-updated",
+    sessionId,
+    reason,
+  }).catch((e) => logPublishError("game-session-updated", e));
+}
+
+export async function publishGroupActivityUpdated(groupId: string, reason: string): Promise<void> {
+  await publishParfadeMessage(parfadeGroupChannel(groupId), {
+    v: 1,
+    type: "group-activity-updated",
+    groupId,
+    reason,
+  }).catch((e) => logPublishError("group-activity-updated", e));
 }
 

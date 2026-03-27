@@ -11,6 +11,7 @@ import {
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { publishGroupActivityUpdated, publishNotificationBadgeNudge } from "@/lib/parfade-ably-publish";
 import { sendExpoPushMessages } from "@/lib/push-expo";
 
 type Ctx = { params: { groupId: string } };
@@ -135,6 +136,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
           .values({ conversationId: conv.id, userId: request.userId })
           .onConflictDoNothing();
       }
+
+      await Promise.all([
+        publishNotificationBadgeNudge(request.userId, "group-join-accepted"),
+        publishGroupActivityUpdated(groupId, "member"),
+      ]).catch((e) => console.error("[requests] ably", e));
 
       void (async () => {
         try {

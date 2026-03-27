@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { posts, groupMembers, groups, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyGroupPost } from "@/lib/notify-user";
+import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
 
 const createSchema = z.object({
   body: z.string().min(1).max(2000),
@@ -122,14 +123,19 @@ export async function POST(req: Request) {
         .from(groupMembers)
         .where(eq(groupMembers.groupId, input.groupId));
 
-      await notifyGroupPost({
-        groupId: input.groupId,
-        groupName: group?.name ?? "Group",
-        senderUserId: viewer.id,
-        senderName: viewer.name,
-        body: input.body,
-        memberUserIds: memberRows.map((m) => m.userId),
-      });
+      await Promise.all([
+        notifyGroupPost({
+          groupId: input.groupId,
+          groupName: group?.name ?? "Group",
+          senderUserId: viewer.id,
+          senderName: viewer.name,
+          body: input.body,
+          memberUserIds: memberRows.map((m) => m.userId),
+        }),
+        publishGroupActivityUpdated(input.groupId, "post").catch((e) =>
+          console.error("[POST /api/posts] group-activity ably", e),
+        ),
+      ]);
 
       return NextResponse.json({
         post: {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { postLikes, groupMembers } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { publishPostLikeUpdated } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { groupId: string } };
 
@@ -44,6 +45,9 @@ export async function POST(req: Request, { params }: Ctx) {
 
     if (existing) {
       await db.delete(postLikes).where(eq(postLikes.id, existing.id));
+      await publishPostLikeUpdated(announcementId, viewer.id, false).catch((e) =>
+        console.error("[like] ably", e),
+      );
       return NextResponse.json({ liked: false });
     }
 
@@ -51,6 +55,10 @@ export async function POST(req: Request, { params }: Ctx) {
       postId: announcementId,
       userId: viewer.id,
     });
+
+    await publishPostLikeUpdated(announcementId, viewer.id, true).catch((e) =>
+      console.error("[like] ably", e),
+    );
 
     return NextResponse.json({ liked: true });
   } catch (error) {
