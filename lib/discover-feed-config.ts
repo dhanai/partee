@@ -8,8 +8,6 @@ export type DiscoverFeedConfig = {
   sortMode: "chronological" | "scored";
 };
 
-const DEFAULTS: DiscoverFeedConfig = { sortMode: "chronological" };
-
 let cached: { config: DiscoverFeedConfig; expiresAt: number } | null = null;
 const CACHE_TTL_MS = 30_000;
 
