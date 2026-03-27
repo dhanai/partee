@@ -31,20 +31,11 @@ export type ParfadeRealtimeMessageV1 =
     }
   | {
       v: 1;
-      type: "conversation-message";
-      conversationId: string;
-      messageId: string;
-      senderId: string;
-      senderName: string;
-      bodyPreview: string;
-    }
-  | {
-      v: 1;
       type: "conversation-reaction";
       conversationId: string;
       messageId: string;
-      userId: string;
       emoji: string;
+      userId: string;
       action: "add" | "remove";
     };
 
@@ -164,45 +155,19 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
       };
     }
   }
-  if (o.type === "conversation-message") {
-    const r = raw as {
-      conversationId?: unknown;
-      messageId?: unknown;
-      senderId?: unknown;
-      senderName?: unknown;
-      bodyPreview?: unknown;
-    };
-    if (
-      typeof r.conversationId === "string" &&
-      typeof r.messageId === "string" &&
-      typeof r.senderId === "string" &&
-      typeof r.senderName === "string" &&
-      typeof r.bodyPreview === "string"
-    ) {
-      return {
-        v: 1,
-        type: "conversation-message",
-        conversationId: r.conversationId,
-        messageId: r.messageId,
-        senderId: r.senderId,
-        senderName: r.senderName,
-        bodyPreview: r.bodyPreview,
-      };
-    }
-  }
   if (o.type === "conversation-reaction") {
     const r = raw as {
       conversationId?: unknown;
       messageId?: unknown;
-      userId?: unknown;
       emoji?: unknown;
+      userId?: unknown;
       action?: unknown;
     };
     if (
       typeof r.conversationId === "string" &&
       typeof r.messageId === "string" &&
-      typeof r.userId === "string" &&
       typeof r.emoji === "string" &&
+      typeof r.userId === "string" &&
       (r.action === "add" || r.action === "remove")
     ) {
       return {
@@ -210,8 +175,8 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
         type: "conversation-reaction",
         conversationId: r.conversationId,
         messageId: r.messageId,
-        userId: r.userId,
         emoji: r.emoji,
+        userId: r.userId,
         action: r.action,
       };
     }

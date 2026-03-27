@@ -27,6 +27,37 @@ export async function publishParfadeMessage(
   await client.channels.get(channelName).publish(PARFADE_EVENT, payload);
 }
 
+/**
+ * Send different payloads to different channels in a single Ably REST call.
+ * Falls back to individual publishes if batch API fails.
+ */
+export async function batchPublishParfadeMessages(
+  items: { channel: string; payload: ParfadeRealtimeMessageV1 }[],
+): Promise<void> {
+  if (items.length === 0) return;
+  if (items.length === 1) {
+    await publishParfadeMessage(items[0]!.channel, items[0]!.payload);
+    return;
+  }
+  const client = getRest();
+  if (!client) return;
+
+  const body = items.map((item) => ({
+    channel: item.channel,
+    messages: [{ name: PARFADE_EVENT, data: item.payload }],
+  }));
+
+  try {
+    await client.request("POST", "/messages", 2, {}, body);
+  } catch {
+    await Promise.all(
+      items.map((item) =>
+        publishParfadeMessage(item.channel, item.payload).catch(() => {}),
+      ),
+    );
+  }
+}
+
 function logPublishError(context: string, err: unknown) {
   console.error(`[parfade-ably-publish] ${context}`, err);
 }
@@ -40,40 +71,28 @@ export async function publishAfterRoundCreated(params: {
   const { visibility, hostId, inviteeUserIds } = params;
   const inviteeSet = new Set(inviteeUserIds);
 
-  const jobs: Promise<void>[] = [];
+  const items: { channel: string; payload: ParfadeRealtimeMessageV1 }[] = [];
 
   if (visibility === "public") {
-    jobs.push(
-      publishParfadeMessage(parfadeDiscoverChannel(), {
-        v: 1,
-        type: "discover-refresh",
-        reason: "public-round-created",
-      }).catch((e) => logPublishError("discover-refresh", e)),
-    );
+    items.push({
+      channel: parfadeDiscoverChannel(),
+      payload: { v: 1, type: "discover-refresh", reason: "public-round-created" },
+    });
   }
 
-  jobs.push(
-    publishParfadeMessage(parfadeUserInboxChannel(hostId), {
-      v: 1,
-      type: "inbox-sync",
-      roundLists: true,
-      reason: "round-created-host",
-    }).catch((e) => logPublishError("inbox host", e)),
-  );
+  items.push({
+    channel: parfadeUserInboxChannel(hostId),
+    payload: { v: 1, type: "inbox-sync", roundLists: true, reason: "round-created-host" },
+  });
 
   for (const uid of inviteeSet) {
-    jobs.push(
-      publishParfadeMessage(parfadeUserInboxChannel(uid), {
-        v: 1,
-        type: "inbox-sync",
-        roundLists: true,
-        notificationBadge: true,
-        reason: "round-created-invitee",
-      }).catch((e) => logPublishError(`inbox invitee ${uid}`, e)),
-    );
+    items.push({
+      channel: parfadeUserInboxChannel(uid),
+      payload: { v: 1, type: "inbox-sync", roundLists: true, notificationBadge: true, reason: "round-created-invitee" },
+    });
   }
 
-  await Promise.all(jobs);
+  await batchPublishParfadeMessages(items).catch((e) => logPublishError("round-created batch", e));
 }
 
 /** When the profile owner updates; viewers subscribed to the profile channel refetch. */

@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
 
 /**
- * Typing presence stub. The TypingIndicator component is wired up and ready;
- * once Ably presence is connected through the shared AblyProvider, this hook
- * will publish and subscribe to typing events on `parfade:v1:typing:<convId>`.
+ * Fallback stub when Ably Chat is not mounted.
+ * The real typing is handled by AblyChatTyping in the chat screen
+ * when ChatRoomProvider is available.
  */
 export function useTypingPresence(
   _conversationId: string | undefined,
@@ -13,7 +13,7 @@ export function useTypingPresence(
   const [typingNames] = useState<string[]>([]);
 
   const publishTyping = useCallback(() => {
-    // Will publish Ably presence when integrated
+    // no-op when Ably Chat not available
   }, []);
 
   return { typingNames, publishTyping };

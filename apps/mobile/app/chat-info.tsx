@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -66,11 +66,18 @@ export default function ChatInfoScreen() {
     conversationId,
     roundToken,
     chatType,
+    onlineIds: onlineIdsJson,
   } = useLocalSearchParams<{
     conversationId?: string;
     roundToken?: string;
     chatType?: string;
+    onlineIds?: string;
   }>();
+
+  const onlineUserIds = useMemo<Set<string>>(() => {
+    if (!onlineIdsJson) return new Set();
+    try { return new Set(JSON.parse(onlineIdsJson)); } catch { return new Set(); }
+  }, [onlineIdsJson]);
   const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
@@ -186,38 +193,48 @@ export default function ChatInfoScreen() {
       </Text>
 
       <FlatList
-        data={data.participants}
+        data={[...data.participants].sort((a, b) => {
+          const aOn = onlineUserIds.has(a.id) ? 0 : 1;
+          const bOn = onlineUserIds.has(b.id) ? 0 : 1;
+          return aOn - bOn;
+        })}
         keyExtractor={(p) => p.id}
-        renderItem={({ item }) => (
-          <Pressable
-            style={({ pressed }) => [styles.participantRow, pressed && styles.participantRowPressed]}
-            onPress={() =>
-              router.push({
-                pathname: "/profile/[userId]",
-                params: {
-                  userId: item.id,
-                  userName: item.name,
-                  userAvatar: item.avatar ?? "",
-                },
-              })
-            }
-          >
-            {item.avatar ? (
-              <Image
-                source={toAbsoluteUrl(item.avatar)}
-                style={styles.participantAvatar}
-                contentFit="cover"
-                transition={0}
-              />
-            ) : (
-              <View style={[styles.participantAvatar, styles.participantPlaceholder]}>
-                <Ionicons name="person-outline" size={16} color={colors.muted} />
+        renderItem={({ item }) => {
+          const isOnline = onlineUserIds.has(item.id);
+          return (
+            <Pressable
+              style={({ pressed }) => [styles.participantRow, pressed && styles.participantRowPressed]}
+              onPress={() =>
+                router.push({
+                  pathname: "/profile/[userId]",
+                  params: {
+                    userId: item.id,
+                    userName: item.name,
+                    userAvatar: item.avatar ?? "",
+                  },
+                })
+              }
+            >
+              <View style={styles.avatarWrap}>
+                {item.avatar ? (
+                  <Image
+                    source={toAbsoluteUrl(item.avatar)}
+                    style={styles.participantAvatar}
+                    contentFit="cover"
+                    transition={0}
+                  />
+                ) : (
+                  <View style={[styles.participantAvatar, styles.participantPlaceholder]}>
+                    <Ionicons name="person-outline" size={16} color={colors.muted} />
+                  </View>
+                )}
+                {isOnline ? <View style={styles.onlineDot} /> : null}
               </View>
-            )}
-            <Text style={styles.participantName}>{abbreviateName(item.name)}</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.border} />
-          </Pressable>
-        )}
+              <Text style={styles.participantName}>{abbreviateName(item.name)}</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.border} />
+            </Pressable>
+          );
+        }}
         style={styles.list}
         contentContainerStyle={styles.listContent}
       />
@@ -291,6 +308,10 @@ const styles = StyleSheet.create({
   participantRowPressed: {
     backgroundColor: colors.fairwaySoft,
   },
+  avatarWrap: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+  },
   participantAvatar: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
@@ -300,6 +321,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
+  },
+  onlineDot: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#34C759",
+    borderWidth: 2,
+    borderColor: colors.background,
   },
   participantName: {
     flex: 1,

@@ -191,6 +191,7 @@ type Props = {
   onGoToMessage?: (messageId: string) => void;
   onContextMenuOpen?: () => void;
   onContextMenuClose?: () => void;
+  onlineUserIds?: Set<string>;
 };
 
 function emojiDisplay(key: string): string {
@@ -266,6 +267,7 @@ function areBubblePropsEqual(prev: Props, next: Props): boolean {
   if (prev.highlighted !== next.highlighted) return false;
   if (prev.viewerId !== next.viewerId) return false;
   if (prev.conversationId !== next.conversationId) return false;
+  if (prev.onlineUserIds !== next.onlineUserIds) return false;
 
   const pm = prev.message;
   const nm = next.message;
@@ -311,6 +313,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onGoToMessage,
   onContextMenuOpen,
   onContextMenuClose,
+  onlineUserIds,
 }: Props) {
   const showAvatar = groupStyle === "single" || groupStyle === "bottom";
   const [reactionSheetVisible, setReactionSheetVisible] = useState(false);
@@ -476,6 +479,8 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     [m.id, myCurrentEmoji, onReaction],
   );
 
+  const isOnline = !isMine && onlineUserIds?.has(m.user.id);
+
   const avatarImage = m.user.avatar ? (
     <Image
       source={{ uri: toAbsoluteUrl(m.user.avatar) }}
@@ -489,10 +494,17 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     </View>
   );
 
+  const avatarWithDot = isOnline ? (
+    <View style={styles.avatarOnlineWrap}>
+      {avatarImage}
+      <View style={styles.onlineDot} />
+    </View>
+  ) : avatarImage;
+
   const avatarEl = onAvatarPress ? (
-    <Pressable onPress={() => onAvatarPress(m.user)}>{avatarImage}</Pressable>
+    <Pressable onPress={() => onAvatarPress(m.user)}>{avatarWithDot}</Pressable>
   ) : (
-    avatarImage
+    avatarWithDot
   );
 
   const reactions = m.reactions ?? {};
@@ -876,6 +888,20 @@ const styles = StyleSheet.create({
   avatarSpacer: {
     width: 28,
   },
+  avatarOnlineWrap: {
+    position: "relative",
+  },
+  onlineDot: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#34C759",
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
   bubbleCol: {
     flexShrink: 1,
     maxWidth: "78%",
@@ -1055,7 +1081,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 3,
-    paddingRight: 44,
+    paddingRight: 4,
     marginTop: 2,
   },
   statusText: {

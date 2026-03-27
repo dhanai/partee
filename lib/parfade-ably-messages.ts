@@ -28,4 +28,13 @@ export type ParfadeRealtimeMessageV1 =
       roundTitle: string;
       inviterName: string;
       inviterAvatar?: string;
+    }
+  | {
+      v: 1;
+      type: "conversation-reaction";
+      conversationId: string;
+      messageId: string;
+      emoji: string;
+      userId: string;
+      action: "add" | "remove";
     };

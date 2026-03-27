@@ -25,7 +25,8 @@ export async function getCachedMessages(conversationId: string): Promise<CachedM
   try {
     const raw = await AsyncStorage.getItem(key(conversationId));
     if (!raw) return [];
-    return JSON.parse(raw) as CachedMessage[];
+    const msgs = JSON.parse(raw) as CachedMessage[];
+    return msgs.filter((m) => !m.id.startsWith("optimistic-"));
   } catch {
     return [];
   }
@@ -36,7 +37,9 @@ export async function setCachedMessages(
   messages: CachedMessage[],
 ): Promise<void> {
   try {
-    const toCache = messages.slice(-MAX_MESSAGES);
+    const toCache = messages
+      .filter((m) => !m.id.startsWith("optimistic-"))
+      .slice(-MAX_MESSAGES);
     await AsyncStorage.setItem(key(conversationId), JSON.stringify(toCache));
   } catch {
     /* best-effort */

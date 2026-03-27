@@ -11,6 +11,8 @@ type Props = {
   title: string;
   avatars: string[];
   loading?: boolean;
+  avatarUserIds?: (string | null)[];
+  onlineUserIds?: Set<string>;
   onInfoPress?: () => void;
 };
 
@@ -25,38 +27,64 @@ function abbreviateName(name: string): string {
   return `${first} ${last.charAt(0).toUpperCase()}.`;
 }
 
-function SingleAvatar({ uri }: { uri: string }) {
+const DOT_SIZE = 8;
+
+function OnlineDotOverlay() {
+  return <View style={styles.onlineDot} />;
+}
+
+function SingleAvatar({ uri, online }: { uri: string; online?: boolean }) {
   return (
-    <Image
-      source={toAbsoluteUrl(uri)}
-      style={styles.single}
-      contentFit="cover"
-      transition={0}
-    />
+    <View style={{ width: SIZE, height: SIZE }}>
+      <Image
+        source={toAbsoluteUrl(uri)}
+        style={styles.single}
+        contentFit="cover"
+        transition={0}
+      />
+      {online ? <OnlineDotOverlay /> : null}
+    </View>
   );
 }
 
-function OverlappedCluster({ avatars }: { avatars: string[] }) {
+function OverlappedCluster({
+  avatars,
+  userIds,
+  onlineUserIds,
+}: {
+  avatars: string[];
+  userIds?: (string | null)[];
+  onlineUserIds?: Set<string>;
+}) {
   const count = Math.min(avatars.length, 4);
   const totalWidth = SIZE + (count - 1) * (SIZE - OVERLAP);
 
   return (
     <View style={[styles.clusterWrap, { width: totalWidth }]}>
-      {avatars.slice(0, 4).map((uri, i) => (
-        <Image
-          key={`header-av-${i}`}
-          source={toAbsoluteUrl(uri)}
-          style={[
-            styles.clusterAvatar,
-            {
+      {avatars.slice(0, 4).map((uri, i) => {
+        const uid = userIds?.[i];
+        const isOnline = uid ? onlineUserIds?.has(uid) : false;
+        return (
+          <View
+            key={`header-av-${i}`}
+            style={{
+              position: "absolute",
               left: i * (SIZE - OVERLAP),
               zIndex: count - i,
-            },
-          ]}
-          contentFit="cover"
-          transition={0}
-        />
-      ))}
+              width: SIZE,
+              height: SIZE,
+            }}
+          >
+            <Image
+              source={toAbsoluteUrl(uri)}
+              style={styles.clusterAvatar}
+              contentFit="cover"
+              transition={0}
+            />
+            {isOnline ? <OnlineDotOverlay /> : null}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -85,18 +113,24 @@ function HeaderSkeleton() {
   );
 }
 
-export function ChatHeaderAvatars({ type, title, avatars, loading }: Props) {
+export function ChatHeaderAvatars({ type, title, avatars, loading, avatarUserIds, onlineUserIds }: Props) {
   if (loading) return <HeaderSkeleton />;
 
   const displayTitle = type === "dm" ? abbreviateName(title) : title;
+
+  const singleOnline = (() => {
+    if (!onlineUserIds || !avatarUserIds) return false;
+    const uid = avatarUserIds[0];
+    return uid ? onlineUserIds.has(uid) : false;
+  })();
 
   const avatarElement =
     avatars.length === 0 ? (
       <Placeholder type={type} title={title} />
     ) : avatars.length === 1 ? (
-      <SingleAvatar uri={avatars[0]} />
+      <SingleAvatar uri={avatars[0]} online={singleOnline} />
     ) : (
-      <OverlappedCluster avatars={avatars} />
+      <OverlappedCluster avatars={avatars} userIds={avatarUserIds} onlineUserIds={onlineUserIds} />
     );
 
   return (
@@ -136,8 +170,6 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   clusterAvatar: {
-    position: "absolute",
-    top: 0,
     width: SIZE,
     height: SIZE,
     borderRadius: SIZE / 2,
@@ -175,5 +207,16 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: colors.border,
     marginTop: 2,
+  },
+  onlineDot: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_SIZE / 2,
+    backgroundColor: "#34C759",
+    borderWidth: 1.5,
+    borderColor: colors.background,
   },
 });

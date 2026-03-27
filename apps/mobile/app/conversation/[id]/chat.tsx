@@ -1,4 +1,7 @@
 import { useAuth } from "@clerk/clerk-expo";
+import { ChatRoomProvider } from "@ably/chat/react";
+import { ChatMessageEventType, type ChatMessageEvent } from "@ably/chat";
+import { useMessages, useTyping, usePresence, usePresenceListener } from "@ably/chat/react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -24,13 +27,12 @@ import { ChatHeaderAvatars, ChatHeaderInfoButton } from "../../../components/cha
 import { ChatScrollToBottom } from "../../../components/chat-scroll-to-bottom";
 import { ChatTimestamp } from "../../../components/chat-timestamp";
 import { buildChatItems, chatItemKey, type ChatListItem } from "../../../lib/build-chat-items";
-import { RoundGroupChatComposer, type ComposerHandle, type PickedImageAsset } from "../../../components/round-group-chat-composer";
+import { RoundGroupChatComposer, type ComposerHandle, type PickedImageAsset, type ReplyTarget } from "../../../components/round-group-chat-composer";
 import { TypingIndicator } from "../../../components/typing-indicator";
-import { useAbly } from "ably/react";
 import { apiGet, apiPost, apiDelete } from "../../../lib/api";
 import { useAblyChatMounted } from "../../../lib/ably-chat-context";
+import { ablyChatMessageToCached } from "../../../lib/ably-chat-message-map";
 import { imageAttachments } from "../../../lib/attachment-types";
-import { parfadeConversationChannel } from "../../../lib/parfade-ably-channels";
 import { uploadImage, POST_MAX_BYTES } from "../../../lib/upload-image";
 import { useChatUnread } from "../../../lib/chat-unread-context";
 import { GROUP_CHAT_COMPOSER_GAP } from "../../../lib/group-chat-layout-constants";
@@ -41,8 +43,8 @@ import {
   setCachedMessages,
   type CachedMessage,
 } from "../../../lib/message-cache";
+import { subscribeReactionUpdates } from "../../../lib/reaction-events";
 import { colors } from "../../../lib/theme";
-import { useTypingPresence } from "../../../lib/use-typing-presence";
 
 type ConversationMessage = CachedMessage;
 
@@ -52,9 +54,12 @@ type MessagesResponse = {
   viewerId: string;
 };
 
-const FALLBACK_POLL_MS = 30_000;
-const INPUT_HEIGHT = 42;
 const MARGIN = 8;
+
+const ROOM_OPTIONS = {
+  typing: { heartbeatThrottleMs: 5000 },
+  presence: {},
+} as const;
 
 type ConversationMetaResponse = {
   type: string;
@@ -62,15 +67,33 @@ type ConversationMetaResponse = {
   imageUrl: string | null;
   roundMode: string | null;
   participantAvatars: string[];
+  participants?: { id: string; name: string; avatar: string | null }[];
 };
 
 type ConversationMeta = {
   type: string;
   title: string;
   participantAvatars: string[];
+  avatarUserIds: (string | null)[];
+  participants: { id: string; name: string }[];
 };
 
 export default function ConversationChatScreen() {
+  const { id: conversationId } = useLocalSearchParams<{ id: string }>();
+  const ablyMounted = useAblyChatMounted();
+
+  if (ablyMounted && conversationId) {
+    return (
+      <ChatRoomProvider name={conversationId} options={ROOM_OPTIONS}>
+        <ConversationChatContent />
+      </ChatRoomProvider>
+    );
+  }
+
+  return <ConversationChatContent />;
+}
+
+function ConversationChatContent() {
   const {
     id: conversationId,
     chatTitle: paramTitle,
@@ -97,12 +120,14 @@ export default function ConversationChatScreen() {
 
   const [meta, setMeta] = useState<ConversationMeta | null>(() =>
     paramType && paramTitle
-      ? { type: paramType, title: paramTitle, participantAvatars: paramAvatars }
+      ? { type: paramType, title: paramTitle, participantAvatars: paramAvatars, avatarUserIds: [], participants: [] }
       : null,
   );
 
+  const metaFetchedRef = useRef(false);
   useEffect(() => {
-    if (meta || !conversationId) return;
+    if (metaFetchedRef.current || !conversationId) return;
+    metaFetchedRef.current = true;
     void (async () => {
       try {
         const authToken = await getTokenRef.current();
@@ -111,50 +136,37 @@ export default function ConversationChatScreen() {
           authToken,
         );
         let avatars = data.participantAvatars;
+        const allParticipants = data.participants ?? [];
+        const avatarToUserId = new Map(
+          allParticipants
+            .filter((p) => p.avatar)
+            .map((p) => [p.avatar!, p.id]),
+        );
+        let userIds: (string | null)[] = data.participantAvatars.map(
+          (a) => avatarToUserId.get(a) ?? null,
+        );
+
         if (data.type === "group" && data.imageUrl) {
           avatars = [data.imageUrl];
+          userIds = [null];
         } else if (data.roundMode === "scheduled" && data.imageUrl) {
           avatars = [data.imageUrl, ...data.participantAvatars];
+          userIds = [null, ...userIds];
         }
         setMeta({
           type: data.type,
           title: data.title,
           participantAvatars: avatars.slice(0, 4),
+          avatarUserIds: userIds.slice(0, 4),
+          participants: allParticipants.map((p) => ({ id: p.id, name: p.name })),
         });
       } catch {
         /* header stays default */
       }
     })();
-  }, [conversationId, meta]);
+  }, [conversationId]);
 
   const metaLoading = !meta;
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerTitle: () => (
-        <ChatHeaderAvatars
-          type={meta?.type ?? "dm"}
-          title={meta?.title ?? ""}
-          avatars={meta?.participantAvatars ?? []}
-          loading={metaLoading}
-        />
-      ),
-      headerRight: () =>
-        metaLoading ? null : (
-          <ChatHeaderInfoButton
-            onPress={() =>
-              router.push({
-                pathname: "/chat-info",
-                params: {
-                  conversationId: conversationId ?? "",
-                  chatType: meta?.type ?? "dm",
-                },
-              })
-            }
-          />
-        ),
-    });
-  }, [navigation, meta, metaLoading, router, conversationId]);
 
   const [msgs, setMsgs] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -162,7 +174,7 @@ export default function ConversationChatScreen() {
   const [viewerId, setViewerId] = useState<string | null>(
     () => getCachedMeProfile()?.id ?? null,
   );
-  const [replyTo, setReplyTo] = useState<ConversationMessage | null>(null);
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [viewerImages, setViewerImages] = useState<string[]>([]);
   const [viewerIndex, setViewerIndex] = useState(0);
   const [viewerVisible, setViewerVisible] = useState(false);
@@ -177,11 +189,12 @@ export default function ConversationChatScreen() {
   const prevMsgCountRef = useRef(msgs.length);
 
   const me = getCachedMeProfile();
-  const { typingNames, publishTyping } = useTypingPresence(
-    conversationId,
-    me?.id ?? null,
-    me?.name ?? "You",
-  );
+  const [typingNames, setTypingNames] = useState<string[]>([]);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  const publishTypingRef = useRef<() => void>(() => {});
+  const stopTypingRef = useRef<() => void>(() => {});
+  const publishTyping = useCallback(() => publishTypingRef.current(), []);
+  const stopTyping = useCallback(() => stopTypingRef.current(), []);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -249,11 +262,52 @@ export default function ConversationChatScreen() {
 
   const ablyMounted = useAblyChatMounted();
 
-  useEffect(() => {
-    if (!conversationId) return;
-    const id = setInterval(() => void fetchMessages(), FALLBACK_POLL_MS);
-    return () => clearInterval(id);
-  }, [conversationId, fetchMessages]);
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: () => (
+        <ChatHeaderAvatars
+          type={meta?.type ?? "dm"}
+          title={meta?.title ?? ""}
+          avatars={meta?.participantAvatars ?? []}
+          loading={metaLoading}
+          avatarUserIds={meta?.avatarUserIds}
+          onlineUserIds={onlineUserIds}
+        />
+      ),
+      headerRight: () =>
+        metaLoading ? null : (
+          <ChatHeaderInfoButton
+            onPress={() =>
+              router.push({
+                pathname: "/chat-info",
+                params: {
+                  conversationId: conversationId ?? "",
+                  chatType: meta?.type ?? "dm",
+                  onlineIds: JSON.stringify([...onlineUserIds]),
+                },
+              })
+            }
+          />
+        ),
+    });
+  }, [navigation, meta, metaLoading, router, conversationId, onlineUserIds]);
+
+  const handleAblyMessage = useCallback(
+    (event: ChatMessageEvent) => {
+      if (event.type !== ChatMessageEventType.Created) return;
+      const incoming = ablyChatMessageToCached(event.message, viewerId);
+      if (incoming.isMine) return;
+      setMsgs((prev) => {
+        if (prev.some((m) => m.id === incoming.id)) return prev;
+        const merged = [...prev, incoming].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+        void setCachedMessages(conversationId!, merged);
+        return merged;
+      });
+    },
+    [conversationId, viewerId],
+  );
 
   useEffect(() => {
     if (!conversationId) return;
@@ -286,6 +340,7 @@ export default function ConversationChatScreen() {
           }
         : null;
       setReplyTo(null);
+      stopTyping();
 
       const optimistic: ConversationMessage = {
         id: tempId,
@@ -332,6 +387,7 @@ export default function ConversationChatScreen() {
   const handleSendWithAttachments = useCallback(
     async (text: string, assets: PickedImageAsset[]): Promise<boolean> => {
       if (!conversationId || assets.length === 0) return false;
+      stopTyping();
 
       const me = getCachedMeProfile();
       const tempId = `optimistic-img-${Date.now()}`;
@@ -461,6 +517,35 @@ export default function ConversationChatScreen() {
     [conversationId, viewerId],
   );
 
+  useEffect(() => {
+    if (!conversationId) return;
+    return subscribeReactionUpdates((update) => {
+      if (update.conversationId !== conversationId) return;
+      setMsgs((prev) =>
+        prev.map((m) => {
+          if (m.id !== update.messageId) return m;
+          const reactions = { ...m.reactions };
+          const existing = reactions[update.emoji] ?? { count: 0, userIds: [] };
+          if (update.action === "add") {
+            if (!existing.userIds.includes(update.userId)) {
+              reactions[update.emoji] = {
+                count: existing.count + 1,
+                userIds: [...existing.userIds, update.userId],
+              };
+            }
+          } else {
+            reactions[update.emoji] = {
+              count: Math.max(0, existing.count - 1),
+              userIds: existing.userIds.filter((id) => id !== update.userId),
+            };
+            if (reactions[update.emoji]!.count === 0) delete reactions[update.emoji];
+          }
+          return { ...m, reactions };
+        }),
+      );
+    });
+  }, [conversationId]);
+
   const resolveMine = useCallback(
     (m: ConversationMessage): boolean => {
       if (typeof m.isMine === "boolean") return m.isMine;
@@ -483,8 +568,8 @@ export default function ConversationChatScreen() {
     return null;
   }, [invertedItems, resolveMine]);
 
-  const handleReply = useCallback((msg: ConversationMessage) => {
-    setReplyTo(msg);
+  const handleReply = useCallback((msg: { id: string; body: string | null; user: { name: string } }) => {
+    setReplyTo({ id: msg.id, body: msg.body ?? "", user: { name: msg.user.name } });
   }, []);
 
   const handleImagePress = useCallback((images: string[], index: number) => {
@@ -541,6 +626,24 @@ export default function ConversationChatScreen() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
+  const userInfoMap = useMemo(() => {
+    const map: Record<string, { name: string; avatar: string | null }> = {};
+    for (const m of msgs) {
+      if (m.user?.id && !(m.user.id in map)) {
+        map[m.user.id] = { name: m.user.name, avatar: m.user.avatar };
+      }
+    }
+    return map;
+  }, [msgs]);
+
+  const userAvatarMap = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const [id, info] of Object.entries(userInfoMap)) {
+      map[id] = info.avatar;
+    }
+    return map;
+  }, [userInfoMap]);
+
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.type === "date") return <ChatDateSeparator date={item.date} />;
@@ -563,33 +666,16 @@ export default function ConversationChatScreen() {
           onGoToMessage={handleGoToMessage}
           onContextMenuOpen={handleContextMenuOpen}
           onContextMenuClose={handleContextMenuClose}
+          onlineUserIds={onlineUserIds}
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuOpen, handleContextMenuClose, userAvatarMap, userInfoMap],
+    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuOpen, handleContextMenuClose, userAvatarMap, userInfoMap, onlineUserIds],
   );
   const keyExtractor = useCallback(
     (item: ListItem) => chatItemKey(item),
     [],
   );
-
-  const userInfoMap = useMemo(() => {
-    const map: Record<string, { name: string; avatar: string | null }> = {};
-    for (const m of msgs) {
-      if (m.user?.id && !(m.user.id in map)) {
-        map[m.user.id] = { name: m.user.name, avatar: m.user.avatar };
-      }
-    }
-    return map;
-  }, [msgs]);
-
-  const userAvatarMap = useMemo(() => {
-    const map: Record<string, string | null> = {};
-    for (const [id, info] of Object.entries(userInfoMap)) {
-      map[id] = info.avatar;
-    }
-    return map;
-  }, [userInfoMap]);
 
   const composerStyles = useMemo(
     () => ({
@@ -635,8 +721,22 @@ export default function ConversationChatScreen() {
 
   return (
     <>
-    {ablyMounted && conversationId ? (
-      <ConversationLiveSubscription conversationId={conversationId} onNewEvent={fetchMessages} />
+    {ablyMounted ? (
+      <>
+        <AblyChatSubscription onMessage={handleAblyMessage} />
+        <AblyChatTyping
+          viewerId={viewerId}
+          userInfoMap={userInfoMap}
+          onTypersChanged={setTypingNames}
+          onKeystrokeReady={(fn) => { publishTypingRef.current = fn; }}
+          onStopReady={(fn) => { stopTypingRef.current = fn; }}
+        />
+        <AblyChatPresence name={me?.name ?? "User"} />
+        <AblyChatPresenceListener
+          viewerId={viewerId}
+          onOnlineIdsChanged={setOnlineUserIds}
+        />
+      </>
     ) : null}
     <ChatFreezeContext.Provider value={chatFreeze}>
     <View style={cStyles.root}>
@@ -707,34 +807,70 @@ export default function ConversationChatScreen() {
   );
 }
 
-function ConversationLiveSubscription({
-  conversationId,
-  onNewEvent,
+function AblyChatPresence({ name }: { name: string }) {
+  usePresence({ initialData: { name } });
+  return null;
+}
+
+function AblyChatPresenceListener({
+  viewerId,
+  onOnlineIdsChanged,
 }: {
-  conversationId: string;
-  onNewEvent: () => void;
+  viewerId: string | null;
+  onOnlineIdsChanged: (ids: Set<string>) => void;
 }) {
-  const ably = useAbly();
+  const { presenceData } = usePresenceListener();
+
   useEffect(() => {
-    if (!conversationId) return;
-    const channelName = parfadeConversationChannel(conversationId);
-    console.log("[ConvLive] subscribing to", channelName);
-    console.log("[ConvLive] ably connection state:", ably.connection.state);
-    const channel = ably.channels.get(channelName);
-    const handler = () => {
-      console.log("[ConvLive] GOT EVENT on", channelName);
-      onNewEvent();
-    };
-    channel.subscribe("parfade", handler).then(() => {
-      console.log("[ConvLive] subscribed OK to", channelName);
-    }).catch((err) => {
-      console.error("[ConvLive] subscribe FAILED:", err);
+    const ids = new Set(presenceData.map((m) => m.clientId));
+    if (viewerId) ids.add(viewerId);
+    onOnlineIdsChanged(ids);
+  }, [presenceData, viewerId, onOnlineIdsChanged]);
+
+  return null;
+}
+
+function AblyChatSubscription({
+  onMessage,
+}: {
+  onMessage: (event: ChatMessageEvent) => void;
+}) {
+  useMessages({ listener: onMessage });
+  return null;
+}
+
+function AblyChatTyping({
+  viewerId,
+  userInfoMap,
+  onTypersChanged,
+  onKeystrokeReady,
+  onStopReady,
+}: {
+  viewerId: string | null;
+  userInfoMap: Record<string, { name: string; avatar: string | null }>;
+  onTypersChanged: (names: string[]) => void;
+  onKeystrokeReady: (fn: () => void) => void;
+  onStopReady: (fn: () => void) => void;
+}) {
+  const { keystroke, stop, currentlyTyping } = useTyping({
+    listener: () => {},
+  });
+
+  useEffect(() => {
+    onKeystrokeReady(() => { void keystroke().catch(() => {}); });
+    onStopReady(() => { void stop().catch(() => {}); });
+  }, [keystroke, stop, onKeystrokeReady, onStopReady]);
+
+  useEffect(() => {
+    const names: string[] = [];
+    currentlyTyping.forEach((clientId) => {
+      if (clientId === viewerId) return;
+      const info = userInfoMap[clientId];
+      names.push(info?.name ?? clientId.slice(0, 8));
     });
-    return () => {
-      console.log("[ConvLive] unsubscribing from", channelName);
-      try { channel.unsubscribe("parfade", handler); } catch { /* cleanup */ }
-    };
-  }, [ably, conversationId, onNewEvent]);
+    onTypersChanged(names);
+  }, [currentlyTyping, viewerId, userInfoMap, onTypersChanged]);
+
   return null;
 }
 

@@ -78,6 +78,9 @@ export const groupJoinRequestStatusEnum = pgEnum("group_join_request_status", [
 export const reactionEmojiEnum = pgEnum("reaction_emoji", [
   "heart",
   "laugh",
+  "shocked",
+  "cry",
+  "angry",
   "thumbs_up",
   "thumbs_down",
 ]);

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { messages, messageReactions } from "@/db/schema";
 import { VALID_EMOJIS, reactionPostSchema } from "@/lib/conversation-message-helpers";
+import { publishReactionUpdate } from "@/lib/conversation-ably";
 
 /**
  * Add a reaction. Replaces any existing reaction from the same user on that message.
@@ -43,6 +44,14 @@ export async function addReaction(input: {
     .values({ messageId: input.messageId, userId: input.userId, emoji: emoji as typeof VALID_EMOJIS[number] })
     .onConflictDoNothing();
 
+  await publishReactionUpdate({
+    conversationId: input.conversationId,
+    messageId: input.messageId,
+    emoji,
+    userId: input.userId,
+    action: "add",
+  }).catch((err) => console.error("[addReaction] ably publish", err));
+
   return { ok: true };
 }
 
@@ -68,6 +77,14 @@ export async function removeReaction(input: {
         eq(messageReactions.emoji, input.emoji as typeof VALID_EMOJIS[number]),
       ),
     );
+
+  await publishReactionUpdate({
+    conversationId: input.conversationId,
+    messageId: input.messageId,
+    emoji: input.emoji,
+    userId: input.userId,
+    action: "remove",
+  }).catch((err) => console.error("[removeReaction] ably publish", err));
 
   return { ok: true };
 }

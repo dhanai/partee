@@ -8,6 +8,7 @@ import { useChatUnread } from "../lib/chat-unread-context";
 import { useInAppToast } from "../lib/in-app-toast-context";
 import { emitChatListsShouldRefresh } from "../lib/chat-lists-refresh";
 import { emitNotificationsListsShouldRefresh } from "../lib/notifications-list-refresh";
+import { emitReactionUpdate } from "../lib/reaction-events";
 import { emitRoundListsShouldRefresh } from "../lib/round-lists-refresh";
 import { useNotificationBadge } from "../lib/notification-badge-context";
 
@@ -68,6 +69,15 @@ export function ParfadeAppRealtime() {
           senderName: parsed.senderName,
           senderAvatar: parsed.senderAvatar,
           bodyPreview: parsed.bodyPreview,
+        });
+      }
+      if (parsed.type === "conversation-reaction") {
+        emitReactionUpdate({
+          conversationId: parsed.conversationId,
+          messageId: parsed.messageId,
+          emoji: parsed.emoji,
+          userId: parsed.userId,
+          action: parsed.action,
         });
       }
       if (parsed.type === "round-invite-toast") {

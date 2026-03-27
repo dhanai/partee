@@ -218,6 +218,13 @@
       "when": 1776100000000,
       "tag": "0030_posts_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1776200000000,
+      "tag": "0031_reaction_emoji_expand",
+      "breakpoints": true
     }
   ]
 }

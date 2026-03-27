@@ -9,7 +9,7 @@ import { notifyConversationMessage } from "@/lib/notify-user";
 export const MAX_BODY = 2000;
 export const PAGE_SIZE = 50;
 
-export const VALID_EMOJIS = ["heart", "laugh", "thumbs_up", "thumbs_down"] as const;
+export const VALID_EMOJIS = ["heart", "laugh", "shocked", "cry", "angry", "thumbs_up", "thumbs_down"] as const;
 
 const attachmentSchema = z.object({
   type: z.literal("image"),
