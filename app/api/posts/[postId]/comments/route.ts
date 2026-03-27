@@ -94,7 +94,7 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(req: Request, { params }: Ctx) {
+export async function DELETE(req: Request, { params: _params }: Ctx) {
   try {
     const viewer = await requireDbUser(req);
 
