@@ -20,7 +20,6 @@ const homeBodyZ = z.object({
   heroEyebrow: z.string().trim().max(120),
   heroTitle: z.string().trim().max(160),
   heroDescription: z.string().trim().max(500),
-  ctaWebLabel: z.string().trim().max(50),
   ctaAppLabel: z.string().trim().max(80),
 });
 

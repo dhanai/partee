@@ -8,7 +8,6 @@ export type HomePageContent = {
   heroEyebrow: string;
   heroTitle: string;
   heroDescription: string;
-  ctaWebLabel: string;
   ctaAppLabel: string;
 };
 
@@ -30,8 +29,7 @@ export function defaultHomePageContent(): HomePageContent {
     heroEyebrow: "Organize golf with your crew",
     heroTitle: "Golf plans without the group text chaos.",
     heroDescription:
-      "Parfade is for inviting friends, filling open spots, and keeping rounds and side games in one calm place-on the course or on the couch.",
-    ctaWebLabel: "Use the web app",
+      "Parfade is for inviting friends, filling open spots, and keeping rounds and side games in one calm place—all from the iOS app.",
     ctaAppLabel: "Download on the App Store",
   };
 }
@@ -99,7 +97,6 @@ export function sanitizeHomePageContent(row: Record<string, unknown>, defaults: 
     heroEyebrow: asString(row.heroEyebrow) || defaults.heroEyebrow,
     heroTitle: asString(row.heroTitle) || defaults.heroTitle,
     heroDescription: asString(row.heroDescription) || defaults.heroDescription,
-    ctaWebLabel: asString(row.ctaWebLabel) || defaults.ctaWebLabel,
     ctaAppLabel: asString(row.ctaAppLabel) || defaults.ctaAppLabel,
   };
 }

@@ -9,7 +9,6 @@ type HomeContent = {
   heroEyebrow: string;
   heroTitle: string;
   heroDescription: string;
-  ctaWebLabel: string;
   ctaAppLabel: string;
 };
 
@@ -165,24 +164,14 @@ export default function AdminContentPage() {
               className="w-full rounded-lg border border-[#ece8e1] bg-[#faf8f5] px-3 py-2 text-sm"
             />
           </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">Web CTA label</span>
-              <input
-                value={home?.ctaWebLabel ?? ""}
-                onChange={(e) => setHome((s) => ({ ...(s as HomeContent), ctaWebLabel: e.target.value }))}
-                className="w-full rounded-lg border border-[#ece8e1] bg-[#faf8f5] px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">App CTA label</span>
-              <input
-                value={home?.ctaAppLabel ?? ""}
-                onChange={(e) => setHome((s) => ({ ...(s as HomeContent), ctaAppLabel: e.target.value }))}
-                className="w-full rounded-lg border border-[#ece8e1] bg-[#faf8f5] px-3 py-2 text-sm"
-              />
-            </label>
-          </div>
+          <label className="block space-y-1">
+            <span className="text-xs font-bold uppercase tracking-wide text-[#6e6e6e]">App Store CTA label</span>
+            <input
+              value={home?.ctaAppLabel ?? ""}
+              onChange={(e) => setHome((s) => ({ ...(s as HomeContent), ctaAppLabel: e.target.value }))}
+              className="w-full rounded-lg border border-[#ece8e1] bg-[#faf8f5] px-3 py-2 text-sm"
+            />
+          </label>
           <button
             type="button"
             disabled={saving}

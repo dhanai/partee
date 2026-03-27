@@ -91,28 +91,18 @@ export function MarketingBrochure({
               <p className="mt-4 text-pretty text-[17px] leading-snug text-charcoal-400">
                 {content.heroDescription}
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                {appStoreUrl ? (
+              {appStoreUrl ? (
+                <div className="mt-8">
                   <a
                     href={appStoreUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex h-[52px] items-center justify-center rounded-2xl bg-fairway px-6 text-[15px] font-bold text-cream-100 shadow-[0_4px_14px_rgba(26,60,42,0.28)] transition hover:bg-fairway-600 active:scale-[0.99]"
+                    className="inline-flex h-[52px] items-center justify-center rounded-2xl bg-fairway px-6 text-[15px] font-bold text-cream-100 shadow-[0_4px_14px_rgba(26,60,42,0.28)] transition hover:bg-fairway-600 active:scale-[0.99] sm:min-w-[220px]"
                   >
                     {content.ctaAppLabel}
                   </a>
-                ) : null}
-                <Link
-                  href={"/sign-up" as never}
-                  className={
-                    appStoreUrl
-                      ? "inline-flex h-[52px] items-center justify-center rounded-2xl border-2 border-fairway bg-white/80 px-6 text-[15px] font-bold text-fairway backdrop-blur-sm transition hover:bg-fairway-50 active:scale-[0.99]"
-                      : "inline-flex h-[52px] items-center justify-center rounded-2xl border border-fairway/20 bg-fairway px-6 text-[15px] font-bold text-cream-100 shadow-[0_4px_14px_rgba(26,60,42,0.22)] transition hover:bg-fairway-600 active:scale-[0.99] sm:min-w-[200px]"
-                  }
-                >
-                  {appStoreUrl ? content.ctaWebLabel : "Get started"}
-                </Link>
-              </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="mx-auto w-full max-w-[280px] lg:mx-0 lg:max-w-none lg:justify-self-end">
@@ -160,26 +150,33 @@ export function MarketingBrochure({
               Ready when your group is.
             </h2>
             <p className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed text-white/85">
-              Get the iOS app for the full experience, or start on the web—same account, same rounds.
+              Download Parfade on the App Store to invite your crew, join rounds, and keep side games in one place.
             </p>
-            <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap">
-              {appStoreUrl ? (
+            {appStoreUrl ? (
+              <div className="mt-8 flex flex-col items-center justify-center gap-4">
                 <a
                   href={appStoreUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex h-[50px] items-center justify-center rounded-2xl bg-cream-100 px-6 text-[15px] font-bold text-fairway transition hover:bg-white active:scale-[0.99]"
+                  className="inline-flex h-[50px] min-w-[200px] items-center justify-center rounded-2xl bg-cream-100 px-6 text-[15px] font-bold text-fairway transition hover:bg-white active:scale-[0.99]"
                 >
-                  App Store
+                  {content.ctaAppLabel}
                 </a>
-              ) : null}
-              <Link
-                href={"/sign-up" as never}
-                className="inline-flex h-[50px] items-center justify-center rounded-2xl border border-white/35 bg-white/10 px-6 text-[15px] font-bold text-cream-100 backdrop-blur-sm transition hover:bg-white/15 active:scale-[0.99]"
-              >
-                Create account
-              </Link>
-            </div>
+                <p className="text-[14px] text-white/80">
+                  Already have an account?{" "}
+                  <Link
+                    href={"/sign-in" as never}
+                    className="font-semibold text-cream-100 underline decoration-white/40 underline-offset-2 transition hover:decoration-cream-100"
+                  >
+                    Sign in
+                  </Link>
+                </p>
+              </div>
+            ) : (
+              <p className="mt-8 text-[15px] text-white/80">
+                The iOS app is coming soon—check back for the App Store link.
+              </p>
+            )}
           </div>
         </section>
       </main>
