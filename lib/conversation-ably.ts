@@ -6,23 +6,24 @@ import { publishParfadeMessage } from "@/lib/parfade-ably-publish";
 import { parfadeUserInboxChannel } from "@/lib/parfade-ably-channels";
 import type { MappedMessage } from "@/lib/conversation-message-helpers";
 
-let rest: Ably.Rest | null = null;
-function getAblyRest(): Ably.Rest | null {
+let chatRest: Ably.Rest | null = null;
+function getChatRest(): Ably.Rest | null {
   const key = process.env.ABLY_API_KEY?.trim();
   if (!key) return null;
-  if (!rest) rest = new Ably.Rest({ key });
-  return rest;
+  if (!chatRest) chatRest = new Ably.Rest({ key, clientId: "server" });
+  return chatRest;
 }
 
 /**
  * Publish a message to an Ably Chat room via the Chat REST API.
- * Subscribers using the Chat SDK's useMessages hook receive it instantly.
+ * clientId "server" satisfies the API requirement; the real sender
+ * identity is carried in metadata.user and read by the mobile mapper.
  */
 export async function publishChatRoomMessage(
   conversationId: string,
   message: MappedMessage,
 ): Promise<void> {
-  const client = getAblyRest();
+  const client = getChatRest();
   if (!client) return;
 
   const bodyPreview = message.body
