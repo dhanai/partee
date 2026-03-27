@@ -94,7 +94,8 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(req: Request, { params: _params }: Ctx) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function DELETE(req: Request, _ctx: Ctx) {
   try {
     const viewer = await requireDbUser(req);
 
