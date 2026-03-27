@@ -250,10 +250,10 @@ export default function ConversationChatScreen() {
   const ablyMounted = useAblyChatMounted();
 
   useEffect(() => {
-    if (!conversationId || ablyMounted) return;
+    if (!conversationId) return;
     const id = setInterval(() => void fetchMessages(), FALLBACK_POLL_MS);
     return () => clearInterval(id);
-  }, [conversationId, fetchMessages, ablyMounted]);
+  }, [conversationId, fetchMessages]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -717,12 +717,21 @@ function ConversationLiveSubscription({
   const ably = useAbly();
   useEffect(() => {
     if (!conversationId) return;
-    const channel = ably.channels.get(parfadeConversationChannel(conversationId));
-    const handler = () => onNewEvent();
-    channel.subscribe("parfade", handler).catch(() => {
-      /* capability not yet granted — falls back to polling */
+    const channelName = parfadeConversationChannel(conversationId);
+    console.log("[ConvLive] subscribing to", channelName);
+    console.log("[ConvLive] ably connection state:", ably.connection.state);
+    const channel = ably.channels.get(channelName);
+    const handler = () => {
+      console.log("[ConvLive] GOT EVENT on", channelName);
+      onNewEvent();
+    };
+    channel.subscribe("parfade", handler).then(() => {
+      console.log("[ConvLive] subscribed OK to", channelName);
+    }).catch((err) => {
+      console.error("[ConvLive] subscribe FAILED:", err);
     });
     return () => {
+      console.log("[ConvLive] unsubscribing from", channelName);
       try { channel.unsubscribe("parfade", handler); } catch { /* cleanup */ }
     };
   }, [ably, conversationId, onNewEvent]);

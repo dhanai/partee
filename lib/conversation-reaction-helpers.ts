@@ -44,7 +44,7 @@ export async function addReaction(input: {
     .values({ messageId: input.messageId, userId: input.userId, emoji: emoji as typeof VALID_EMOJIS[number] })
     .onConflictDoNothing();
 
-  void publishConversationReaction({
+  await publishConversationReaction({
     conversationId: input.conversationId,
     messageId: input.messageId,
     userId: input.userId,
@@ -78,7 +78,7 @@ export async function removeReaction(input: {
       ),
     );
 
-  void publishConversationReaction({
+  await publishConversationReaction({
     conversationId: input.conversationId,
     messageId: input.messageId,
     userId: input.userId,

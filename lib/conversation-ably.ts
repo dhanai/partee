@@ -33,17 +33,20 @@ export async function publishConversationMessage(input: {
     .from(conversationParticipants)
     .where(eq(conversationParticipants.conversationId, input.conversationId));
 
-  for (const p of participants) {
-    if (p.userId === input.senderId) continue;
-    void publishParfadeMessage(parfadeUserInboxChannel(p.userId), {
-      v: 1,
-      type: "conversation-toast",
-      conversationId: input.conversationId,
-      senderName: input.senderName,
-      senderAvatar: input.senderAvatar ?? undefined,
-      bodyPreview,
-    }).catch(() => {});
-  }
+  await Promise.all(
+    participants
+      .filter((p) => p.userId !== input.senderId)
+      .map((p) =>
+        publishParfadeMessage(parfadeUserInboxChannel(p.userId), {
+          v: 1,
+          type: "conversation-toast",
+          conversationId: input.conversationId,
+          senderName: input.senderName,
+          senderAvatar: input.senderAvatar ?? undefined,
+          bodyPreview,
+        }).catch(() => {}),
+      ),
+  );
 }
 
 export async function publishConversationReaction(input: {

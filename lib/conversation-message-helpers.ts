@@ -258,21 +258,23 @@ export async function sendConversationMessage(input: {
         ? `Sent ${imageCount} photos`
         : "";
 
-  void publishConversationMessage({
-    conversationId: input.conversationId,
-    messageId: inserted.id,
-    senderId: input.viewerId,
-    senderName: input.viewerName,
-    senderAvatar: input.viewerAvatar,
-    body: pushBody,
-  }).catch((err) => console.error("[sendConversationMessage] ably", err));
+  await Promise.all([
+    publishConversationMessage({
+      conversationId: input.conversationId,
+      messageId: inserted.id,
+      senderId: input.viewerId,
+      senderName: input.viewerName,
+      senderAvatar: input.viewerAvatar,
+      body: pushBody,
+    }).catch((err) => console.error("[sendConversationMessage] ably", err)),
 
-  void notifyConversationMessage({
-    conversationId: input.conversationId,
-    senderUserId: input.viewerId,
-    senderName: input.viewerName,
-    messageBody: pushBody,
-  }).catch((err) => console.error("[sendConversationMessage] push", err));
+    notifyConversationMessage({
+      conversationId: input.conversationId,
+      senderUserId: input.viewerId,
+      senderName: input.viewerName,
+      messageBody: pushBody,
+    }).catch((err) => console.error("[sendConversationMessage] push", err)),
+  ]);
 
   let parentPreview: MappedMessage["parentPreview"] = null;
   if (inserted.parentId) {
