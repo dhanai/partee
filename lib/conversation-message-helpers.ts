@@ -1,10 +1,11 @@
 import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { messages, messageReactions, users } from "@/db/schema";
+import { conversations, messages, messageReactions, rounds, users } from "@/db/schema";
 import { type MessageAttachment, getImageUrls } from "@/lib/attachment-types";
 import { publishChatRoomMessage, publishConversationInboxToasts } from "@/lib/conversation-ably";
 import { notifyConversationMessage } from "@/lib/notify-user";
+import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
 
 export const MAX_BODY = 2000;
 export const PAGE_SIZE = 50;
@@ -307,6 +308,27 @@ export async function sendConversationMessage(input: {
       messageBody: pushBody,
     }).catch((err) => console.error("[sendConversationMessage] push", err)),
   ]);
+
+  // If conversation is linked to a round, update the round detail live preview
+  try {
+    const [conv] = await db
+      .select({ roundId: conversations.roundId })
+      .from(conversations)
+      .where(eq(conversations.id, input.conversationId))
+      .limit(1);
+    if (conv?.roundId) {
+      const [round] = await db
+        .select({ inviteToken: rounds.inviteToken })
+        .from(rounds)
+        .where(eq(rounds.id, conv.roundId))
+        .limit(1);
+      if (round?.inviteToken) {
+        await publishAfterRoundDetailChanged(round.inviteToken, "chat");
+      }
+    }
+  } catch (err) {
+    console.error("[sendConversationMessage] round-detail-refresh", err);
+  }
 
   return mappedMessage;
 }
