@@ -28,7 +28,7 @@
         "NSRemindersFullAccessUsageDescription": "Parfade uses this only as required by iOS when saving round events to your calendar.",
         "NSPhotoLibraryUsageDescription": "Parfade uses your photo library to let you upload a profile picture, group cover photo, or photos for posts."
       },
-      "buildNumber": "51"
+      "buildNumber": "52"
     },
     "android": {
       "label": "Parfade",
