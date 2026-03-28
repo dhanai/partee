@@ -3,11 +3,13 @@
 /** Extract the time windows array from a round object that may have either or both fields. */
 export function getTimeWindows(round: {
   preferredTimeWindows?: string[] | null;
-  preferredTimeWindow?: string | null;
+  preferredTimeWindow?: string | string[] | null;
 }): string[] | null {
   if (round.preferredTimeWindows?.length) return round.preferredTimeWindows;
-  if (round.preferredTimeWindow) return [round.preferredTimeWindow];
-  return null;
+  const tw = round.preferredTimeWindow;
+  if (!tw) return null;
+  if (Array.isArray(tw)) return tw.length > 0 ? tw : null;
+  return [tw];
 }
 
 const LABEL: Record<string, string> = {
@@ -16,16 +18,19 @@ const LABEL: Record<string, string> = {
   twilight: "Twilight",
 };
 
-function cap(slot: string): string {
+function cap(slot: unknown): string {
+  if (typeof slot !== "string" || !slot) return "Time TBD";
   return LABEL[slot] ?? slot.charAt(0).toUpperCase() + slot.slice(1);
 }
 
 export function formatPlanningWindow(
-  window: string[] | null | undefined,
+  window: unknown[] | string | null | undefined,
 ) {
-  if (!window || window.length === 0 || window.length >= 3) return "Time TBD";
-  if (window.length === 1) return cap(window[0]!);
-  return window.map(cap).join(" or ");
+  if (!window) return "Time TBD";
+  const arr = Array.isArray(window) ? window.filter((s): s is string => typeof s === "string") : [window];
+  if (arr.length === 0 || arr.length >= 3) return "Time TBD";
+  if (arr.length === 1) return cap(arr[0]);
+  return arr.map(cap).join(" or ");
 }
 
 export function formatScheduledCardMeta(effectiveDateIso: string, teeTime: string | null) {

@@ -81,12 +81,14 @@ function useDebounce(value: string, delayMs: number) {
 }
 
 function formatPlanningWindow(
-  window: string[] | null | undefined,
+  window: unknown[] | string | null | undefined,
 ) {
-  if (!window || window.length === 0 || window.length >= 3) return "time TBD";
+  if (!window) return "time TBD";
+  const arr = Array.isArray(window) ? window.filter((s): s is string => typeof s === "string") : [window];
+  if (arr.length === 0 || arr.length >= 3) return "time TBD";
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  if (window.length === 1) return cap(window[0]!);
-  return window.map(cap).join(" or ");
+  if (arr.length === 1) return cap(arr[0]);
+  return arr.map(cap).join(" or ");
 }
 
 export default function RoundDetailsScreen() {

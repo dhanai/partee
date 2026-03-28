@@ -45,6 +45,7 @@ const DEFAULT_THEME: PlanningWindowTheme = {
 
 export function planningWindowTheme(window: PlanningTimeWindow): PlanningWindowTheme {
   if (!window || window.length === 0 || window.length >= 3) return DEFAULT_THEME;
-  if (window.length === 1) return THEMES[window[0]!] ?? DEFAULT_THEME;
+  const first = window[0];
+  if (window.length === 1 && typeof first === "string") return THEMES[first] ?? DEFAULT_THEME;
   return DEFAULT_THEME;
 }
