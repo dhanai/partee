@@ -94,10 +94,11 @@ const createRoundSchema = z
   });
 
 export async function POST(req: Request) {
+  let rawBody: unknown;
   try {
     const user = await requireDbUser(req);
-    const body = await req.json();
-    const parsed = createRoundSchema.parse(body);
+    rawBody = await req.json();
+    const parsed = createRoundSchema.parse(rawBody);
     const now = Date.now();
     let teeTime: Date | null = null;
     let targetDate: Date;
@@ -275,14 +276,10 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const flat = error.flatten();
-      const fieldErrors = Object.entries(flat.fieldErrors)
-        .map(([k, v]) => `${k}: ${((v as string[] | undefined) ?? []).join(", ")}`)
-        .join("; ");
-      const detail = fieldErrors || flat.formErrors.join("; ") || JSON.stringify(error.issues);
+      const detail = JSON.stringify({ issues: error.issues, body: rawBody });
       console.error("[POST /api/rounds] ZodError", detail);
       return NextResponse.json(
-        { error: "Invalid round payload.", details: detail, issues: flat },
+        { error: "Invalid round payload.", details: detail },
         { status: 400 },
       );
     }
