@@ -1,0 +1,4 @@
+apps/mobile
+node_modules
+.next
+.git
