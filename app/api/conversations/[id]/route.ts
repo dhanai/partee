@@ -4,12 +4,14 @@ import { db } from "@/db";
 import {
   conversations,
   conversationParticipants,
+  conversationReadReceipts,
   courses,
   groups,
   rounds,
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { isConversationParticipant } from "@/lib/conversation-access";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
 export async function GET(
@@ -180,6 +182,49 @@ export async function GET(
     console.error("[GET /api/conversations/[id]]", error);
     return NextResponse.json(
       { error: "Unable to load conversation." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: { id: string } },
+) {
+  try {
+    const viewer = await requireDbUser(req);
+    const conversationId = params.id;
+
+    if (!(await isConversationParticipant(conversationId, viewer.id))) {
+      return NextResponse.json({ error: "Not a participant." }, { status: 403 });
+    }
+
+    await db
+      .delete(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, conversationId),
+          eq(conversationParticipants.userId, viewer.id),
+        ),
+      );
+
+    await db
+      .delete(conversationReadReceipts)
+      .where(
+        and(
+          eq(conversationReadReceipts.conversationId, conversationId),
+          eq(conversationReadReceipts.userId, viewer.id),
+        ),
+      );
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.error("[DELETE /api/conversations/[id]]", error);
+    return NextResponse.json(
+      { error: "Unable to leave conversation." },
       { status: 500 },
     );
   }

@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -11,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
-import { apiGet, toAbsoluteUrl } from "../lib/api";
+import { apiDelete, apiGet, toAbsoluteUrl } from "../lib/api";
 import { fetchRoundDetailsAndCache } from "../lib/round-details-cache";
 import { colors } from "../lib/theme";
 import { InitialAvatar } from "../components/initial-avatar";
@@ -142,6 +143,27 @@ export default function ChatInfoScreen() {
     );
   }
 
+  const handleLeave = () => {
+    Alert.alert("Leave chat", `Remove "${data.title}" from your chats?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: async () => {
+          if (!conversationId) return;
+          try {
+            const token = await getTokenRef.current();
+            await apiDelete(`/api/conversations/${conversationId}`, token);
+            router.dismissAll();
+            router.replace("/chats");
+          } catch {
+            Alert.alert("Error", "Unable to leave this chat.");
+          }
+        },
+      },
+    ]);
+  };
+
   const isRound = data.type === "round" && data.roundDetails;
 
   return (
@@ -237,6 +259,13 @@ export default function ChatInfoScreen() {
         style={styles.list}
         contentContainerStyle={styles.listContent}
       />
+
+      {conversationId ? (
+        <Pressable style={styles.leaveBtn} onPress={handleLeave}>
+          <Ionicons name="exit-outline" size={18} color={colors.danger} />
+          <Text style={styles.leaveBtnText}>Leave chat</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -337,5 +366,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     color: colors.text,
+  },
+  leaveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    marginHorizontal: 16,
+    marginBottom: 32,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  leaveBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.danger,
   },
 });

@@ -4,16 +4,27 @@ import { useFocusEffect, useRouter, Stack } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Image } from "expo-image";
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+} from "react-native-gesture-handler/ReanimatedSwipeable";
+import Reanimated, {
+  type SharedValue,
+  useAnimatedStyle,
+  interpolate,
+  Extrapolation,
+} from "react-native-reanimated";
 import { InitialAvatar } from "../components/initial-avatar";
 import { NotificationMustardDot } from "../components/notification-mustard-dot";
-import { apiGet, toAbsoluteUrl } from "../lib/api";
+import { apiDelete, apiGet, toAbsoluteUrl } from "../lib/api";
 import { subscribeChatListsRefresh } from "../lib/chat-lists-refresh";
 import { useChatUnread } from "../lib/chat-unread-context";
 import { colors } from "../lib/theme";
@@ -171,6 +182,73 @@ function ChatAvatar({ item }: { item: ConversationRow }) {
   );
 }
 
+const SWIPE_REVEAL_W = 80;
+const SWIPE_CIRCLE = 44;
+
+function LeaveRightAction(
+  _prog: SharedValue<number>,
+  drag: SharedValue<number>,
+) {
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      drag.value,
+      [-SWIPE_REVEAL_W, -14, 0],
+      [1, 0.55, 0],
+      Extrapolation.CLAMP,
+    ),
+  }));
+
+  return (
+    <Reanimated.View style={[styles.swipeActionContainer, { width: SWIPE_REVEAL_W }]}>
+      <Reanimated.View style={animStyle}>
+        <View style={styles.swipeActionCol}>
+          <View style={styles.swipeCircle}>
+            <Ionicons name="exit-outline" size={19} color="#fff" />
+          </View>
+          <Text style={styles.swipeActionLabel}>Leave</Text>
+        </View>
+      </Reanimated.View>
+    </Reanimated.View>
+  );
+}
+
+function SwipeableChatRow({
+  conversationId,
+  title,
+  onLeave,
+  children,
+}: {
+  conversationId: string;
+  title: string;
+  onLeave: (id: string, title: string) => void;
+  children: React.ReactNode;
+}) {
+  const swipeRef = useRef<SwipeableMethods>(null);
+  const onLeaveRef = useRef(onLeave);
+  onLeaveRef.current = onLeave;
+
+  const handlePress = useCallback(() => {
+    swipeRef.current?.close();
+    onLeaveRef.current(conversationId, title);
+  }, [conversationId, title]);
+
+  return (
+    <ReanimatedSwipeable
+      ref={swipeRef}
+      friction={2}
+      rightThreshold={SWIPE_REVEAL_W * 0.4}
+      overshootRight
+      overshootFriction={5}
+      onSwipeableWillOpen={handlePress}
+      renderRightActions={LeaveRightAction}
+      containerStyle={styles.swipeForeground}
+      childrenContainerStyle={styles.swipeForeground}
+    >
+      {children}
+    </ReanimatedSwipeable>
+  );
+}
+
 export default function ChatsScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
@@ -209,10 +287,33 @@ export default function ChatsScreen() {
   loadChatsRef.current = loadChats;
   useEffect(() => subscribeChatListsRefresh(() => void loadChatsRef.current()), []);
 
+  const leaveChat = useCallback(
+    (conversationId: string, title: string) => {
+      Alert.alert("Leave chat", `Remove "${title}" from your chats?`, [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const token = await getTokenRef.current();
+              await apiDelete(`/api/conversations/${conversationId}`, token);
+              setRows((prev) => prev.filter((r) => r.id !== conversationId));
+            } catch {
+              Alert.alert("Error", "Unable to leave this chat.");
+            }
+          },
+        },
+      ]);
+    },
+    [],
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: ConversationRow }) => {
       const unread = item.isUnread || unreadConversationIds.has(item.id);
-      return (
+
+      const rowContent = (
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => {
@@ -257,8 +358,20 @@ export default function ChatsScreen() {
           </View>
         </Pressable>
       );
+
+      if (Platform.OS === "web") return rowContent;
+
+      return (
+        <SwipeableChatRow
+          conversationId={item.id}
+          title={item.title}
+          onLeave={leaveChat}
+        >
+          {rowContent}
+        </SwipeableChatRow>
+      );
     },
-    [router, unreadConversationIds],
+    [router, unreadConversationIds, leaveChat],
   );
 
   return (
@@ -420,4 +533,16 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 17, fontWeight: "700", color: colors.text, marginTop: 4 },
   emptySubtitle: { fontSize: 14, color: colors.muted, textAlign: "center" },
+  swipeForeground: { backgroundColor: colors.background },
+  swipeActionContainer: { alignItems: "center", justifyContent: "center" },
+  swipeActionCol: { alignItems: "center", gap: 4 },
+  swipeCircle: {
+    width: SWIPE_CIRCLE,
+    height: SWIPE_CIRCLE,
+    borderRadius: SWIPE_CIRCLE / 2,
+    backgroundColor: colors.danger,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  swipeActionLabel: { fontSize: 11, fontWeight: "600", color: colors.muted },
 });
