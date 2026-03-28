@@ -18,12 +18,12 @@ const createRoundSchema = z
     preferredTimeWindow: z.preprocess(
       (val) => (typeof val === "string" ? [val] : val),
       z.array(z.enum(["morning", "afternoon", "twilight"])).max(3),
-    ).optional(),
-    planningLocation: z.string().trim().min(2).max(80).optional(),
-    courseId: z.string().uuid().optional(),
-    teeTime: z.string().datetime().optional(),
-    targetDate: z.string().datetime().optional(),
-    totalSpots: z.number().int().min(2).max(4),
+    ).optional().nullable(),
+    planningLocation: z.string().trim().min(2).max(80).optional().nullable(),
+    courseId: z.string().uuid().optional().nullable(),
+    teeTime: z.string().datetime().optional().nullable(),
+    targetDate: z.string().datetime().optional().nullable(),
+    totalSpots: z.preprocess((v) => (typeof v === "string" ? Number(v) : v), z.number().int().min(1).max(4)),
     visibility: z.enum(["private", "public"]),
     joinPolicy: z.enum(["instant", "approval"]).default("instant"),
     customImageUrl: z
@@ -42,7 +42,7 @@ const createRoundSchema = z
       .optional()
       .nullable(),
     inviteeUserIds: z.array(z.string().uuid()).max(30).default([]),
-    groupId: z.string().uuid().optional(),
+    groupId: z.string().uuid().optional().nullable(),
   })
   .superRefine((payload, ctx) => {
     if (payload.planningMode) {

@@ -284,5 +284,5 @@ export async function GET(req: Request) {
     ),
   }));
 
-  return NextResponse.json({ rounds: roundsOut, nextCursor, hasMore: nextCursor !== null, _v: "2026-03-28b" });
+  return NextResponse.json({ rounds: roundsOut, nextCursor, hasMore: nextCursor !== null, _v: "2026-03-28c" });
 }
