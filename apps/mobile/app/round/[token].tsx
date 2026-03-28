@@ -562,12 +562,14 @@ export default function RoundDetailsScreen() {
         >
       {round.mode === "scheduled" ? (
         <>
-          <RoundCoverImage
-            recyclingKey={`${round.id}:${round.imageUrl}`}
-            uri={toAbsoluteUrl(round.imageUrl)}
-            style={styles.hero}
-            transitionMs={320}
-          />
+          <View style={styles.heroCard}>
+            <RoundCoverImage
+              recyclingKey={`${round.id}:${round.imageUrl}`}
+              uri={toAbsoluteUrl(round.imageUrl)}
+              style={styles.hero}
+              transitionMs={320}
+            />
+          </View>
           <Text style={styles.title}>{round.courseName}</Text>
         </>
       ) : (
@@ -1054,10 +1056,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, gap: 8, paddingBottom: 32 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  heroCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 11,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   hero: {
     width: "100%",
     height: 180,
-    borderRadius: 16,
+    borderRadius: 12,
   },
   title: { fontSize: 28, fontWeight: "700", color: colors.text, marginTop: 8 },
   whenBlock: { gap: 2, marginTop: 2 },
