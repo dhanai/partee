@@ -10,7 +10,7 @@ import { notifyRoundInvites } from "@/lib/notify-user";
 import { publishAfterRoundCreated, publishRoundInviteToast } from "@/lib/parfade-ably-publish";
 import { buildRoundInvitePushBody, formatChatPushTitleLine } from "@/lib/round-invite-push-message";
 import { resolveRoundImageUrl } from "@/lib/round-images";
-import { timeWindowResponseFields } from "@/lib/round-time-window-compat";
+import { textArraySql, timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 const createRoundSchema = z
   .object({
@@ -160,7 +160,7 @@ export async function POST(req: Request) {
           teeTime,
           targetDate,
           preferredTimeWindow: parsed.planningMode
-            ? (parsed.preferredTimeWindow?.length ? parsed.preferredTimeWindow : null)
+            ? textArraySql(parsed.preferredTimeWindow?.length ? parsed.preferredTimeWindow : null)
             : null,
           planningLocation: parsed.planningMode
             ? (parsed.planningLocation?.trim() ?? null)
@@ -282,10 +282,8 @@ export async function POST(req: Request) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const message =
-      error instanceof Error ? error.message : "Failed to create round.";
     console.error("[POST /api/rounds]", error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to create round." }, { status: 500 });
   }
 }
 

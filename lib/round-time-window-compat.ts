@@ -22,3 +22,15 @@ export function normalizeTimeWindowInput(
   if (typeof val === "string") return [val];
   return val.length > 0 ? val : null;
 }
+
+/**
+ * Build a Drizzle SQL expression for a text[] value.
+ * Neon's poolQueryViaFetch HTTP path doesn't serialise JS arrays
+ * into PostgreSQL array params, so we construct an explicit ARRAY[] literal.
+ */
+import { sql, type SQL } from "drizzle-orm";
+
+export function textArraySql(arr: string[] | null): SQL | null {
+  if (!arr || arr.length === 0) return null;
+  return sql`ARRAY[${sql.join(arr.map((v) => sql`${v}`), sql`, `)}]::text[]`;
+}

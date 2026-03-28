@@ -8,7 +8,7 @@ import { ensureDbUser, requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
-import { timeWindowResponseFields } from "@/lib/round-time-window-compat";
+import { textArraySql, timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 type RouteContext = {
   params: { token: string };
@@ -324,7 +324,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       .set({
         mode: parsed.planningMode ? "planning" : "scheduled",
         preferredTimeWindow: parsed.planningMode
-          ? (parsed.preferredTimeWindow?.length ? parsed.preferredTimeWindow : null)
+          ? textArraySql(parsed.preferredTimeWindow?.length ? parsed.preferredTimeWindow : null)
           : null,
         planningLocation: parsed.planningMode
           ? (parsed.planningLocation?.trim() ?? null)
