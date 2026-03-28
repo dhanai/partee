@@ -25,21 +25,26 @@ export async function GET(req: Request) {
       .orderBy(desc(inAppNotifications.createdAt))
       .limit(LIMIT);
 
-    const groupJoinRows = rows.filter((r) => r.type === "group_join_request");
-    const actorIdsForGroupJoins = groupJoinRows
+    const allActorIds = rows
       .map((r) => (r.data as { actorUserId?: string }).actorUserId)
       .filter((id): id is string => Boolean(id));
+    const uniqueActorIds = [...new Set(allActorIds)];
 
     const actorProfileMap = new Map<string, { name: string; avatar: string | null }>();
-    if (actorIdsForGroupJoins.length > 0) {
+    if (uniqueActorIds.length > 0) {
       const actorRows = await db
         .select({ id: users.id, name: users.name, avatar: users.avatar })
         .from(users)
-        .where(inArray(users.id, actorIdsForGroupJoins));
+        .where(inArray(users.id, uniqueActorIds));
       for (const a of actorRows) {
         actorProfileMap.set(a.id, { name: a.name, avatar: a.avatar });
       }
     }
+
+    const groupJoinRows = rows.filter((r) => r.type === "group_join_request");
+    const actorIdsForGroupJoins = groupJoinRows
+      .map((r) => (r.data as { actorUserId?: string }).actorUserId)
+      .filter((id): id is string => Boolean(id));
 
     const groupIds = groupJoinRows
       .map((r) => (r.data as { groupId?: string }).groupId)
@@ -81,6 +86,9 @@ export async function GET(req: Request) {
         const actorUserId = typeof d.actorUserId === "string" ? d.actorUserId : "";
 
         const actorProfile = actorUserId ? actorProfileMap.get(actorUserId) : undefined;
+
+        if (actorUserId && !actorProfile) return [];
+
         const requestEntry = groupId && actorUserId
           ? pendingRequestMap.get(`${groupId}:${actorUserId}`)
           : undefined;

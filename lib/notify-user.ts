@@ -204,7 +204,10 @@ export async function notifyConversationMessage(input: {
   messageBody: string;
 }): Promise<void> {
   const recipientRows = await db
-    .select({ userId: conversationParticipants.userId })
+    .select({
+      userId: conversationParticipants.userId,
+      muted: conversationParticipants.muted,
+    })
     .from(conversationParticipants)
     .where(
       and(
@@ -213,7 +216,9 @@ export async function notifyConversationMessage(input: {
       ),
     );
 
-  const recipientIds = recipientRows.map((r) => r.userId);
+  const recipientIds = recipientRows
+    .filter((r) => !r.muted)
+    .map((r) => r.userId);
   if (recipientIds.length === 0) return;
 
   const tokenRows = await db

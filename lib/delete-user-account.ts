@@ -1,7 +1,7 @@
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { db } from "@/db";
-import { groupMembers, groups, users } from "@/db/schema";
+import { groupMembers, groups, inAppNotifications, users } from "@/db/schema";
 
 /**
  * Orchestrates full account deletion:
@@ -12,6 +12,9 @@ import { groupMembers, groups, users } from "@/db/schema";
  */
 export async function deleteUserAccount(userId: string, clerkId: string) {
   await transferGroupOwnership(userId);
+  await db
+    .delete(inAppNotifications)
+    .where(sql`${inAppNotifications.data}->>'actorUserId' = ${userId}`);
   await db.delete(users).where(eq(users.id, userId));
 
   try {

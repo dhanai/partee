@@ -12,7 +12,8 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
-import { apiDelete, apiGet, toAbsoluteUrl } from "../lib/api";
+import { apiDelete, apiGet, apiPatch, toAbsoluteUrl } from "../lib/api";
+import { useChatUnread } from "../lib/chat-unread-context";
 import { fetchRoundDetailsAndCache } from "../lib/round-details-cache";
 import { colors } from "../lib/theme";
 import { InitialAvatar } from "../components/initial-avatar";
@@ -85,6 +86,10 @@ export default function ChatInfoScreen() {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
+  const { mutedConversationIds, setConversationMuted } = useChatUnread();
+  const isMuted = conversationId ? mutedConversationIds.has(conversationId) : false;
+  const [togglingMute, setTogglingMute] = useState(false);
+
   const [data, setData] = useState<ChatInfoData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -143,6 +148,24 @@ export default function ChatInfoScreen() {
     );
   }
 
+  const handleToggleMute = async () => {
+    if (!conversationId || togglingMute) return;
+    setTogglingMute(true);
+    try {
+      const token = await getTokenRef.current();
+      const res = await apiPatch<{ muted: boolean }>(
+        `/api/conversations/${conversationId}/mute`,
+        { muted: !isMuted },
+        token,
+      );
+      setConversationMuted(conversationId, res.muted);
+    } catch {
+      Alert.alert("Error", "Unable to update mute setting.");
+    } finally {
+      setTogglingMute(false);
+    }
+  };
+
   const handleLeave = () => {
     Alert.alert("Leave chat", `Remove "${data.title}" from your chats?`, [
       { text: "Cancel", style: "cancel" },
@@ -155,7 +178,6 @@ export default function ChatInfoScreen() {
             const token = await getTokenRef.current();
             await apiDelete(`/api/conversations/${conversationId}`, token);
             router.dismissAll();
-            router.replace("/chats");
           } catch {
             Alert.alert("Error", "Unable to leave this chat.");
           }
@@ -261,10 +283,27 @@ export default function ChatInfoScreen() {
       />
 
       {conversationId ? (
-        <Pressable style={styles.leaveBtn} onPress={handleLeave}>
-          <Ionicons name="exit-outline" size={18} color={colors.danger} />
-          <Text style={styles.leaveBtnText}>Leave chat</Text>
-        </Pressable>
+        <View style={styles.actionButtons}>
+          <Pressable
+            style={styles.muteBtn}
+            onPress={() => void handleToggleMute()}
+            disabled={togglingMute}
+          >
+            <Ionicons
+              name={isMuted ? "notifications-outline" : "notifications-off-outline"}
+              size={18}
+              color={colors.text}
+            />
+            <Text style={styles.muteBtnText}>
+              {isMuted ? "Unmute" : "Mute"}
+            </Text>
+          </Pressable>
+
+          <Pressable style={styles.leaveBtn} onPress={handleLeave}>
+            <Ionicons name="exit-outline" size={18} color={colors.danger} />
+            <Text style={styles.leaveBtnText}>Leave chat</Text>
+          </Pressable>
+        </View>
       ) : null}
     </View>
   );
@@ -367,14 +406,32 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: colors.text,
   },
+  actionButtons: {
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+  },
+  muteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  muteBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.text,
+  },
   leaveBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     paddingVertical: 14,
-    marginHorizontal: 16,
-    marginBottom: 32,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.danger,

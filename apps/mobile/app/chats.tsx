@@ -38,6 +38,7 @@ type ConversationRow = {
   imageUrl: string | null;
   participantAvatars: string[];
   isUnread: boolean;
+  muted: boolean;
   roundMode: string | null;
   roundInviteToken: string | null;
   lastMessage: {
@@ -185,33 +186,6 @@ function ChatAvatar({ item }: { item: ConversationRow }) {
 const SWIPE_REVEAL_W = 80;
 const SWIPE_CIRCLE = 44;
 
-function LeaveRightAction(
-  _prog: SharedValue<number>,
-  drag: SharedValue<number>,
-) {
-  const animStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      drag.value,
-      [-SWIPE_REVEAL_W, -14, 0],
-      [1, 0.55, 0],
-      Extrapolation.CLAMP,
-    ),
-  }));
-
-  return (
-    <Reanimated.View style={[styles.swipeActionContainer, { width: SWIPE_REVEAL_W }]}>
-      <Reanimated.View style={animStyle}>
-        <View style={styles.swipeActionCol}>
-          <View style={styles.swipeCircle}>
-            <Ionicons name="exit-outline" size={19} color="#fff" />
-          </View>
-          <Text style={styles.swipeActionLabel}>Leave</Text>
-        </View>
-      </Reanimated.View>
-    </Reanimated.View>
-  );
-}
-
 function SwipeableChatRow({
   conversationId,
   title,
@@ -232,15 +206,41 @@ function SwipeableChatRow({
     onLeaveRef.current(conversationId, title);
   }, [conversationId, title]);
 
+  const renderRightActions = useCallback(
+    (_prog: SharedValue<number>, drag: SharedValue<number>) => {
+      const animStyle = useAnimatedStyle(() => ({
+        opacity: interpolate(
+          drag.value,
+          [-SWIPE_REVEAL_W, -14, 0],
+          [1, 0.55, 0],
+          Extrapolation.CLAMP,
+        ),
+      }));
+
+      return (
+        <Reanimated.View style={[styles.swipeActionContainer, { width: SWIPE_REVEAL_W }]}>
+          <Reanimated.View style={animStyle}>
+            <Pressable style={styles.swipeActionCol} onPress={handlePress}>
+              <View style={styles.swipeCircle}>
+                <Ionicons name="exit-outline" size={19} color="#fff" />
+              </View>
+              <Text style={styles.swipeActionLabel}>Leave</Text>
+            </Pressable>
+          </Reanimated.View>
+        </Reanimated.View>
+      );
+    },
+    [handlePress],
+  );
+
   return (
     <ReanimatedSwipeable
       ref={swipeRef}
       friction={2}
-      rightThreshold={SWIPE_REVEAL_W * 0.4}
+      rightThreshold={SWIPE_REVEAL_W * 0.6}
       overshootRight
-      overshootFriction={5}
-      onSwipeableWillOpen={handlePress}
-      renderRightActions={LeaveRightAction}
+      overshootFriction={8}
+      renderRightActions={renderRightActions}
       containerStyle={styles.swipeForeground}
       childrenContainerStyle={styles.swipeForeground}
     >
@@ -267,7 +267,7 @@ export default function ChatsScreen() {
       const authToken = await getTokenRef.current();
       const result = await apiGet<ConversationsResponse>("/api/conversations", authToken);
       const convos = result.conversations;
-      reportConversations(convos.map((c) => ({ id: c.id, isUnread: c.isUnread })));
+      reportConversations(convos.map((c) => ({ id: c.id, isUnread: c.isUnread, muted: c.muted })));
       setRows(convos);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load chats.");
@@ -351,9 +351,14 @@ export default function ChatsScreen() {
             </Text>
           </View>
           <View style={styles.trailingCol}>
-            <Text style={styles.time}>
-              {relativeTime(item.lastMessage.createdAt)}
-            </Text>
+            <View style={styles.trailingTopRow}>
+              <Text style={styles.time}>
+                {relativeTime(item.lastMessage.createdAt)}
+              </Text>
+              {item.muted ? (
+                <Ionicons name="notifications-off-outline" size={13} color={colors.border} />
+              ) : null}
+            </View>
             {unread ? <NotificationMustardDot style={styles.unreadDot} /> : null}
           </View>
         </Pressable>
@@ -502,6 +507,7 @@ const styles = StyleSheet.create({
   preview: { fontSize: 14, color: colors.muted },
   previewUnread: { color: colors.text, fontWeight: "600" },
   trailingCol: { alignItems: "flex-end", gap: 6, flexShrink: 0 },
+  trailingTopRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   time: { fontSize: 12, color: colors.muted },
   unreadDot: {
     position: "relative",

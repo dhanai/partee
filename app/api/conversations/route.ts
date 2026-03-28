@@ -152,6 +152,23 @@ export async function GET(req: Request) {
       participantsByConv.set(p.conversationId, list);
     }
 
+    const viewerMuteRows = await db
+      .select({
+        conversationId: conversationParticipants.conversationId,
+        muted: conversationParticipants.muted,
+      })
+      .from(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.userId, viewer.id),
+          inArray(conversationParticipants.conversationId, convIds),
+        ),
+      );
+    const muteMap = new Map<string, boolean>();
+    for (const m of viewerMuteRows) {
+      muteMap.set(m.conversationId, m.muted);
+    }
+
     const receiptRows = await db
       .select({
         conversationId: conversationReadReceipts.conversationId,
@@ -231,6 +248,7 @@ export async function GET(req: Request) {
         imageUrl,
         participantAvatars: avatars,
         isUnread,
+        muted: muteMap.get(r.conversationId) ?? false,
         roundMode,
         roundInviteToken,
         lastMessage: {

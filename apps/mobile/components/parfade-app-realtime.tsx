@@ -23,7 +23,7 @@ export function ParfadeAppRealtime() {
   const ably = useAbly();
   const { refresh: refreshNotificationBadge } = useNotificationBadge();
   const { showRsvpToast, showConversationToast, showRoundInviteToast } = useInAppToast();
-  const { markConversationUnread } = useChatUnread();
+  const { markConversationUnread, mutedConversationIds } = useChatUnread();
   const [inboxUserId, setInboxUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,12 +64,14 @@ export function ParfadeAppRealtime() {
       if (parsed.type === "conversation-toast") {
         markConversationUnread(parsed.conversationId);
         emitChatListsShouldRefresh();
-        showConversationToast({
-          conversationId: parsed.conversationId,
-          senderName: parsed.senderName,
-          senderAvatar: parsed.senderAvatar,
-          bodyPreview: parsed.bodyPreview,
-        });
+        if (!mutedConversationIds.has(parsed.conversationId)) {
+          showConversationToast({
+            conversationId: parsed.conversationId,
+            senderName: parsed.senderName,
+            senderAvatar: parsed.senderAvatar,
+            bodyPreview: parsed.bodyPreview,
+          });
+        }
       }
       if (parsed.type === "conversation-reaction") {
         emitReactionUpdate({
@@ -91,7 +93,7 @@ export function ParfadeAppRealtime() {
         });
       }
     },
-    [refreshNotificationBadge, showRsvpToast, showConversationToast, showRoundInviteToast, markConversationUnread],
+    [refreshNotificationBadge, showRsvpToast, showConversationToast, showRoundInviteToast, markConversationUnread, mutedConversationIds],
   );
 
   const onDiscoverMessage = useCallback((message: Message) => {
