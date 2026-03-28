@@ -352,8 +352,10 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       const fieldErrors = Object.entries(flat.fieldErrors)
         .map(([k, v]) => `${k}: ${((v as string[] | undefined) ?? []).join(", ")}`)
         .join("; ");
+      const detail = fieldErrors || flat.formErrors.join("; ") || JSON.stringify(error.issues);
+      console.error("[PATCH /api/rounds] ZodError", detail);
       return NextResponse.json(
-        { error: `Invalid round payload. ${fieldErrors || flat.formErrors.join("; ")}`, issues: flat },
+        { error: "Invalid round payload.", details: detail, issues: flat },
         { status: 400 },
       );
     }

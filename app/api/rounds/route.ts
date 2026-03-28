@@ -96,7 +96,8 @@ const createRoundSchema = z
 export async function POST(req: Request) {
   try {
     const user = await requireDbUser(req);
-    const parsed = createRoundSchema.parse(await req.json());
+    const body = await req.json();
+    const parsed = createRoundSchema.parse(body);
     const now = Date.now();
     let teeTime: Date | null = null;
     let targetDate: Date;
@@ -278,8 +279,10 @@ export async function POST(req: Request) {
       const fieldErrors = Object.entries(flat.fieldErrors)
         .map(([k, v]) => `${k}: ${((v as string[] | undefined) ?? []).join(", ")}`)
         .join("; ");
+      const detail = fieldErrors || flat.formErrors.join("; ") || JSON.stringify(error.issues);
+      console.error("[POST /api/rounds] ZodError", detail);
       return NextResponse.json(
-        { error: `Invalid round payload. ${fieldErrors || flat.formErrors.join("; ")}`, issues: flat },
+        { error: "Invalid round payload.", details: detail, issues: flat },
         { status: 400 },
       );
     }
@@ -287,7 +290,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[POST /api/rounds]", error);
-    return NextResponse.json({ error: "Failed to create round." }, { status: 500 });
+    const dbDetail = error instanceof Error ? error.message : String(error);
+    return NextResponse.json(
+      { error: "Failed to create round.", details: dbDetail },
+      { status: 500 },
+    );
   }
 }
 
