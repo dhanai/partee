@@ -25,6 +25,7 @@ import { colors } from "../../lib/theme";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { InviteFriendsSheet } from "../../components/invite-friends-sheet";
 import { PlanningTimeWindowChips } from "../../components/planning-time-window-chips";
+import { SelectGroupSheet } from "../../components/select-group-sheet";
 import { TimePickerModal } from "../../components/time-picker-modal";
 
 type CourseResult = {
@@ -132,11 +133,13 @@ export default function CreateScreen() {
   const debouncedCourseQuery = useDebounce(query, 320);
   const debouncedPlanningLocation = useDebounce(planningLocation, 320);
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
+  const [groupSheetOpen, setGroupSheetOpen] = useState(false);
   const prevSessionRef = useRef<string | null>(null);
   const [myGroups, setMyGroups] = useState<MyGroupOption[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
     typeof groupIdParam === "string" ? groupIdParam : null,
   );
+  const [selectedGroupName, setSelectedGroupName] = useState<string | null>(null);
 
   /**
    * Each pick from the create sheet sends a new `session` id (same or different mode).
@@ -191,6 +194,7 @@ export default function CreateScreen() {
     setEventDeadlineDatePickerOpen(false);
     setEventDeadlineTimePickerOpen(false);
     setSelectedGroupId(typeof groupIdParam === "string" ? groupIdParam : null);
+    setSelectedGroupName(null);
   }, [session, groupIdParam]);
 
   useEffect(() => {
@@ -687,12 +691,9 @@ export default function CreateScreen() {
               </Pressable>
             </View>
 
-            <Text style={styles.label}>
-              {selectedGroupId ? "Post to group" : "Invite friends"}
-            </Text>
-
-            {!selectedGroupId ? (
+            {!selectedGroupId && (
               <>
+                <Text style={styles.label}>Invite friends</Text>
                 <Pressable style={styles.secondaryButton} onPress={openInviteFriends}>
                   <Text style={styles.secondaryButtonText}>
                     {selectedFriends.length > 0
@@ -730,44 +731,35 @@ export default function CreateScreen() {
                   </View>
                 ))}
               </>
-            ) : (
-              <View style={styles.groupChipRow}>
-                <Pressable
-                  style={[styles.groupChip, styles.groupChipActive]}
-                  onPress={() => setSelectedGroupId(null)}
-                >
-                  <Text style={styles.groupChipTextActive}>
-                    {myGroups.find((g) => g.id === selectedGroupId)?.name ?? "Group"}
-                  </Text>
-                  <Ionicons name="close-circle" size={16} color="#fff" />
-                </Pressable>
-              </View>
             )}
 
-            {!selectedGroupId && myGroups.length > 0 && selectedFriends.length === 0 ? (
-              <View style={styles.groupPickerWrap}>
-                <Text style={styles.groupPickerOr}>or post to a group</Text>
-                <View style={styles.groupChipRow}>
-                  {myGroups.map((g) => (
+            {selectedFriends.length === 0 && (
+              <>
+                <Text style={[styles.label, !selectedGroupId ? { marginTop: 8 } : undefined]}>Post to group</Text>
+                {selectedGroupId ? (
+                  <View style={styles.selectedRow}>
+                    <View style={styles.selectedInfo}>
+                      <View style={[styles.selectedAvatar, styles.selectedAvatarFallback]}>
+                        <Ionicons name="people" size={14} color={colors.fairway} />
+                      </View>
+                      <Text style={styles.selectedText} numberOfLines={1}>
+                        {selectedGroupName ?? myGroups.find((g) => g.id === selectedGroupId)?.name ?? "Group"}
+                      </Text>
+                    </View>
                     <Pressable
-                      key={g.id}
-                      style={styles.groupChip}
-                      onPress={() => {
-                        setSelectedGroupId(g.id);
-                        setSelectedFriends([]);
-                      }}
+                      style={styles.selectedRemoveBtn}
+                      onPress={() => { setSelectedGroupId(null); setSelectedGroupName(null); }}
                     >
-                      {g.imageUrl ? (
-                        <Image source={{ uri: g.imageUrl }} style={styles.groupChipAvatar} />
-                      ) : (
-                        <Ionicons name="people" size={14} color={colors.muted} />
-                      )}
-                      <Text style={styles.groupChipText}>{g.name}</Text>
+                      <Ionicons name="trash-outline" size={16} color={colors.danger} />
                     </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : null}
+                  </View>
+                ) : (
+                  <Pressable style={styles.secondaryButton} onPress={() => setGroupSheetOpen(true)}>
+                    <Text style={styles.secondaryButtonText}>Select group</Text>
+                  </Pressable>
+                )}
+              </>
+            )}
           </>
         ) : null}
 
@@ -862,11 +854,23 @@ export default function CreateScreen() {
         onClose={() => setInviteSheetOpen(false)}
         onConfirm={(users) => {
           setSelectedFriends(users);
-          if (users.length > 0) setSelectedGroupId(null);
+          if (users.length > 0) { setSelectedGroupId(null); setSelectedGroupName(null); }
           setInviteSheetOpen(false);
         }}
         confirmLabel="Add friends"
         initialSelected={selectedFriends}
+      />
+
+      <SelectGroupSheet
+        visible={groupSheetOpen}
+        onClose={() => setGroupSheetOpen(false)}
+        selectedGroupId={selectedGroupId}
+        onSelect={(group) => {
+          setSelectedGroupId(group.id);
+          setSelectedGroupName(group.name);
+          setSelectedFriends([]);
+          setGroupSheetOpen(false);
+        }}
       />
     </ScrollView>
   );

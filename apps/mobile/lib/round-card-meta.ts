@@ -19,16 +19,16 @@ const LABEL: Record<string, string> = {
 };
 
 function cap(slot: unknown): string {
-  if (typeof slot !== "string" || !slot) return "Time TBD";
+  if (typeof slot !== "string" || !slot) return "Anytime";
   return LABEL[slot] ?? slot.charAt(0).toUpperCase() + slot.slice(1);
 }
 
 export function formatPlanningWindow(
   window: unknown[] | string | null | undefined,
 ) {
-  if (!window) return "Time TBD";
+  if (!window) return "Anytime";
   const arr = Array.isArray(window) ? window.filter((s): s is string => typeof s === "string") : [window];
-  if (arr.length === 0 || arr.length >= 3) return "Time TBD";
+  if (arr.length === 0 || arr.length >= 3) return "Anytime";
   if (arr.length === 1) return cap(arr[0]);
   return arr.map(cap).join(" or ");
 }

@@ -83,9 +83,9 @@ function useDebounce(value: string, delayMs: number) {
 function formatPlanningWindow(
   window: unknown[] | string | null | undefined,
 ) {
-  if (!window) return "time TBD";
+  if (!window) return "Anytime";
   const arr = Array.isArray(window) ? window.filter((s): s is string => typeof s === "string") : [window];
-  if (arr.length === 0 || arr.length >= 3) return "time TBD";
+  if (arr.length === 0 || arr.length >= 3) return "Anytime";
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   if (arr.length === 1) return cap(arr[0]);
   return arr.map(cap).join(" or ");
