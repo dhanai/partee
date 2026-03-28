@@ -348,8 +348,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
+      const flat = error.flatten();
+      const fieldErrors = Object.entries(flat.fieldErrors)
+        .map(([k, v]) => `${k}: ${((v as string[] | undefined) ?? []).join(", ")}`)
+        .join("; ");
       return NextResponse.json(
-        { error: "Invalid round payload.", issues: error.flatten() },
+        { error: `Invalid round payload. ${fieldErrors || flat.formErrors.join("; ")}`, issues: flat },
         { status: 400 },
       );
     }
