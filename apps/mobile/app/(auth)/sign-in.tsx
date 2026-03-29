@@ -18,6 +18,7 @@ import { authFormStyles } from "../../lib/auth-form-styles";
 import {
   clerkNativeOAuthRedirectUrl,
   formatClerkError,
+  isAlreadySignedInError,
   isSSOCancellation,
   pickSecondFactor,
   type SecondFactorStep,
@@ -101,6 +102,10 @@ export default function SignInScreen() {
       }
       setError("Sign-in could not be completed. Try again or use Google.");
     } catch (signInError) {
+      if (isAlreadySignedInError(signInError)) {
+        router.replace("/(tabs)");
+        return;
+      }
       setError(formatClerkError(signInError));
     } finally {
       setSubmitting(false);
@@ -178,6 +183,10 @@ export default function SignInScreen() {
       router.replace("/(tabs)");
     } catch (googleError) {
       if (isSSOCancellation(googleError)) return;
+      if (isAlreadySignedInError(googleError)) {
+        router.replace("/(tabs)");
+        return;
+      }
       setError(formatClerkError(googleError));
     } finally {
       setGoogleSubmitting(false);
@@ -202,6 +211,10 @@ export default function SignInScreen() {
       router.replace("/(tabs)");
     } catch (appleError) {
       if (isSSOCancellation(appleError)) return;
+      if (isAlreadySignedInError(appleError)) {
+        router.replace("/(tabs)");
+        return;
+      }
       setError(formatClerkError(appleError));
     } finally {
       setAppleSubmitting(false);

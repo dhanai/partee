@@ -33,6 +33,21 @@ export function formatClerkError(err: unknown): string {
   return "Something went wrong.";
 }
 
+export function isAlreadySignedInError(err: unknown): boolean {
+  if (isClerkAPIResponseError(err)) {
+    return err.errors.some(
+      (e) =>
+        e.code === "session_exists" ||
+        e.message?.toLowerCase().includes("already signed in") ||
+        e.longMessage?.toLowerCase().includes("already signed in"),
+    );
+  }
+  if (err instanceof Error) {
+    return err.message.toLowerCase().includes("already signed in");
+  }
+  return false;
+}
+
 export type SecondFactorStep =
   | { strategy: "email_code"; emailAddressId: string; safeIdentifier?: string }
   | { strategy: "phone_code"; phoneNumberId: string; safeIdentifier?: string }

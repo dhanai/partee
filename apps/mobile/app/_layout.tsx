@@ -3,7 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { ClerkProvider, useAuth, useClerk } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
@@ -71,6 +71,47 @@ function ApiSessionInvalidBridge() {
   return null;
 }
 
+/**
+ * On cold start, if Clerk says signed-in, verify the token is actually valid
+ * with a lightweight API call. If the session is stale (401), sign out
+ * immediately so the user sees a clean sign-in screen instead of a crash loop.
+ */
+function SessionHealthCheck() {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { signOut } = useClerk();
+  const didCheck = useRef(false);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || didCheck.current) return;
+    didCheck.current = true;
+
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!token) {
+          await clearAllCaches();
+          await signOut();
+          return;
+        }
+        const base =
+          process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ?? "";
+        const res = await fetch(`${base}/api/users/me`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.status === 401) {
+          await clearAllCaches();
+          await signOut();
+        }
+      } catch {
+        // Network error on startup — don't sign out, let normal flow retry
+      }
+    })();
+  }, [isLoaded, isSignedIn, getToken, signOut]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim();
 
@@ -94,6 +135,7 @@ export default function RootLayout() {
       <GameTypesBootstrap />
       <ClerkLoadedSplashSync />
       <ApiSessionInvalidBridge />
+      <SessionHealthCheck />
       <NotificationBadgeProvider>
         <ChatUnreadProvider>
         <InAppToastProvider>

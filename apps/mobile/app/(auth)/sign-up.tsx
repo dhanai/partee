@@ -17,7 +17,7 @@ import { AppleLogo } from "../../components/apple-logo";
 import { GoogleLogo } from "../../components/google-logo";
 import { publicWebOrigin } from "../../lib/api";
 import { authFormStyles } from "../../lib/auth-form-styles";
-import { clerkNativeOAuthRedirectUrl, formatClerkError, isSSOCancellation } from "../../lib/auth-helpers";
+import { clerkNativeOAuthRedirectUrl, formatClerkError, isAlreadySignedInError, isSSOCancellation } from "../../lib/auth-helpers";
 import { colors } from "../../lib/theme";
 
 export default function SignUpScreen() {
@@ -101,6 +101,10 @@ export default function SignUpScreen() {
       router.replace("/(tabs)");
     } catch (googleError) {
       if (isSSOCancellation(googleError)) return;
+      if (isAlreadySignedInError(googleError)) {
+        router.replace("/(tabs)");
+        return;
+      }
       setError(formatClerkError(googleError));
     } finally {
       setGoogleSubmitting(false);
@@ -125,6 +129,10 @@ export default function SignUpScreen() {
       router.replace("/(tabs)");
     } catch (appleError) {
       if (isSSOCancellation(appleError)) return;
+      if (isAlreadySignedInError(appleError)) {
+        router.replace("/(tabs)");
+        return;
+      }
       setError(formatClerkError(appleError));
     } finally {
       setAppleSubmitting(false);
