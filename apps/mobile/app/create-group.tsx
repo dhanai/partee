@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { apiPost } from "../lib/api";
+import { useSnackbar } from "../lib/snackbar-context";
 import { colors } from "../lib/theme";
 
 const JOIN_POLICIES = [
@@ -28,6 +29,7 @@ export default function CreateGroupScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
+  const { show: showSnackbar } = useSnackbar();
   const nameInputRef = useRef<TextInput>(null);
 
   const [name, setName] = useState("");
@@ -56,6 +58,7 @@ export default function CreateGroupScreen() {
         { name: trimmed, description: description.trim() || undefined, joinPolicy },
         token,
       );
+      showSnackbar("Group created");
       router.replace({
         pathname: "/group/[groupId]",
         params: { groupId: data.group.id },
@@ -65,7 +68,7 @@ export default function CreateGroupScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [name, description, joinPolicy, router]);
+  }, [name, description, joinPolicy, router, showSnackbar]);
 
   return (
     <KeyboardAvoidingView

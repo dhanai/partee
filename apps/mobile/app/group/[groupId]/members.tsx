@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { InviteFriendsSheet } from "../../../components/invite-friends-sheet";
 import { apiDelete, apiGet, apiPost } from "../../../lib/api";
+import { useSnackbar } from "../../../lib/snackbar-context";
 import { colors } from "../../../lib/theme";
 import { InitialAvatar } from "../../../components/initial-avatar";
 
@@ -35,6 +36,7 @@ export default function GroupMembersScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
 
+  const { show: showSnackbar } = useSnackbar();
   const [members, setMembers] = useState<Member[]>([]);
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,6 +81,7 @@ export default function GroupMembersScreen() {
               const token = await getTokenRef.current();
               await apiDelete(`/api/groups/${groupId}/members?userId=${userId}`, token);
               setMembers((prev) => prev.filter((m) => m.userId !== userId));
+              showSnackbar(`${name} removed`);
             } catch (e) {
               Alert.alert("Error", e instanceof Error ? e.message : "Failed.");
             }
@@ -86,7 +89,7 @@ export default function GroupMembersScreen() {
         },
       ]);
     },
-    [groupId],
+    [groupId, showSnackbar],
   );
 
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
@@ -192,7 +195,22 @@ export default function GroupMembersScreen() {
               { userIds: users.map((u) => u.id) },
               token,
             );
-            void load();
+            const newMembers: Member[] = users
+              .filter((u) => !existingMemberIds.has(u.id))
+              .map((u) => ({
+                id: `pending-${u.id}`,
+                userId: u.id,
+                name: u.name,
+                avatar: u.avatar,
+                role: "member" as const,
+                joinedAt: new Date().toISOString(),
+              }));
+            if (newMembers.length > 0) {
+              setMembers((prev) => [...prev, ...newMembers]);
+            }
+            showSnackbar(
+              users.length === 1 ? `${users[0].name} invited` : `${users.length} members invited`,
+            );
           } catch (e) {
             Alert.alert("Error", e instanceof Error ? e.message : "Unable to invite.");
           }

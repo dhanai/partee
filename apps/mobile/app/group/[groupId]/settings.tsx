@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { apiDelete, apiGet, apiPatch } from "../../../lib/api";
+import { useSnackbar } from "../../../lib/snackbar-context";
 import { colors } from "../../../lib/theme";
 
 type GroupDetail = {
@@ -37,6 +38,7 @@ export default function GroupSettingsScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
 
+  const { show: showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
@@ -82,13 +84,13 @@ export default function GroupSettingsScreen() {
         { name: trimmed, description: description.trim() || null, joinPolicy },
         token,
       );
-      Alert.alert("Saved", "Group settings updated.");
+      showSnackbar("Settings saved");
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Could not save.");
     } finally {
       setSaving(false);
     }
-  }, [groupId, name, description, joinPolicy]);
+  }, [groupId, name, description, joinPolicy, showSnackbar]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
@@ -103,6 +105,7 @@ export default function GroupSettingsScreen() {
             try {
               const token = await getTokenRef.current();
               await apiDelete(`/api/groups/${groupId}`, token);
+              showSnackbar("Group deleted");
               if (router.canGoBack()) {
                 router.dismissAll();
               } else {
@@ -115,7 +118,7 @@ export default function GroupSettingsScreen() {
         },
       ],
     );
-  }, [groupId, router]);
+  }, [groupId, router, showSnackbar]);
 
   const handleLeave = useCallback(() => {
     Alert.alert("Leave group", "Are you sure you want to leave?", [
@@ -127,6 +130,7 @@ export default function GroupSettingsScreen() {
           try {
             const token = await getTokenRef.current();
             await apiDelete(`/api/groups/${groupId}/members`, token);
+            showSnackbar("Left group");
             if (router.canGoBack()) {
               router.dismissAll();
             } else {
@@ -138,7 +142,7 @@ export default function GroupSettingsScreen() {
         },
       },
     ]);
-  }, [groupId, router]);
+  }, [groupId, router, showSnackbar]);
 
   if (loading) {
     return (

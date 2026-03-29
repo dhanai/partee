@@ -30,9 +30,9 @@ type GameTypeRow = {
   defaultSettings: Record<string, unknown>;
 };
 
-const SCORING_MODES = ["pick_lowest", "wolf_pick", "enter_strokes"] as const;
-const STANDINGS_MODES = ["skins_count", "wolf_points", "low_total", "stableford_points"] as const;
-const TEAM_FORMATIONS = ["fixed", "wolf_rotation"] as const;
+const SCORING_MODES = ["pick_lowest", "wolf_pick", "enter_strokes", "enter_dots", "enter_targets"] as const;
+const STANDINGS_MODES = ["skins_count", "wolf_points", "low_total", "stableford_points", "match_play", "nassau_match", "sixes_segments", "vegas_combined", "dots_total", "targets_count"] as const;
+const TEAM_FORMATIONS = ["fixed", "wolf_rotation", "rotating_sixes"] as const;
 
 const EMPTY_FORM: Omit<GameTypeRow, "id"> = {
   slug: "",

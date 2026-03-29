@@ -32,10 +32,10 @@ const createSchema = z.object({
   minPlayers: z.number().int().min(1).max(20).default(2),
   maxPlayers: z.number().int().min(1).max(20).default(8),
   holesOptions: z.array(z.number().int().min(1).max(27)).min(1).default([9, 18]),
-  scoringMode: z.enum(["pick_lowest", "wolf_pick", "enter_strokes"]),
-  standingsMode: z.enum(["skins_count", "wolf_points", "low_total", "stableford_points"]),
+  scoringMode: z.enum(["pick_lowest", "wolf_pick", "enter_strokes", "enter_dots", "enter_targets"]),
+  standingsMode: z.enum(["skins_count", "wolf_points", "low_total", "stableford_points", "match_play", "nassau_match", "sixes_segments", "vegas_combined", "dots_total", "targets_count"]),
   hasTeams: z.boolean().default(false),
-  teamFormation: z.enum(["fixed", "wolf_rotation"]).nullable().default(null),
+  teamFormation: z.enum(["fixed", "wolf_rotation", "rotating_sixes"]).nullable().default(null),
   settingsSchema: z.array(settingsFieldSchema).default([]),
   defaultSettings: z.record(z.string(), z.any()).default({}),
 });

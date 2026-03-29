@@ -25,6 +25,7 @@ import { ParfadeRoundDetailLiveRefresh } from "../../components/parfade-round-de
 import { RoundCoverImage } from "../../components/round-cover-image";
 import { apiDelete, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../lib/api";
 import { hapticSuccess, hapticWarning, hapticLight } from "../../lib/haptics";
+import { getCachedMeProfile } from "../../lib/me-profile-cache";
 import type { InviteSelectionUser } from "../../lib/invite-selection-store";
 import { InviteFriendsSheet } from "../../components/invite-friends-sheet";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
@@ -386,10 +387,38 @@ export default function RoundDetailsScreen() {
 
   async function rsvp(action: "claim" | "decline") {
     if (!token || !round) return;
+    const prevRound = round;
     const wasConfirmed = round.currentUserSpotStatus === "confirmed";
     setBusy(true);
     setError(null);
     setMessage(null);
+
+    const me = getCachedMeProfile();
+    const mePlayer = me ? { id: me.id, name: me.name, avatar: me.avatar } : null;
+
+    if (action === "claim" && mePlayer && round.joinPolicy === "instant") {
+      const alreadyIn = round.confirmedPlayers.some((p) => p.id === mePlayer.id);
+      setRound({
+        ...round,
+        currentUserSpotStatus: "confirmed",
+        confirmedPlayers: alreadyIn ? round.confirmedPlayers : [...round.confirmedPlayers, mePlayer],
+        confirmedCount: alreadyIn ? round.confirmedCount : round.confirmedCount + 1,
+        spotsRemaining: alreadyIn ? round.spotsRemaining : Math.max(0, round.spotsRemaining - 1),
+      });
+    } else if (action === "decline") {
+      setRound({
+        ...round,
+        currentUserSpotStatus: "declined",
+        confirmedPlayers: mePlayer
+          ? round.confirmedPlayers.filter((p) => p.id !== mePlayer.id)
+          : round.confirmedPlayers,
+        confirmedCount: wasConfirmed ? Math.max(0, round.confirmedCount - 1) : round.confirmedCount,
+        spotsRemaining: wasConfirmed ? round.spotsRemaining + 1 : round.spotsRemaining,
+        declinedPlayers: mePlayer && !round.declinedPlayers.some((p) => p.id === mePlayer.id)
+          ? [...round.declinedPlayers, mePlayer]
+          : round.declinedPlayers,
+      });
+    }
 
     try {
       const authToken = await getToken();
@@ -398,18 +427,23 @@ export default function RoundDetailsScreen() {
         { action },
         authToken,
       );
-      const refreshed = await fetchRoundDetailsAndCache(token, authToken);
-      setRound(refreshed);
 
       hapticSuccess();
       if (result.status === "requested") {
+        setRound({ ...prevRound, currentUserSpotStatus: "requested" });
         setMessage("Join request submitted.");
       } else if (result.status === "declined" || action === "decline") {
         setMessage(wasConfirmed ? "Spot released." : "Declined.");
       } else {
         setMessage("Spot claimed.");
       }
+
+      setRound((current) => {
+        if (current) setCachedRoundDetails(current);
+        return current;
+      });
     } catch (submitError) {
+      setRound(prevRound);
       setError(submitError instanceof Error ? submitError.message : "Unable to RSVP.");
     } finally {
       setBusy(false);

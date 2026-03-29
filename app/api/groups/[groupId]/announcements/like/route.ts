@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { postLikes, groupMembers } from "@/db/schema";
+import { inAppNotifications, postLikes, posts, groupMembers } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { publishPostLikeUpdated } from "@/lib/parfade-ably-publish";
+import { publishNotificationBadgeNudge } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { groupId: string } };
 
@@ -45,6 +46,18 @@ export async function POST(req: Request, { params }: Ctx) {
 
     if (existing) {
       await db.delete(postLikes).where(eq(postLikes.id, existing.id));
+
+      await db
+        .delete(inAppNotifications)
+        .where(
+          and(
+            eq(inAppNotifications.type, "post_liked"),
+            sql`${inAppNotifications.data}->>'actorUserId' = ${viewer.id}`,
+            sql`${inAppNotifications.data}->>'postId' = ${announcementId}`,
+          ),
+        )
+        .catch((e) => console.error("[like] cleanup notification", e));
+
       await publishPostLikeUpdated(announcementId, viewer.id, false).catch((e) =>
         console.error("[like] ably", e),
       );
@@ -55,6 +68,27 @@ export async function POST(req: Request, { params }: Ctx) {
       postId: announcementId,
       userId: viewer.id,
     });
+
+    const [post] = await db
+      .select({ userId: posts.userId })
+      .from(posts)
+      .where(eq(posts.id, announcementId))
+      .limit(1);
+
+    if (post && post.userId !== viewer.id) {
+      await db
+        .insert(inAppNotifications)
+        .values({
+          recipientUserId: post.userId,
+          type: "post_liked",
+          title: "Post liked",
+          body: `${viewer.name} liked your post.`,
+          data: { actorUserId: viewer.id, postId: announcementId, groupId },
+        })
+        .catch((e) => console.error("[like] insert notification", e));
+
+      publishNotificationBadgeNudge(post.userId, "post-liked").catch(() => {});
+    }
 
     await publishPostLikeUpdated(announcementId, viewer.id, true).catch((e) =>
       console.error("[like] ably", e),

@@ -10,6 +10,9 @@ export function holeCompletionAvatarUserIds(
   const mode = scoringMode ?? gameType;
   if (mode === "pick_lowest" || gameType === "skins") return skinsHoleAvatarUserIds(payload);
   if (mode === "wolf_pick" || gameType === "wolf") return wolfHoleAvatarUserIds(payload, players);
+  if (mode === "enter_strokes") return enterStrokesAvatarUserIds(payload);
+  if (mode === "enter_dots") return dotsAvatarUserIds(payload);
+  if (mode === "enter_targets") return targetsAvatarUserIds(payload, players);
   return [];
 }
 
@@ -58,4 +61,28 @@ function wolfHoleAvatarUserIds(
   }
 
   return [];
+}
+
+function enterStrokesAvatarUserIds(payload: Record<string, unknown>): string[] {
+  const scores = payload.scores;
+  if (!scores || typeof scores !== "object") return [];
+  return Object.keys(scores as Record<string, number>);
+}
+
+function dotsAvatarUserIds(payload: Record<string, unknown>): string[] {
+  const dots = payload.dots;
+  if (!dots || typeof dots !== "object") return [];
+  return Object.entries(dots as Record<string, string[]>)
+    .filter(([, arr]) => Array.isArray(arr) && arr.length > 0)
+    .map(([uid]) => uid);
+}
+
+function targetsAvatarUserIds(
+  payload: Record<string, unknown>,
+  players: GamePlayerRow[],
+): string[] {
+  const hits = payload.hits;
+  if (!hits || typeof hits !== "object") return [];
+  const h = hits as Record<string, boolean>;
+  return players.map((p) => p.userId).filter((uid) => h[uid] === true);
 }

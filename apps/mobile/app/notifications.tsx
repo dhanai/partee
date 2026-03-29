@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribeNotificationsListsRefresh } from "../lib/notifications-list-refresh";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from "react-native";
 import { apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../lib/api";
 import { buildRoundListHint, prefetchRoundOpen } from "../lib/round-details-cache";
 import { formatPlanningWindow, getTimeWindows } from "../lib/round-card-meta";
@@ -30,11 +30,12 @@ type FollowRequestsResponse = {
 
 type ActivityNotificationItem = {
   id: string;
-  type: "round_rsvp_accepted" | "round_rsvp_declined" | "group_join_request" | "new_follower";
+  type: "round_rsvp_accepted" | "round_rsvp_declined" | "group_join_request" | "new_follower" | "post_liked";
   title: string;
   body: string;
   inviteToken: string;
   groupId: string;
+  postId: string;
   actorUserId: string;
   actorName: string;
   actorAvatar: string | null;
@@ -219,271 +220,358 @@ export default function NotificationsScreen() {
     return `${dateText} • ${formatPlanningWindow(getTimeWindows(round))}`;
   }
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+  type SectionRow =
+    | { kind: "group_request"; item: ActivityNotificationItem }
+    | { kind: "new_follower"; item: ActivityNotificationItem }
+    | { kind: "post_liked"; item: ActivityNotificationItem }
+    | { kind: "round_update"; item: ActivityNotificationItem }
+    | { kind: "follow_request"; request: FollowRequestsResponse["requests"][number] }
+    | { kind: "round_invite"; round: MineRound };
 
-      {loading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={colors.fairway} />
-        </View>
-      ) : (
-        <>
-          {activityItems.filter((i) => i.type === "group_join_request").length > 0 ? (
-            <View style={styles.notificationsList}>
-              <Text style={styles.sectionMiniTitle}>Group requests</Text>
-              {activityItems
-                .filter((i) => i.type === "group_join_request")
-                .map((item) => {
-                  return (
-                  <View key={`gjr-${item.id}`} style={styles.notificationCard}>
-                    <Pressable
-                      style={styles.notificationRow}
-                      onPress={() => {
-                        if (item.actorUserId) {
-                          router.push({
-                            pathname: "/profile/[userId]",
-                            params: {
-                              userId: item.actorUserId,
-                              userName: item.actorName,
-                              userAvatar: item.actorAvatar ?? "",
-                            },
-                          });
-                        }
-                      }}
-                    >
-                      {item.actorAvatar ? (
-                        <Image source={{ uri: toAbsoluteUrl(item.actorAvatar) }} style={styles.notificationAvatar} />
-                      ) : (
-                        <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
-                          <Text style={styles.notificationAvatarInitial}>
-                            {item.actorName.trim().charAt(0).toUpperCase() || "?"}
-                          </Text>
-                        </View>
-                      )}
-                      <View style={styles.notificationMetaWrap}>
-                        <Text style={styles.notificationTitle}>{item.actorName || item.title}</Text>
-                        <Text style={styles.notificationMeta}>Wants to join {item.title}</Text>
-                      </View>
-                    </Pressable>
-                    {item.stillPending && item.joinRequestId ? (
-                      <View style={styles.notificationActionsRow}>
-                        <Pressable
-                          style={[styles.requestBtn, styles.requestApprove, groupRequestBusyId === item.joinRequestId && styles.disabledBtn]}
-                          onPress={() => void handleGroupRequestAction(item.groupId, item.joinRequestId!, "accept")}
-                          disabled={groupRequestBusyId === item.joinRequestId}
-                        >
-                          <Text style={styles.requestApproveText}>Approve</Text>
-                        </Pressable>
-                        <Pressable
-                          style={[styles.requestBtn, styles.requestDecline, groupRequestBusyId === item.joinRequestId && styles.disabledBtn]}
-                          onPress={() => void handleGroupRequestAction(item.groupId, item.joinRequestId!, "decline")}
-                          disabled={groupRequestBusyId === item.joinRequestId}
-                        >
-                          <Text style={styles.requestDeclineText}>Decline</Text>
-                        </Pressable>
-                      </View>
-                    ) : !item.stillPending ? (
-                      <Text style={[styles.notificationPill, styles.notificationPillMuted]}>Handled</Text>
-                    ) : null}
-                  </View>
-                  );
-                })}
-            </View>
-          ) : null}
+  const sections = useMemo(() => {
+    const result: { title: string; data: SectionRow[] }[] = [];
+    const groupReqs = activityItems.filter((i) => i.type === "group_join_request");
+    if (groupReqs.length > 0) {
+      result.push({ title: "Group requests", data: groupReqs.map((item) => ({ kind: "group_request" as const, item })) });
+    }
+    const followers = activityItems.filter((i) => i.type === "new_follower");
+    if (followers.length > 0) {
+      result.push({ title: "New followers", data: followers.map((item) => ({ kind: "new_follower" as const, item })) });
+    }
+    const likes = activityItems.filter((i) => i.type === "post_liked");
+    if (likes.length > 0) {
+      result.push({ title: "Likes", data: likes.map((item) => ({ kind: "post_liked" as const, item })) });
+    }
+    const rsvps = activityItems.filter((i) => i.type === "round_rsvp_accepted" || i.type === "round_rsvp_declined");
+    if (rsvps.length > 0) {
+      result.push({ title: "Round updates", data: rsvps.map((item) => ({ kind: "round_update" as const, item })) });
+    }
+    if (followRequestNotifications.length > 0) {
+      result.push({ title: "Follow requests", data: followRequestNotifications.map((request) => ({ kind: "follow_request" as const, request })) });
+    }
+    if (inviteNotifications.length > 0) {
+      result.push({ title: "Round invites", data: inviteNotifications.map((round) => ({ kind: "round_invite" as const, round })) });
+    }
+    return result;
+  }, [activityItems, followRequestNotifications, inviteNotifications]);
 
-          {activityItems.filter((i) => i.type === "new_follower").length > 0 ? (
-            <View style={styles.notificationsList}>
-              <Text style={styles.sectionMiniTitle}>New followers</Text>
-              {activityItems
-                .filter((i) => i.type === "new_follower")
-                .map((item) => (
-                  <Pressable
-                    key={`follower-${item.id}`}
-                    style={styles.notificationCard}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/profile/[userId]",
-                        params: { userId: item.actorUserId },
-                      })
-                    }
-                  >
-                    <View style={styles.notificationRow}>
-                      {item.actorAvatar ? (
-                        <Image
-                          source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
-                          style={styles.notificationAvatar}
-                        />
-                      ) : (
-                        <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
-                          <Ionicons name="person" size={16} color={colors.fairway} />
-                        </View>
-                      )}
-                      <View style={styles.notificationRowText}>
-                        <Text style={styles.notificationTitle}>{item.actorName}</Text>
-                        <Text style={styles.notificationMeta}>Started following you</Text>
-                      </View>
-                    </View>
-                  </Pressable>
-                ))}
-            </View>
-          ) : null}
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchNotificationsData();
+    } catch {
+      // silent
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchNotificationsData]);
 
-          {activityItems.filter((i) => i.type === "round_rsvp_accepted" || i.type === "round_rsvp_declined").length > 0 ? (
-            <View style={styles.notificationsList}>
-              <Text style={styles.sectionMiniTitle}>Round updates</Text>
-              {activityItems
-                .filter((i) => i.type === "round_rsvp_accepted" || i.type === "round_rsvp_declined")
-                .map((item) => (
-                  <Pressable
-                    key={`activity-${item.id}`}
-                    style={styles.notificationCard}
-                    onPressIn={() =>
-                      prefetchRoundOpen(item.inviteToken, "", () => getTokenRef.current())
-                    }
-                    onPress={() =>
-                      router.push({
-                        pathname: "/round/[token]",
-                        params: { token: item.inviteToken },
-                      })
-                    }
-                  >
-                    <Text style={styles.notificationTitle}>{item.title}</Text>
-                    <Text style={styles.notificationMeta}>{item.body}</Text>
-                    <Text
-                      style={[
-                        styles.notificationPill,
-                        item.type === "round_rsvp_declined" && styles.notificationPillMuted,
-                      ]}
-                    >
-                      {item.type === "round_rsvp_declined" ? "Declined" : "RSVP"}
-                    </Text>
-                  </Pressable>
-                ))}
-            </View>
-          ) : null}
-
-          {followRequestNotifications.length > 0 ? (
-            <View style={styles.notificationsList}>
-              <Text style={styles.sectionMiniTitle}>Follow requests</Text>
-              {followRequestNotifications.map((request) => {
-                return (
-                <View key={`follow-${request.id}`} style={styles.notificationCard}>
-                  <Pressable
-                    style={styles.notificationRow}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/profile/[userId]",
-                        params: {
-                          userId: request.followerId,
-                          userName: request.name,
-                          userAvatar: request.avatar ?? "",
-                        },
-                      })
-                    }
-                  >
-                    {request.avatar ? (
-                      <Image source={{ uri: toAbsoluteUrl(request.avatar) }} style={styles.notificationAvatar} />
-                    ) : (
-                      <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
-                        <Text style={styles.notificationAvatarInitial}>
-                          {request.name.trim().charAt(0).toUpperCase() || "?"}
-                        </Text>
-                      </View>
-                    )}
-                    <View style={styles.notificationMetaWrap}>
-                      <Text style={styles.notificationTitle}>{request.name}</Text>
-                      <Text style={styles.notificationMeta}>Wants to follow your profile</Text>
-                    </View>
-                  </Pressable>
-                  <View style={styles.notificationActionsRow}>
-                    <Pressable
-                      style={[styles.requestBtn, styles.requestApprove, requestBusyId === request.followerId && styles.disabledBtn]}
-                      onPress={() => void handleFollowRequestAction(request.followerId, "approve")}
-                      disabled={requestBusyId === request.followerId}
-                    >
-                      <Text style={styles.requestApproveText}>Approve</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.requestBtn, styles.requestDecline, requestBusyId === request.followerId && styles.disabledBtn]}
-                      onPress={() => void handleFollowRequestAction(request.followerId, "decline")}
-                      disabled={requestBusyId === request.followerId}
-                    >
-                      <Text style={styles.requestDeclineText}>Decline</Text>
-                    </Pressable>
-                  </View>
-                </View>
-                );
-              })}
-            </View>
-          ) : null}
-
-          {inviteNotifications.length > 0 ? (
-            <View style={styles.notificationsList}>
-              <Text style={styles.sectionMiniTitle}>Round invites</Text>
-              {inviteNotifications.map((round) => (
-                <Pressable
-                  key={`invite-${round.id}`}
-                  style={styles.notificationCard}
-                  onPressIn={() =>
-                    prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getTokenRef.current())
-                  }
-                  onPress={() =>
-                    router.push({
-                      pathname: "/round/[token]",
-                      params: {
-                        token: round.inviteToken,
-                        roundHint: buildRoundListHint(round),
-                      },
-                    })
-                  }
-                >
-                  <Text style={styles.notificationTitle}>{round.courseName ?? "Round invite"}</Text>
-                  <Text style={styles.notificationMeta}>{formatWhen(round)}</Text>
-                  <Text style={styles.notificationPill}>
-                    {round.spotStatus === "requested" ? "Request pending" : "Invited"}
+  const renderItem = useCallback(
+    ({ item: row }: { item: SectionRow }) => {
+      if (row.kind === "group_request") {
+        const item = row.item;
+        return (
+          <View style={styles.notificationCard}>
+            <Pressable
+              style={styles.notificationRow}
+              onPress={() => {
+                if (item.actorUserId) {
+                  router.push({
+                    pathname: "/profile/[userId]",
+                    params: {
+                      userId: item.actorUserId,
+                      userName: item.actorName,
+                      userAvatar: item.actorAvatar ?? "",
+                    },
+                  });
+                }
+              }}
+            >
+              {item.actorAvatar ? (
+                <Image source={{ uri: toAbsoluteUrl(item.actorAvatar) }} style={styles.notificationAvatar} />
+              ) : (
+                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                  <Text style={styles.notificationAvatarInitial}>
+                    {item.actorName.trim().charAt(0).toUpperCase() || "?"}
                   </Text>
+                </View>
+              )}
+              <View style={styles.notificationMetaWrap}>
+                <Text style={styles.notificationTitle}>{item.actorName || item.title}</Text>
+                <Text style={styles.notificationMeta}>Wants to join {item.title}</Text>
+              </View>
+            </Pressable>
+            {item.stillPending && item.joinRequestId ? (
+              <View style={styles.notificationActionsRow}>
+                <Pressable
+                  style={[styles.requestBtn, styles.requestApprove, groupRequestBusyId === item.joinRequestId && styles.disabledBtn]}
+                  onPress={() => void handleGroupRequestAction(item.groupId, item.joinRequestId!, "accept")}
+                  disabled={groupRequestBusyId === item.joinRequestId}
+                >
+                  <Text style={styles.requestApproveText}>Approve</Text>
                 </Pressable>
-              ))}
+                <Pressable
+                  style={[styles.requestBtn, styles.requestDecline, groupRequestBusyId === item.joinRequestId && styles.disabledBtn]}
+                  onPress={() => void handleGroupRequestAction(item.groupId, item.joinRequestId!, "decline")}
+                  disabled={groupRequestBusyId === item.joinRequestId}
+                >
+                  <Text style={styles.requestDeclineText}>Decline</Text>
+                </Pressable>
+              </View>
+            ) : !item.stillPending ? (
+              <Text style={[styles.notificationPill, styles.notificationPillMuted]}>Handled</Text>
+            ) : null}
+          </View>
+        );
+      }
+      if (row.kind === "new_follower") {
+        const item = row.item;
+        return (
+          <Pressable
+            style={styles.notificationCard}
+            onPress={() =>
+              router.push({
+                pathname: "/profile/[userId]",
+                params: { userId: item.actorUserId },
+              })
+            }
+          >
+            <View style={styles.notificationRow}>
+              {item.actorAvatar ? (
+                <Image
+                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
+                  style={styles.notificationAvatar}
+                />
+              ) : (
+                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                  <Ionicons name="person" size={16} color={colors.fairway} />
+                </View>
+              )}
+              <View style={styles.notificationRowText}>
+                <Text style={styles.notificationTitle}>{item.actorName}</Text>
+                <Text style={styles.notificationMeta}>Started following you</Text>
+              </View>
             </View>
-          ) : null}
+          </Pressable>
+        );
+      }
+      if (row.kind === "post_liked") {
+        const item = row.item;
+        return (
+          <Pressable
+            style={styles.notificationCard}
+            onPress={() => {
+              if (item.groupId) {
+                router.push({
+                  pathname: "/group/[groupId]",
+                  params: { groupId: item.groupId },
+                });
+              }
+            }}
+          >
+            <View style={styles.notificationRow}>
+              {item.actorAvatar ? (
+                <Image
+                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
+                  style={styles.notificationAvatar}
+                />
+              ) : (
+                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                  <Ionicons name="heart" size={14} color={colors.fairway} />
+                </View>
+              )}
+              <View style={styles.notificationRowText}>
+                <Text style={styles.notificationTitle}>{item.actorName}</Text>
+                <Text style={styles.notificationMeta}>Liked your post</Text>
+              </View>
+            </View>
+          </Pressable>
+        );
+      }
+      if (row.kind === "round_update") {
+        const item = row.item;
+        return (
+          <Pressable
+            style={styles.notificationCard}
+            onPressIn={() =>
+              prefetchRoundOpen(item.inviteToken, "", () => getTokenRef.current())
+            }
+            onPress={() =>
+              router.push({
+                pathname: "/round/[token]",
+                params: { token: item.inviteToken },
+              })
+            }
+          >
+            <Text style={styles.notificationTitle}>{item.title}</Text>
+            <Text style={styles.notificationMeta}>{item.body}</Text>
+            <Text
+              style={[
+                styles.notificationPill,
+                item.type === "round_rsvp_declined" && styles.notificationPillMuted,
+              ]}
+            >
+              {item.type === "round_rsvp_declined" ? "Declined" : "RSVP"}
+            </Text>
+          </Pressable>
+        );
+      }
+      if (row.kind === "follow_request") {
+        const request = row.request;
+        return (
+          <View style={styles.notificationCard}>
+            <Pressable
+              style={styles.notificationRow}
+              onPress={() =>
+                router.push({
+                  pathname: "/profile/[userId]",
+                  params: {
+                    userId: request.followerId,
+                    userName: request.name,
+                    userAvatar: request.avatar ?? "",
+                  },
+                })
+              }
+            >
+              {request.avatar ? (
+                <Image source={{ uri: toAbsoluteUrl(request.avatar) }} style={styles.notificationAvatar} />
+              ) : (
+                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                  <Text style={styles.notificationAvatarInitial}>
+                    {request.name.trim().charAt(0).toUpperCase() || "?"}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.notificationMetaWrap}>
+                <Text style={styles.notificationTitle}>{request.name}</Text>
+                <Text style={styles.notificationMeta}>Wants to follow your profile</Text>
+              </View>
+            </Pressable>
+            <View style={styles.notificationActionsRow}>
+              <Pressable
+                style={[styles.requestBtn, styles.requestApprove, requestBusyId === request.followerId && styles.disabledBtn]}
+                onPress={() => void handleFollowRequestAction(request.followerId, "approve")}
+                disabled={requestBusyId === request.followerId}
+              >
+                <Text style={styles.requestApproveText}>Approve</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.requestBtn, styles.requestDecline, requestBusyId === request.followerId && styles.disabledBtn]}
+                onPress={() => void handleFollowRequestAction(request.followerId, "decline")}
+                disabled={requestBusyId === request.followerId}
+              >
+                <Text style={styles.requestDeclineText}>Decline</Text>
+              </Pressable>
+            </View>
+          </View>
+        );
+      }
+      // round_invite
+      const round = row.round;
+      return (
+        <Pressable
+          style={styles.notificationCard}
+          onPressIn={() =>
+            prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getTokenRef.current())
+          }
+          onPress={() =>
+            router.push({
+              pathname: "/round/[token]",
+              params: {
+                token: round.inviteToken,
+                roundHint: buildRoundListHint(round),
+              },
+            })
+          }
+        >
+          <Text style={styles.notificationTitle}>{round.courseName ?? "Round invite"}</Text>
+          <Text style={styles.notificationMeta}>{formatWhen(round)}</Text>
+          <Text style={styles.notificationPill}>
+            {round.spotStatus === "requested" ? "Request pending" : "Invited"}
+          </Text>
+        </Pressable>
+      );
+    },
+    [groupRequestBusyId, requestBusyId, handleGroupRequestAction, handleFollowRequestAction, router],
+  );
 
-          {inviteNotifications.length === 0 &&
-          followRequestNotifications.length === 0 &&
-          activityItems.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <View style={styles.emptyIconWrap}>
-                <Ionicons name="notifications-off-outline" size={18} color={colors.fairway} />
-              </View>
-              <Text style={styles.emptyTitle}>All caught up</Text>
-              <Text style={styles.emptyText}>
-                No invites, follow requests, or round updates right now.
-              </Text>
-              <View style={styles.emptyActionsRow}>
-                <Pressable
-                  style={styles.emptySecondaryBtn}
-                  onPress={() => {
-                    router.back();
-                    setTimeout(() => router.navigate("/(tabs)"), 50);
-                  }}
-                >
-                  <Text style={styles.emptySecondaryBtnText}>Browse Discover</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.emptyPrimaryBtn}
-                  onPress={() => {
-                    router.back();
-                    setTimeout(() => router.navigate({ pathname: "/(tabs)/rounds", params: { tab: "invited", refresh: String(Date.now()) } }), 50);
-                  }}
-                >
-                  <Text style={styles.emptyPrimaryBtnText}>Open Invited</Text>
-                </Pressable>
-              </View>
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: { title: string } }) => (
+      <Text style={styles.sectionMiniTitle}>{section.title}</Text>
+    ),
+    [],
+  );
+
+  const keyExtractor = useCallback((row: SectionRow, index: number) => {
+    if (row.kind === "follow_request") return `fr-${row.request.followerId}`;
+    if (row.kind === "round_invite") return `inv-${row.round.id}`;
+    return `${row.kind}-${row.item.id}-${index}`;
+  }, []);
+
+  const isEmpty =
+    !loading &&
+    inviteNotifications.length === 0 &&
+    followRequestNotifications.length === 0 &&
+    activityItems.length === 0;
+
+  return (
+    <SectionList
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      sections={sections}
+      keyExtractor={keyExtractor}
+      renderItem={renderItem}
+      renderSectionHeader={renderSectionHeader}
+      stickySectionHeadersEnabled={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.fairway} />
+      }
+      ListHeaderComponent={
+        <>
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {loading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator color={colors.fairway} />
             </View>
           ) : null}
         </>
-      )}
-    </ScrollView>
+      }
+      ListEmptyComponent={
+        !loading && isEmpty ? (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="notifications-off-outline" size={18} color={colors.fairway} />
+            </View>
+            <Text style={styles.emptyTitle}>All caught up</Text>
+            <Text style={styles.emptyText}>
+              No invites, follow requests, or round updates right now.
+            </Text>
+            <View style={styles.emptyActionsRow}>
+              <Pressable
+                style={styles.emptySecondaryBtn}
+                onPress={() => {
+                  router.back();
+                  setTimeout(() => router.navigate("/(tabs)"), 50);
+                }}
+              >
+                <Text style={styles.emptySecondaryBtnText}>Browse Discover</Text>
+              </Pressable>
+              <Pressable
+                style={styles.emptyPrimaryBtn}
+                onPress={() => {
+                  router.back();
+                  setTimeout(() => router.navigate({ pathname: "/(tabs)/rounds", params: { tab: "invited", refresh: String(Date.now()) } }), 50);
+                }}
+              >
+                <Text style={styles.emptyPrimaryBtnText}>Open Invited</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null
+      }
+      keyboardShouldPersistTaps="handled"
+    />
   );
 }
 

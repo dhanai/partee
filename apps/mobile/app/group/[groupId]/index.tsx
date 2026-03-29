@@ -39,6 +39,7 @@ import { parfadeGroupChannel, parfadePostChannel } from "../../../lib/parfade-ab
 import { parseParfadeRealtimeMessage } from "../../../lib/parfade-ably-messages";
 import { uploadImage, AVATAR_MAX_BYTES, COVER_MAX_BYTES } from "../../../lib/upload-image";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
+import { useSnackbar } from "../../../lib/snackbar-context";
 import { colors } from "../../../lib/theme";
 
 type GroupDetail = {
@@ -156,6 +157,7 @@ export default function GroupLandingScreen() {
   // Image upload
   const [uploadingImage, setUploadingImage] = useState<"profile" | "hero" | null>(null);
 
+  const { show: showSnackbar } = useSnackbar();
   const [overflowItem, setOverflowItem] = useState<ActivityItem | null>(null);
   const [reportItem, setReportItem] = useState<ActivityItem | null>(null);
   const [reportComment, setReportComment] = useState<CommentItem | null>(null);
@@ -404,14 +406,18 @@ export default function GroupLandingScreen() {
         token,
       );
       if (data.status === "joined" || data.status === "already_member") {
+        setGroup((prev) =>
+          prev ? { ...prev, myRole: "member", memberCount: prev.memberCount + 1 } : prev,
+        );
+        showSnackbar("Joined group");
         void load({ silent: true });
       } else if (data.status === "requested") {
-        Alert.alert("Request sent", "An admin will review your request.");
+        showSnackbar("Request sent — awaiting approval");
       }
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Could not join.");
     }
-  }, [groupId, load]);
+  }, [groupId, load, showSnackbar]);
 
   // ── Announcements ─────────────────────────────────────────────
 
@@ -448,7 +454,8 @@ export default function GroupLandingScreen() {
                 `/api/groups/${groupId}/announcements?id=${id}`,
                 token,
               );
-              void load({ silent: true });
+              setActivity((prev) => prev.filter((a) => rawPostId(a) !== id));
+              showSnackbar("Post deleted");
             } catch (e) {
               Alert.alert("Error", e instanceof Error ? e.message : "Could not delete.");
             }
@@ -456,7 +463,7 @@ export default function GroupLandingScreen() {
         },
       ]);
     },
-    [groupId, load],
+    [groupId, showSnackbar],
   );
 
   const handleToggleLike = useCallback(
@@ -518,14 +525,13 @@ export default function GroupLandingScreen() {
           { id, isPinned: newPinned },
           token,
         );
-        void load({ silent: true });
       } catch {
         setActivity((prev) =>
           prev.map((a) => (a.id === item.id ? { ...a, isPinned: item.isPinned } : a)),
         );
       }
     },
-    [groupId, load],
+    [groupId],
   );
 
   // ── Comments ────────────────────────────────────────────────

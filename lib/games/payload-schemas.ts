@@ -112,6 +112,20 @@ export const enterStrokesPayloadSchema = z.object({
 
 export type EnterStrokesPayload = z.infer<typeof enterStrokesPayloadSchema>;
 
+/** enter_dots: achievement keys earned by each player per hole */
+export const dotsHolePayloadSchema = z.object({
+  dots: z.record(z.string(), z.array(z.string())),
+});
+
+export type DotsHolePayload = z.infer<typeof dotsHolePayloadSchema>;
+
+/** enter_targets: whether each player hit the target on this hole */
+export const targetsHolePayloadSchema = z.object({
+  hits: z.record(z.string(), z.boolean()),
+});
+
+export type TargetsHolePayload = z.infer<typeof targetsHolePayloadSchema>;
+
 /**
  * Parse and validate a hole payload.
  * `scoringMode` overrides legacy `gameType`-based branching when provided.
@@ -183,6 +197,24 @@ export function parseHolePayload(
     for (const uid of Object.keys(data.scores)) {
       if (!set.has(uid)) {
         throw new Error("scores keys must be session player IDs");
+      }
+    }
+    return data as unknown as Record<string, unknown>;
+  }
+  if (mode === "enter_dots") {
+    const data = dotsHolePayloadSchema.parse(raw);
+    for (const uid of Object.keys(data.dots)) {
+      if (!set.has(uid)) {
+        throw new Error("dots keys must be session player IDs");
+      }
+    }
+    return data as unknown as Record<string, unknown>;
+  }
+  if (mode === "enter_targets") {
+    const data = targetsHolePayloadSchema.parse(raw);
+    for (const uid of Object.keys(data.hits)) {
+      if (!set.has(uid)) {
+        throw new Error("hits keys must be session player IDs");
       }
     }
     return data as unknown as Record<string, unknown>;

@@ -32,6 +32,24 @@ import { SkinsHoleEditor, type SkinsPayload } from "../../../components/games/sk
 import { WolfRecapFunBlock } from "../../../components/games/wolf-recap-fun-block";
 import { WolfHoleEditor, type WolfPayload } from "../../../components/games/wolf-hole-editor";
 import { EnterStrokesEditor, type EnterStrokesPayload } from "../../../components/games/enter-strokes-editor";
+import { DotsHoleEditor, type DotsPayload } from "../../../components/games/dots-hole-editor";
+import { TargetsHoleEditor, type TargetsPayload } from "../../../components/games/targets-hole-editor";
+import {
+  GenericStandingsBlock,
+  NassauStandingsBlock,
+  SixesStandingsBlock,
+  VegasStandingsBlock,
+} from "../../../components/games/standings-block";
+import {
+  calcLowTotal,
+  calcStableford,
+  calcMatchPlay,
+  calcNassauMatch,
+  calcSixesSegments,
+  calcVegasCombined,
+  calcDotsTotal,
+  calcTargetsCount,
+} from "../../../lib/standings-calc";
 import {
   deleteGameSession,
   getGameSession,
@@ -635,6 +653,49 @@ export default function GameSessionScreen() {
             </View>
           ) : null}
 
+          {standingsMode === "low_total" ? (
+            <GenericStandingsBlock title="Standings" entries={calcLowTotal(players, holeMap, holesCount)} />
+          ) : null}
+
+          {standingsMode === "stableford_points" ? (
+            <GenericStandingsBlock
+              title="Points (Stableford)"
+              entries={calcStableford(players, holeMap, holesCount, Number(session.settings?.coursePar) || 4)}
+            />
+          ) : null}
+
+          {standingsMode === "match_play" ? (
+            <GenericStandingsBlock title="Match Play" entries={calcMatchPlay(players, holeMap, holesCount)} />
+          ) : null}
+
+          {standingsMode === "nassau_match" ? (() => {
+            const nassau = calcNassauMatch(players, holeMap, holesCount);
+            return <NassauStandingsBlock front={nassau.front} back={nassau.back} overall={nassau.overall} />;
+          })() : null}
+
+          {standingsMode === "sixes_segments" ? (() => {
+            const sixes = calcSixesSegments(players, holeMap);
+            return <SixesStandingsBlock segments={sixes.segments} playerWins={sixes.playerWins} players={players} />;
+          })() : null}
+
+          {standingsMode === "vegas_combined" ? (
+            <VegasStandingsBlock
+              teams={calcVegasCombined(
+                players, holeMap, holesCount,
+                session.settings?.vegasBirdieFlip !== false,
+                Number(session.settings?.coursePar) || 4,
+              )}
+            />
+          ) : null}
+
+          {standingsMode === "dots_total" ? (
+            <GenericStandingsBlock title="Dots" entries={calcDotsTotal(players, holeMap, holesCount)} />
+          ) : null}
+
+          {standingsMode === "targets_count" ? (
+            <GenericStandingsBlock title="Targets" entries={calcTargetsCount(players, holeMap, holesCount)} />
+          ) : null}
+
           {recapOnly && session.gameType !== "wolf" ? (
             <View style={styles.recapBlurb}>
               <Text style={styles.sub}>
@@ -786,6 +847,23 @@ export default function GameSessionScreen() {
                 holeNumber={editorHole}
                 players={players}
                 initial={(editorPayload?.payload as EnterStrokesPayload) ?? null}
+                onCancel={() => setEditorHole(null)}
+                onSave={(p) => void saveHole(p)}
+              />
+            ) : scoringMode === "enter_dots" && editorHole != null ? (
+              <DotsHoleEditor
+                holeNumber={editorHole}
+                players={players}
+                initial={(editorPayload?.payload as DotsPayload) ?? null}
+                onCancel={() => setEditorHole(null)}
+                onSave={(p) => void saveHole(p)}
+              />
+            ) : scoringMode === "enter_targets" && editorHole != null ? (
+              <TargetsHoleEditor
+                holeNumber={editorHole}
+                players={players}
+                category={String(session.settings?.targetCategory ?? "pars")}
+                initial={(editorPayload?.payload as TargetsPayload) ?? null}
                 onCancel={() => setEditorHole(null)}
                 onSave={(p) => void saveHole(p)}
               />

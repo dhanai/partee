@@ -43,6 +43,7 @@ export const notificationEventEnum = pgEnum("notification_event_type", [
   "round_rsvp_declined",
   "group_join_request",
   "new_follower",
+  "post_liked",
 ]);
 
 export const gameTypeEnum = pgEnum("game_type", [
