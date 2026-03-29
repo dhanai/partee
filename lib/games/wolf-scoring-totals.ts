@@ -17,8 +17,8 @@ function wolfStakeMultiplierForHole(
     if (row.holeNumber >= currentHole) break;
     const p = row.payload as WolfHolePayload;
     if (p?.outcome === "tie") {
-      if (tieHandling === "carry") m *= 2;
-      else m = 1;
+      if (tieHandling === "carry") m += 1;
+      // wash: m stays at 1
     } else {
       m = 1;
     }

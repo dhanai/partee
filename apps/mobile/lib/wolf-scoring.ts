@@ -14,8 +14,8 @@ export function wolfStakeMultiplierForHole(
     if (row.holeNumber >= currentHole) break;
     const p = row.payload as WolfPayload;
     if (p?.outcome === "tie") {
-      if (tieHandling === "carry") m *= 2;
-      else m = 1;
+      if (tieHandling === "carry") m += 1;
+      // wash: m stays at 1
     } else {
       m = 1;
     }
@@ -24,7 +24,7 @@ export function wolfStakeMultiplierForHole(
 }
 
 /**
- * Points earned on one settled hole (not on ties). `stake` is the carry multiplier (1, 2, 4, …).
+ * Points earned on one settled hole (not on ties). `stake` is the carry multiplier (1, 2, 3, …).
  *
  * **Lone wolf (4 players):** totals stay balanced — Team Wolf wins → +3×stake to wolf; Team Pack wins → +1×stake
  * to each of the three pack members (3×1 = 3 vs 3). Same pattern at 6 vs 2+2+2, 9 vs 3+3+3, etc.
