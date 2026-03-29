@@ -1,12 +1,12 @@
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
+  FlatList,
   InteractionManager,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,6 +15,7 @@ import {
 import { Image } from "expo-image";
 import { InitialAvatar } from "../components/initial-avatar";
 import { apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
+import { hapticLight } from "../lib/haptics";
 import { prefetchPublicProfile } from "../lib/public-profile-cache";
 import type { ConnectionRelationship } from "../components/profile-connection-list";
 import { colors } from "../lib/theme";
@@ -50,6 +51,22 @@ function actionDisabled(r: ConnectionRelationship): boolean {
   return r === "self" || r === "requested_by_viewer";
 }
 
+function nextRelationshipAfterFollow(
+  prev: ConnectionRelationship,
+  apiStatus: string,
+): ConnectionRelationship {
+  if (apiStatus === "requested") return "requested_by_viewer";
+  if (prev === "requested_to_viewer") return "mutual";
+  return "following";
+}
+
+function nextRelationshipAfterUnfollow(
+  prev: ConnectionRelationship,
+): ConnectionRelationship {
+  if (prev === "mutual") return "requested_to_viewer";
+  return "none";
+}
+
 export default function SearchUsersScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
@@ -58,7 +75,7 @@ export default function SearchUsersScreen() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -98,28 +115,156 @@ export default function SearchUsersScreen() {
     void search(debouncedQuery.trim());
   }, [debouncedQuery, search]);
 
-  const toggleFollow = useCallback(async (user: UserResult) => {
-    if (user.relationship === "self" || busyId) return;
-    const token = await getTokenRef.current();
-    if (!token) return;
+  const updateRelationship = useCallback(
+    (userId: string, relationship: ConnectionRelationship) => {
+      setResults((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, relationship } : u)),
+      );
+    },
+    [],
+  );
 
-    const shouldUnfollow =
-      user.relationship === "following" || user.relationship === "mutual";
+  const toggleFollow = useCallback(
+    async (user: UserResult) => {
+      if (user.relationship === "self") return;
+      const token = await getTokenRef.current();
+      if (!token) return;
 
-    setBusyId(user.id);
-    try {
-      if (shouldUnfollow) {
-        await apiDelete(`/api/users/${user.id}/follow`, token);
-      } else {
-        await apiPost(`/api/users/${user.id}/follow`, {}, token);
+      const shouldUnfollow =
+        user.relationship === "following" || user.relationship === "mutual";
+
+      hapticLight();
+
+      const optimistic = shouldUnfollow
+        ? nextRelationshipAfterUnfollow(user.relationship)
+        : nextRelationshipAfterFollow(user.relationship, "accepted");
+      updateRelationship(user.id, optimistic);
+
+      setBusyIds((prev) => new Set(prev).add(user.id));
+      try {
+        if (shouldUnfollow) {
+          await apiDelete(`/api/users/${user.id}/follow`, token);
+        } else {
+          const res = await apiPost<{ ok: boolean; status: string }>(
+            `/api/users/${user.id}/follow`,
+            {},
+            token,
+          );
+          const confirmed = nextRelationshipAfterFollow(
+            user.relationship,
+            res.status,
+          );
+          if (confirmed !== optimistic) {
+            updateRelationship(user.id, confirmed);
+          }
+        }
+      } catch {
+        updateRelationship(user.id, user.relationship);
+      } finally {
+        setBusyIds((prev) => {
+          const next = new Set(prev);
+          next.delete(user.id);
+          return next;
+        });
       }
-      void search(debouncedQuery.trim());
-    } catch {
-      // ignore
-    } finally {
-      setBusyId(null);
-    }
-  }, [busyId, search, debouncedQuery]);
+    },
+    [updateRelationship],
+  );
+
+  const listState = useMemo(() => {
+    const q = query.trim();
+    if (q.length < 2) return "idle" as const;
+    if (searching && results.length === 0) return "searching" as const;
+    if (!searching && results.length === 0) return "empty" as const;
+    return "results" as const;
+  }, [query, searching, results.length]);
+
+  const renderItem = useCallback(
+    ({ item: u }: { item: UserResult }) => {
+      const label = actionLabel(u.relationship);
+      const isBusy = busyIds.has(u.id);
+      const disabled = actionDisabled(u.relationship) || isBusy;
+      const isFollowingStyle =
+        u.relationship === "following" || u.relationship === "mutual";
+
+      return (
+        <View style={styles.row}>
+          <Pressable
+            style={styles.rowMain}
+            onPressIn={() => {
+              prefetchPublicProfile(u.id, () => getTokenRef.current());
+              if (u.avatar) Image.prefetch(toAbsoluteUrl(u.avatar));
+            }}
+            onPress={() =>
+              router.push({
+                pathname: "/profile/[userId]",
+                params: {
+                  userId: u.id,
+                  userName: u.name,
+                  userAvatar: u.avatar ?? "",
+                },
+              })
+            }
+          >
+            {u.avatar ? (
+              <Image
+                source={toAbsoluteUrl(u.avatar)}
+                style={styles.avatar}
+                contentFit="cover"
+                transition={0}
+              />
+            ) : (
+              <InitialAvatar name={u.name} size={44} />
+            )}
+            <View style={styles.meta}>
+              <Text style={styles.name} numberOfLines={1}>
+                {u.name}
+              </Text>
+              {u.handicap?.trim() ? (
+                <Text style={styles.sub} numberOfLines={1}>
+                  Handicap {u.handicap.trim()}
+                </Text>
+              ) : null}
+            </View>
+          </Pressable>
+          {label ? (
+            <Pressable
+              style={[
+                styles.actionBtn,
+                isFollowingStyle
+                  ? styles.actionBtnFollowing
+                  : styles.actionBtnFollow,
+                disabled && styles.actionBtnDisabled,
+              ]}
+              onPress={() => void toggleFollow(u)}
+              disabled={disabled}
+            >
+              {isBusy ? (
+                <ActivityIndicator
+                  color={isFollowingStyle ? colors.text : "#fff"}
+                  size="small"
+                />
+              ) : (
+                <Text
+                  style={
+                    isFollowingStyle
+                      ? styles.actionTextFollowing
+                      : styles.actionTextFollow
+                  }
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              )}
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    },
+    [busyIds, toggleFollow, router],
+  );
+
+  const keyExtractor = useCallback((u: UserResult) => u.id, []);
 
   return (
     <View style={styles.root}>
@@ -137,11 +282,11 @@ export default function SearchUsersScreen() {
         />
       </View>
 
-      {searching ? (
+      {listState === "searching" ? (
         <View style={styles.centered}>
           <ActivityIndicator color={colors.fairway} />
         </View>
-      ) : query.trim().length >= 2 && results.length === 0 ? (
+      ) : listState === "empty" ? (
         <View style={styles.emptyWrap}>
           <Ionicons name="search-outline" size={48} color={colors.border} />
           <Text style={styles.emptyTitle}>No users found</Text>
@@ -149,7 +294,7 @@ export default function SearchUsersScreen() {
             Try a different name or invite them to Parfade.
           </Text>
         </View>
-      ) : query.trim().length < 2 ? (
+      ) : listState === "idle" ? (
         <View style={styles.emptyWrap}>
           <Ionicons name="person-outline" size={48} color={colors.border} />
           <Text style={styles.emptyTitle}>Find golfers</Text>
@@ -158,89 +303,15 @@ export default function SearchUsersScreen() {
           </Text>
         </View>
       ) : (
-        <ScrollView
+        <FlatList
+          data={results}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
-        >
-          {results.map((u) => {
-            const label = actionLabel(u.relationship);
-            const disabled = actionDisabled(u.relationship) || busyId === u.id;
-            const isFollowingStyle =
-              u.relationship === "following" || u.relationship === "mutual";
-
-            return (
-              <View key={u.id} style={styles.row}>
-                <Pressable
-                  style={styles.rowMain}
-                  onPressIn={() => {
-                    prefetchPublicProfile(u.id, () => getTokenRef.current());
-                    if (u.avatar) Image.prefetch(toAbsoluteUrl(u.avatar));
-                  }}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/profile/[userId]",
-                      params: {
-                        userId: u.id,
-                        userName: u.name,
-                        userAvatar: u.avatar ?? "",
-                      },
-                    })
-                  }
-                >
-                  {u.avatar ? (
-                    <Image
-                      source={toAbsoluteUrl(u.avatar)}
-                      style={styles.avatar}
-                      contentFit="cover"
-                      transition={0}
-                    />
-                  ) : (
-                    <InitialAvatar name={u.name} size={44} />
-                  )}
-                  <View style={styles.meta}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {u.name}
-                    </Text>
-                    {u.handicap?.trim() ? (
-                      <Text style={styles.sub} numberOfLines={1}>
-                        Handicap {u.handicap.trim()}
-                      </Text>
-                    ) : null}
-                  </View>
-                </Pressable>
-                {label ? (
-                  <Pressable
-                    style={[
-                      styles.actionBtn,
-                      isFollowingStyle ? styles.actionBtnFollowing : styles.actionBtnFollow,
-                      disabled && styles.actionBtnDisabled,
-                    ]}
-                    onPress={() => void toggleFollow(u)}
-                    disabled={disabled}
-                  >
-                    {busyId === u.id ? (
-                      <ActivityIndicator
-                        color={isFollowingStyle ? colors.text : "#fff"}
-                        size="small"
-                      />
-                    ) : (
-                      <Text
-                        style={
-                          isFollowingStyle ? styles.actionTextFollowing : styles.actionTextFollow
-                        }
-                        numberOfLines={1}
-                      >
-                        {label}
-                      </Text>
-                    )}
-                  </Pressable>
-                ) : null}
-              </View>
-            );
-          })}
-        </ScrollView>
+        />
       )}
     </View>
   );
@@ -297,7 +368,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  rowMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12, minWidth: 0 },
+  rowMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
+  },
   avatar: { width: 44, height: 44, borderRadius: 999, backgroundColor: "#dfe6df" },
   meta: { flex: 1, minWidth: 0 },
   name: { fontWeight: "700", color: colors.text, fontSize: 16 },

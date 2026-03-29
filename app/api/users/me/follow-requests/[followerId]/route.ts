@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { userFollows } from "@/db/schema";
+import { inAppNotifications, userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { publishAfterProfileUpdated, publishNotificationBadgeNudge } from "@/lib/parfade-ably-publish";
 
@@ -40,6 +40,23 @@ export async function POST(req: Request, { params }: RouteContext) {
         .update(userFollows)
         .set({ status: "accepted", updatedAt: new Date() })
         .where(eq(userFollows.id, existing.id));
+
+      const [follower] = await db
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, params.followerId))
+        .limit(1);
+
+      if (follower) {
+        await db.insert(inAppNotifications).values({
+          recipientUserId: viewer.id,
+          type: "new_follower",
+          title: "New follower",
+          body: `${follower.name} started following you.`,
+          data: { actorUserId: params.followerId },
+        });
+      }
+
       await Promise.all([
         publishAfterProfileUpdated(viewer.id),
         publishNotificationBadgeNudge(params.followerId, "follow-accepted"),

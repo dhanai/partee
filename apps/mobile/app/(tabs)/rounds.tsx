@@ -20,6 +20,7 @@ import { NotificationMustardDot } from "../../components/notification-mustard-do
 import { RoundListCard } from "../../components/round-list-card";
 import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
 import { apiDelete, apiGet, apiPost } from "../../lib/api";
+import { useSnackbar } from "../../lib/snackbar-context";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
 import { buildRoundListHint, prefetchRoundOpen } from "../../lib/round-details-cache";
 import {
@@ -103,6 +104,7 @@ export default function MyRoundsScreen() {
   const { getToken } = useAuth();
   const { showBadge: showNotificationBadge, refresh: refreshNotificationBadge } =
     useNotificationBadge();
+  const { show: showSnackbar } = useSnackbar();
   const { hasAnyUnreadChat, reportConversations } = useChatUnread();
   const params = useLocalSearchParams<{
     tab?: string | string[];
@@ -454,6 +456,7 @@ export default function MyRoundsScreen() {
       await apiDelete<unknown>(`/api/rounds/${round.inviteToken}`, authToken);
       emitRoundListsShouldRefresh();
       setHosting((prev) => prev.filter((r) => r.id !== round.id));
+      showSnackbar("Round deleted");
     } catch (deleteError) {
       setError(
         deleteError instanceof Error ? deleteError.message : "Could not delete round.",

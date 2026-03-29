@@ -53,8 +53,6 @@ export async function recordHostRoundRsvpAndMaybePush(input: {
 
   publishNotificationBadgeNudge(input.hostId, "round-rsvp");
 
-  if (!accepted) return;
-
   const [row] = await db
     .select({ token: users.expoPushToken })
     .from(users)

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { userFollows, users } from "@/db/schema";
+import { inAppNotifications, userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyFollowRequest } from "@/lib/notify-user";
+import { publishNotificationBadgeNudge } from "@/lib/parfade-ably-publish";
 
 type RouteContext = {
   params: { userId: string };
@@ -43,6 +44,15 @@ export async function POST(_req: Request, { params }: RouteContext) {
       });
       if (desiredStatus === "requested") {
         await notifyFollowRequest({ followedUserId: targetUserId, followerName: viewer.name });
+      } else if (desiredStatus === "accepted") {
+        await db.insert(inAppNotifications).values({
+          recipientUserId: targetUserId,
+          type: "new_follower",
+          title: "New follower",
+          body: `${viewer.name} started following you.`,
+          data: { actorUserId: viewer.id },
+        });
+        publishNotificationBadgeNudge(targetUserId, "new-follower");
       }
       return NextResponse.json({ ok: true, status: desiredStatus });
     }
@@ -79,6 +89,16 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     await db
       .delete(userFollows)
       .where(and(eq(userFollows.followerId, viewer.id), eq(userFollows.followedId, targetUserId)));
+
+    await db
+      .delete(inAppNotifications)
+      .where(
+        and(
+          eq(inAppNotifications.recipientUserId, targetUserId),
+          eq(inAppNotifications.type, "new_follower"),
+          sql`${inAppNotifications.data}->>'actorUserId' = ${viewer.id}`,
+        ),
+      );
 
     return NextResponse.json({ ok: true });
   } catch (error) {

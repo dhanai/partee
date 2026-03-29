@@ -20,6 +20,7 @@ import { getGameDefinitions, getGameDefinition } from "../../lib/games-registry"
 import { subscribeGamesListRefresh } from "../../lib/games-list-refresh";
 import { parfadeGameSessionChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
+import { useSnackbar } from "../../lib/snackbar-context";
 import { colors } from "../../lib/theme";
 
 function statusLabel(s: GameSessionSummary["status"]) {
@@ -43,6 +44,7 @@ export default function GamesScreen() {
   const router = useRouter();
   const { roundInviteToken } = useLocalSearchParams<{ roundInviteToken?: string }>();
   const { getToken } = useAuth();
+  const { show: showSnackbar } = useSnackbar();
   const [sessions, setSessions] = useState<GameSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -59,11 +61,12 @@ export default function GamesScreen() {
         const token = await getToken();
         await deleteGameSession(token, sessionId);
         setSessions((prev) => prev.filter((x) => x.id !== sessionId));
+        showSnackbar("Game deleted");
       } catch (e) {
         Alert.alert("Could not delete", e instanceof Error ? e.message : "Could not delete");
       }
     },
-    [getToken],
+    [getToken, showSnackbar],
   );
 
   const confirmDeleteSession = useCallback(

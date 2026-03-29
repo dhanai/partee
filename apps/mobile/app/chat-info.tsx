@@ -15,6 +15,7 @@ import { Image } from "expo-image";
 import { apiDelete, apiGet, apiPatch, toAbsoluteUrl } from "../lib/api";
 import { useChatUnread } from "../lib/chat-unread-context";
 import { fetchRoundDetailsAndCache } from "../lib/round-details-cache";
+import { useSnackbar } from "../lib/snackbar-context";
 import { colors } from "../lib/theme";
 import { InitialAvatar } from "../components/initial-avatar";
 
@@ -87,6 +88,7 @@ export default function ChatInfoScreen() {
   getTokenRef.current = getToken;
 
   const { mutedConversationIds, setConversationMuted } = useChatUnread();
+  const { show: showSnackbar } = useSnackbar();
   const isMuted = conversationId ? mutedConversationIds.has(conversationId) : false;
   const [togglingMute, setTogglingMute] = useState(false);
 
@@ -177,6 +179,7 @@ export default function ChatInfoScreen() {
           try {
             const token = await getTokenRef.current();
             await apiDelete(`/api/conversations/${conversationId}`, token);
+            showSnackbar("Left conversation");
             router.dismissAll();
           } catch {
             Alert.alert("Error", "Unable to leave this chat.");

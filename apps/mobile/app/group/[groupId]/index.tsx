@@ -18,6 +18,15 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSequence,
+  withTiming,
+  withDelay,
+  runOnJS,
+} from "react-native-reanimated";
 import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput } from "../../../components/animated-bottom-sheet-frame";
 import { InitialAvatar } from "../../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
@@ -486,6 +495,14 @@ export default function GroupLandingScreen() {
     [groupId],
   );
 
+  const handleDoubleTapLike = useCallback(
+    (item: ActivityItem) => {
+      if (item.viewerLiked) return;
+      void handleToggleLike(item);
+    },
+    [handleToggleLike],
+  );
+
   const handleTogglePin = useCallback(
     async (item: ActivityItem) => {
       const id = rawPostId(item);
@@ -813,6 +830,7 @@ export default function GroupLandingScreen() {
             const likeCount = item.likeCount ?? 0;
             const postAuthorAvatar = item.user.avatar;
             return (
+              <DoubleTapLikeCard onDoubleTap={() => handleDoubleTapLike(item)}>
               <View style={styles.postCard}>
                 <View style={styles.postHeader}>
                   <Pressable style={styles.postAuthorTap} onPress={() => goToProfile(item.user)}>
@@ -875,6 +893,7 @@ export default function GroupLandingScreen() {
                   </Pressable>
                 </View>
               </View>
+              </DoubleTapLikeCard>
             );
           }
 
@@ -1167,6 +1186,59 @@ export default function GroupLandingScreen() {
     </View>
   );
 }
+
+function DoubleTapLikeCard({
+  children,
+  onDoubleTap,
+}: {
+  children: React.ReactNode;
+  onDoubleTap: () => void;
+}) {
+  const heartScale = useSharedValue(0);
+  const heartOpacity = useSharedValue(0);
+
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      runOnJS(onDoubleTap)();
+      heartScale.value = withSequence(
+        withTiming(1.2, { duration: 180 }),
+        withTiming(1, { duration: 100 }),
+      );
+      heartOpacity.value = withSequence(
+        withTiming(1, { duration: 120 }),
+        withDelay(400, withTiming(0, { duration: 280 })),
+      );
+    });
+
+  const heartAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: heartScale.value }],
+    opacity: heartOpacity.value,
+  }));
+
+  return (
+    <GestureDetector gesture={doubleTap}>
+      <View style={doubleTapStyles.wrapper}>
+        {children}
+        <Reanimated.View
+          style={[doubleTapStyles.heartOverlay, heartAnimStyle]}
+          pointerEvents="none"
+        >
+          <Ionicons name="heart" size={64} color={colors.danger} />
+        </Reanimated.View>
+      </View>
+    </GestureDetector>
+  );
+}
+
+const doubleTapStyles = StyleSheet.create({
+  wrapper: { position: "relative" },
+  heartOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+});
 
 function formatRelative(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();

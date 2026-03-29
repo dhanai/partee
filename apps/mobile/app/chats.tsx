@@ -27,6 +27,7 @@ import { NotificationMustardDot } from "../components/notification-mustard-dot";
 import { apiDelete, apiGet, toAbsoluteUrl } from "../lib/api";
 import { subscribeChatListsRefresh } from "../lib/chat-lists-refresh";
 import { useChatUnread } from "../lib/chat-unread-context";
+import { useSnackbar } from "../lib/snackbar-context";
 import { colors } from "../lib/theme";
 
 type ConversationRow = {
@@ -255,6 +256,7 @@ export default function ChatsScreen() {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const { reportConversations, unreadConversationIds } = useChatUnread();
+  const { show: showSnackbar } = useSnackbar();
 
   const [rows, setRows] = useState<ConversationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -299,6 +301,7 @@ export default function ChatsScreen() {
               const token = await getTokenRef.current();
               await apiDelete(`/api/conversations/${conversationId}`, token);
               setRows((prev) => prev.filter((r) => r.id !== conversationId));
+              showSnackbar("Left conversation");
             } catch {
               Alert.alert("Error", "Unable to leave this chat.");
             }
@@ -306,7 +309,7 @@ export default function ChatsScreen() {
         },
       ]);
     },
-    [],
+    [showSnackbar],
   );
 
   const renderItem = useCallback(

@@ -30,7 +30,7 @@ type FollowRequestsResponse = {
 
 type ActivityNotificationItem = {
   id: string;
-  type: "round_rsvp_accepted" | "round_rsvp_declined" | "group_join_request";
+  type: "round_rsvp_accepted" | "round_rsvp_declined" | "group_join_request" | "new_follower";
   title: string;
   body: string;
   inviteToken: string;
@@ -292,11 +292,48 @@ export default function NotificationsScreen() {
             </View>
           ) : null}
 
-          {activityItems.filter((i) => i.type !== "group_join_request").length > 0 ? (
+          {activityItems.filter((i) => i.type === "new_follower").length > 0 ? (
+            <View style={styles.notificationsList}>
+              <Text style={styles.sectionMiniTitle}>New followers</Text>
+              {activityItems
+                .filter((i) => i.type === "new_follower")
+                .map((item) => (
+                  <Pressable
+                    key={`follower-${item.id}`}
+                    style={styles.notificationCard}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/profile/[userId]",
+                        params: { userId: item.actorUserId },
+                      })
+                    }
+                  >
+                    <View style={styles.notificationRow}>
+                      {item.actorAvatar ? (
+                        <Image
+                          source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
+                          style={styles.notificationAvatar}
+                        />
+                      ) : (
+                        <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                          <Ionicons name="person" size={16} color={colors.fairway} />
+                        </View>
+                      )}
+                      <View style={styles.notificationRowText}>
+                        <Text style={styles.notificationTitle}>{item.actorName}</Text>
+                        <Text style={styles.notificationMeta}>Started following you</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+            </View>
+          ) : null}
+
+          {activityItems.filter((i) => i.type === "round_rsvp_accepted" || i.type === "round_rsvp_declined").length > 0 ? (
             <View style={styles.notificationsList}>
               <Text style={styles.sectionMiniTitle}>Round updates</Text>
               {activityItems
-                .filter((i) => i.type !== "group_join_request")
+                .filter((i) => i.type === "round_rsvp_accepted" || i.type === "round_rsvp_declined")
                 .map((item) => (
                   <Pressable
                     key={`activity-${item.id}`}
@@ -514,6 +551,7 @@ const styles = StyleSheet.create({
   },
   notificationTitle: { color: colors.text, fontWeight: "700" },
   notificationRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  notificationRowText: { flex: 1, minWidth: 0 },
   notificationMetaWrap: { flex: 1 },
   notificationAvatar: { width: 30, height: 30, borderRadius: 999 },
   notificationAvatarFallback: {

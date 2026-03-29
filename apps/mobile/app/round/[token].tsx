@@ -41,6 +41,7 @@ import {
 import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calendar";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-last-initial";
+import { useSnackbar } from "../../lib/snackbar-context";
 import { colors } from "../../lib/theme";
 import { InitialAvatar } from "../../components/initial-avatar";
 import { RoundDetails } from "../../types/round";
@@ -102,6 +103,7 @@ export default function RoundDetailsScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const ablyChatMounted = useAblyChatMounted();
+  const { show: showSnackbar } = useSnackbar();
   const scrollRef = useRef<ScrollView>(null);
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -441,6 +443,7 @@ export default function RoundDetailsScreen() {
       const authToken = await getToken();
       await apiDelete<{ ok: boolean }>(`/api/rounds/${token}`, authToken);
       emitRoundListsShouldRefresh();
+      showSnackbar("Round deleted");
       if (router.canGoBack()) {
         router.back();
       } else {

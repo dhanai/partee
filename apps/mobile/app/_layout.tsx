@@ -14,6 +14,7 @@ import { AblyChatProviders } from "../lib/ably-chat-context";
 import { InAppToastProvider } from "../lib/in-app-toast-context";
 import { ChatUnreadProvider } from "../lib/chat-unread-context";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
+import { SnackbarProvider } from "../lib/snackbar-context";
 import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
 import { setApiSessionInvalidHandler } from "../lib/api-session-invalid";
 import { clearAllCaches } from "../lib/clear-all-caches";
@@ -103,6 +104,7 @@ export default function RootLayout() {
               <ParfadeAppRealtimeGate />
               <NotificationDeepLinkEffects />
               <StatusBar style="dark" />
+              <SnackbarProvider>
               <View style={{ flex: 1 }}>
                 <Stack
                   screenOptions={{
@@ -313,6 +315,7 @@ export default function RootLayout() {
             />
                 </Stack>
               </View>
+              </SnackbarProvider>
             </KeyboardProvider>
             </BottomSheetModalProvider>
             </GestureHandlerRootView>

@@ -19,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { useSnackbar } from "../../lib/snackbar-context";
 import { hapticSuccess, hapticError } from "../../lib/haptics";
 import type { InviteSelectionUser } from "../../lib/invite-selection-store";
 import { colors } from "../../lib/theme";
@@ -79,6 +80,7 @@ export default function CreateScreen() {
   }, [sessionParam]);
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
+  const { show: showSnackbar } = useSnackbar();
   const createType: CreateType = useMemo(() => {
     if (mode === "planning") return "planning";
     if (mode === "scheduled") return "scheduled";
@@ -452,10 +454,10 @@ export default function CreateScreen() {
         token,
       );
       hapticSuccess();
-      setSuccess(
+      showSnackbar(
         json.invitedCount > 0
-          ? `Round created. Invite blast sent to ${json.invitedCount} golfers.`
-          : "Round created.",
+          ? `Round created — ${json.invitedCount} invited`
+          : "Round created",
       );
       router.replace({
         pathname: "/(tabs)/rounds",

@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { Image, ImagePrefetch } from "expo-image";
 import { apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../lib/api";
+import { hapticLight } from "../lib/haptics";
 import { InitialAvatar } from "./initial-avatar";
 import { prefetchPublicProfile } from "../lib/public-profile-cache";
 import { colors } from "../lib/theme";
@@ -57,7 +58,7 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<ListUser[]>([]);
   const [query, setQuery] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -111,30 +112,62 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
     return users.filter((u) => u.name.toLowerCase().includes(q));
   }, [users, query]);
 
-  const toggleFollow = useCallback(async (row: ListUser) => {
-    if (row.relationship === "self" || busyId) return;
-    const token = await getTokenRef.current();
-    if (!token) return;
+  const updateRelationship = useCallback(
+    (userId: string, relationship: ConnectionRelationship) => {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, relationship } : u)),
+      );
+    },
+    [],
+  );
 
-    const shouldUnfollow =
-      row.relationship === "following" || row.relationship === "mutual";
-    if (row.relationship === "requested_by_viewer") return;
+  const toggleFollow = useCallback(
+    async (row: ListUser) => {
+      if (row.relationship === "self" || row.relationship === "requested_by_viewer") return;
+      const token = await getTokenRef.current();
+      if (!token) return;
 
-    setBusyId(row.id);
-    setError(null);
-    try {
-      if (shouldUnfollow) {
-        await apiDelete(`/api/users/${row.id}/follow`, token);
-      } else {
-        await apiPost(`/api/users/${row.id}/follow`, {}, token);
+      const shouldUnfollow =
+        row.relationship === "following" || row.relationship === "mutual";
+
+      hapticLight();
+
+      const optimistic: ConnectionRelationship = shouldUnfollow
+        ? row.relationship === "mutual"
+          ? "requested_to_viewer"
+          : "none"
+        : row.relationship === "requested_to_viewer"
+          ? "mutual"
+          : "following";
+      updateRelationship(row.id, optimistic);
+
+      setBusyIds((prev) => new Set(prev).add(row.id));
+      setError(null);
+      try {
+        if (shouldUnfollow) {
+          await apiDelete(`/api/users/${row.id}/follow`, token);
+        } else {
+          const res = await apiPost<{ ok: boolean; status: string }>(
+            `/api/users/${row.id}/follow`,
+            {},
+            token,
+          );
+          if (res.status === "requested") {
+            updateRelationship(row.id, "requested_by_viewer");
+          }
+        }
+      } catch {
+        updateRelationship(row.id, row.relationship);
+      } finally {
+        setBusyIds((prev) => {
+          const next = new Set(prev);
+          next.delete(row.id);
+          return next;
+        });
       }
-      await load({ silent: true });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update follow.");
-    } finally {
-      setBusyId(null);
-    }
-  }, [busyId, load]);
+    },
+    [updateRelationship],
+  );
 
   function actionLabel(r: ConnectionRelationship): string | null {
     if (r === "self") return null;
@@ -194,7 +227,8 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
           ) : (
             filtered.map((u) => {
               const label = actionLabel(u.relationship);
-              const disabled = actionDisabled(u.relationship) || busyId === u.id;
+              const isBusy = busyIds.has(u.id);
+              const disabled = actionDisabled(u.relationship) || isBusy;
               const isFollowingStyle =
                 u.relationship === "following" || u.relationship === "mutual";
               return (
@@ -242,7 +276,7 @@ export function ProfileConnectionList({ kind, ownerUserId }: Props) {
                       onPress={() => void toggleFollow(u)}
                       disabled={disabled}
                     >
-                      {busyId === u.id ? (
+                      {isBusy ? (
                         <ActivityIndicator
                           color={isFollowingStyle ? colors.text : "#fff"}
                           size="small"
