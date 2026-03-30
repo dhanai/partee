@@ -8,12 +8,13 @@ import {
   Keyboard,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   apiGet,
   apiPatch,
@@ -44,9 +45,13 @@ function useDebounce(value: string, delayMs: number) {
   return debounced;
 }
 
+/** Extra scroll inset so focused fields clear the keyboard (no sticky footer on this screen). */
+const KEYBOARD_SCROLL_EXTRA = 28;
+
 export default function EditRoundScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const initialSnapshotRef = useRef<string | null>(null);
@@ -101,6 +106,13 @@ export default function EditRoundScreen() {
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const c = consumeTournamentDetailsEditorCommit();
+      if (c) setTournamentDetails(c.value);
+    }, []),
+  );
 
   useEffect(() => {
     async function loadRound() {
@@ -388,6 +400,12 @@ export default function EditRoundScreen() {
           visibility,
           joinPolicy,
           customImageUrl,
+          ...(roundMode === "tournament"
+            ? {
+                tournamentTitle: tournamentTitle.trim() ? tournamentTitle.trim() : null,
+                tournamentDetails: tournamentDetails.trim() ? tournamentDetails.trim() : null,
+              }
+            : {}),
         },
         authToken,
       );
@@ -437,6 +455,12 @@ export default function EditRoundScreen() {
             visibility,
             joinPolicy,
             customImageUrl: customImageUrl ?? null,
+            tournamentTitle:
+              roundMode === "tournament"
+                ? tournamentTitle.trim()
+                  ? tournamentTitle.trim()
+                  : null
+                : undefined,
           },
         });
       } else {
@@ -482,6 +506,14 @@ export default function EditRoundScreen() {
   }, [snapshotReady, loading]);
 
   useLayoutEffect(() => {
+    const title =
+      loading
+        ? "Edit Round"
+        : planningMode
+          ? "Edit planning round"
+          : roundMode === "tournament"
+            ? "Edit tournament"
+            : "Edit scheduled round";
     const show = submitting || saveNote != null;
     const label = submitting ? "Saving…" : (saveNote ?? "");
     const pill = (
@@ -494,6 +526,7 @@ export default function EditRoundScreen() {
 
     if (Platform.OS === "ios") {
       navigation.setOptions({
+        title,
         headerRight: undefined,
         headerRightContainerStyle: { paddingRight: 6 },
         unstable_headerRightItems: show
@@ -508,12 +541,13 @@ export default function EditRoundScreen() {
       });
     } else {
       navigation.setOptions({
+        title,
         unstable_headerRightItems: undefined,
         headerRightContainerStyle: { paddingRight: 10, justifyContent: "center" },
         headerRight: () => (show ? pill : null),
       });
     }
-  }, [navigation, submitting, saveNote]);
+  }, [loading, navigation, planningMode, roundMode, submitting, saveNote]);
 
   useEffect(() => {
     if (!snapshotReady || loading) return;
@@ -539,17 +573,28 @@ export default function EditRoundScreen() {
   }
 
   const isPlanningRound = planningMode;
+  const editHeroTitle = isPlanningRound
+    ? "Planning Round"
+    : roundMode === "tournament"
+      ? "Tournament"
+      : "Scheduled Tee Time";
+  const editHeroCopy = isPlanningRound
+    ? "Find players first. Lock details later. Changes save automatically."
+    : roundMode === "tournament"
+      ? "Set course, tee time, and max field size. Then invite players. Changes save automatically."
+      : "Set it up. Blast invites. Tee off. Changes save automatically.";
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>
-        {isPlanningRound ? "Planning Round" : "Scheduled Tee Time"}
-      </Text>
-      <Text style={styles.copy}>
-        {isPlanningRound
-          ? "Find players first. Lock details later. Changes save automatically."
-          : "Set it up. Blast invites. Tee off. Changes save automatically."}
-      </Text>
+    <KeyboardAwareScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      showsVerticalScrollIndicator={false}
+      bottomOffset={Math.max(insets.bottom, 12) + KEYBOARD_SCROLL_EXTRA}
+    >
+      <Text style={styles.title}>{editHeroTitle}</Text>
+      <Text style={styles.copy}>{editHeroCopy}</Text>
 
       <View style={styles.card}>
         {isPlanningRound ? (
@@ -821,7 +866,7 @@ export default function EditRoundScreen() {
         onChange={setTeeTimeValue}
         onClose={() => setTimePickerOpen(false)}
       />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

@@ -1,5 +1,53 @@
 /** Shared copy for round list cards (Discover + My Rounds). */
 
+export type RoundListMode = "scheduled" | "planning" | "tournament";
+
+/** API / JSON may surface enum values as loose strings; normalize before branching in list UI. */
+export function normalizeRoundListMode(raw: unknown): RoundListMode {
+  if (raw === "planning" || raw === "tournament" || raw === "scheduled") return raw;
+  if (typeof raw === "string") {
+    const m = raw.trim().toLowerCase();
+    if (m === "planning" || m === "tournament" || m === "scheduled") return m as RoundListMode;
+  }
+  return "scheduled";
+}
+
+/**
+ * Tournament title from list/detail API rows (camelCase from Drizzle; some paths may send snake_case).
+ */
+export function resolveTournamentTitle(row: {
+  tournamentTitle?: string | null;
+  tournament_title?: string | null;
+}): string | null {
+  const v = row.tournamentTitle ?? row.tournament_title;
+  if (v == null || typeof v !== "string") return null;
+  const s = v.trim();
+  return s.length > 0 ? s : null;
+}
+
+/**
+ * Single-line tee time for cards and detail, e.g. `Sat, Apr 4 at 9:00am` (viewer's local timezone).
+ */
+export function formatFriendlyTeeDateTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const datePart = d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const timePart = d
+    .toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+    .replace(/\s/g, "")
+    .toLowerCase();
+  return `${datePart} at ${timePart}`;
+}
+
 /** Extract the time windows array from a round object that may have either or both fields. */
 export function getTimeWindows(round: {
   preferredTimeWindows?: string[] | null;
@@ -42,15 +90,14 @@ export function formatScheduledCardMeta(effectiveDateIso: string, teeTime: strin
   if (teeTime) {
     const d = new Date(teeTime);
     if (!Number.isNaN(d.getTime())) {
-      const datePart = d.toLocaleDateString();
-      const timePart = d.toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      });
-      return `${datePart} at ${timePart}`;
+      return formatFriendlyTeeDateTime(teeTime);
     }
   }
-  const datePart = new Date(effectiveDateIso).toLocaleDateString();
+  const datePart = new Date(effectiveDateIso).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
   return `${datePart} • time TBD`;
 }
 
@@ -68,12 +115,7 @@ export function formatMineRoundWhenLabel(round: {
   if ((round.mode === "scheduled" || round.mode === "tournament") && round.teeTime) {
     const d = new Date(round.teeTime);
     if (!Number.isNaN(d.getTime())) {
-      const dateText = d.toLocaleDateString();
-      const timeText = d.toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      });
-      return `${dateText} at ${timeText}`;
+      return formatFriendlyTeeDateTime(round.teeTime);
     }
   }
   const effectiveDate = new Date(round.teeTime ?? round.targetDate);

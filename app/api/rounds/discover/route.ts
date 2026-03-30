@@ -63,6 +63,7 @@ export async function GET(req: Request) {
       preferredTimeWindow: rounds.preferredTimeWindow,
       planningLocation: rounds.planningLocation,
       courseName: rounds.courseName,
+      tournamentTitle: rounds.tournamentTitle,
       customImageUrl: rounds.customImageUrl,
       courseMetadata: courses.metadata,
       teeTime: rounds.teeTime,
@@ -108,6 +109,7 @@ export async function GET(req: Request) {
     )
     .groupBy(
       rounds.id,
+      rounds.tournamentTitle,
       users.id,
       users.name,
       users.avatar,
@@ -149,6 +151,7 @@ export async function GET(req: Request) {
         ...timeWindowResponseFields(row.preferredTimeWindow),
         planningLocation: row.planningLocation,
         courseName: row.courseName ?? "Course TBD",
+        tournamentTitle: row.tournamentTitle,
         teeTime: row.teeTime,
         targetDate: row.targetDate,
         effectiveDate,

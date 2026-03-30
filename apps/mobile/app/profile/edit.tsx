@@ -7,13 +7,14 @@ import {
   Image,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../../lib/api";
 import { uploadImage, AVATAR_MAX_BYTES } from "../../lib/upload-image";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
@@ -21,6 +22,7 @@ import { InitialAvatar } from "../../components/initial-avatar";
 import { colors } from "../../lib/theme";
 
 const EDIT_AVATAR_RADIUS = 52;
+const KEYBOARD_SCROLL_EXTRA = 28;
 
 type MeResponse = {
   user: {
@@ -65,6 +67,7 @@ function useDebounce(value: string, delayMs: number) {
 
 export default function EditProfileScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const cachedMe = useMemo(() => getCachedMeProfile(), []);
@@ -307,10 +310,13 @@ export default function EditProfileScreen() {
   ]);
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      showsVerticalScrollIndicator={false}
+      bottomOffset={Math.max(insets.bottom, 12) + KEYBOARD_SCROLL_EXTRA}
     >
       <View style={styles.card}>
           {/*
@@ -421,7 +427,7 @@ export default function EditProfileScreen() {
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

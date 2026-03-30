@@ -28,6 +28,7 @@ import {
   formatPlanningWindow,
   formatScheduledCardMeta,
   getTimeWindows,
+  resolveTournamentTitle,
 } from "../../lib/round-card-meta";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
 import {
@@ -734,8 +735,16 @@ export default function MyRoundsScreen() {
                 delayPressIn={
                   swipeVariant !== "none" && swipeEnabled ? 200 : undefined
                 }
-                mode={round.mode === "scheduled" ? "scheduled" : "planning"}
+                mode={
+                  round.mode === "planning"
+                    ? "planning"
+                    : round.mode === "tournament"
+                      ? "tournament"
+                      : "scheduled"
+                }
                 courseName={round.courseName}
+                tournamentTitle={resolveTournamentTitle(round)}
+                inviteToken={round.inviteToken}
                 imageUrl={imageUrl}
                 joinPolicy={joinPolicy}
                 totalSpots={round.totalSpots ?? 0}

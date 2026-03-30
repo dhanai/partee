@@ -9,6 +9,7 @@ import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveCourseLocation } from "@/lib/round-course-location";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
+import { getRoundsDbCapabilities } from "@/lib/rounds-db-capabilities";
 import { textArraySql, timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 type RouteContext = {
@@ -97,6 +98,8 @@ export async function GET(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: "Token is required." }, { status: 400 });
   }
 
+  const dbCap = await getRoundsDbCapabilities();
+
   const [round] = await db
     .select({
       id: rounds.id,
@@ -113,8 +116,12 @@ export async function GET(req: Request, { params }: RouteContext) {
       status: rounds.status,
       joinPolicy: rounds.joinPolicy,
       customImageUrl: rounds.customImageUrl,
-      tournamentTitle: rounds.tournamentTitle,
-      tournamentDetails: rounds.tournamentDetails,
+      ...(dbCap.hasTournamentCopyColumns
+        ? {
+            tournamentTitle: rounds.tournamentTitle,
+            tournamentDetails: rounds.tournamentDetails,
+          }
+        : {}),
       courseMetadata: courses.metadata,
       courseDbAddress: courses.address,
       courseDbLat: courses.lat,
@@ -250,8 +257,12 @@ export async function GET(req: Request, { params }: RouteContext) {
       status: round.status,
       joinPolicy: round.joinPolicy,
       customImageUrl: round.customImageUrl,
-      tournamentTitle: round.tournamentTitle,
-      tournamentDetails: round.tournamentDetails,
+      tournamentTitle: dbCap.hasTournamentCopyColumns
+        ? (round as { tournamentTitle: string | null }).tournamentTitle
+        : null,
+      tournamentDetails: dbCap.hasTournamentCopyColumns
+        ? (round as { tournamentDetails: string | null }).tournamentDetails
+        : null,
       hostId: round.hostId,
       hostName: round.hostName,
       hostAvatar: round.hostAvatar,
@@ -278,6 +289,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "Token is required." }, { status: 400 });
     }
 
+    const dbCap = await getRoundsDbCapabilities();
     const parsed = updateRoundSchema.parse(await req.json());
     const [existingRound] = await db
       .select({
@@ -302,6 +314,15 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       parsed.tournamentTitle !== undefined ||
       parsed.tournamentDetails !== undefined
     ) {
+      if (!dbCap.hasTournamentCopyColumns) {
+        return NextResponse.json(
+          {
+            error:
+              "Tournament title and details require a database migration. Run migrations or contact support.",
+          },
+          { status: 503 },
+        );
+      }
       if (existingRound.mode !== "tournament") {
         return NextResponse.json(
           {
@@ -385,6 +406,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         : "scheduled";
 
     const tournamentPatch =
+      dbCap.hasTournamentCopyColumns &&
       isTournament &&
       (parsed.tournamentTitle !== undefined || parsed.tournamentDetails !== undefined)
         ? {

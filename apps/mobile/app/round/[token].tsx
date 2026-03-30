@@ -65,7 +65,11 @@ import { ReportSheet } from "../../components/report-sheet";
 import { RoundCourseLocationSheet } from "../../components/round-course-location-sheet";
 import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
-import { getTimeWindows } from "../../lib/round-card-meta";
+import {
+  formatFriendlyTeeDateTime,
+  getTimeWindows,
+  resolveTournamentTitle,
+} from "../../lib/round-card-meta";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
 import { getGameDefinitions } from "../../lib/games-registry";
@@ -541,7 +545,9 @@ export default function RoundDetailsScreen() {
         ? (round.planningLocation?.trim() ||
             round.courseName?.trim() ||
             "a round I'm planning")
-        : (round.courseName?.trim() || "this round");
+        : round.mode === "tournament"
+          ? (resolveTournamentTitle(round) || round.courseName?.trim() || "this round")
+          : (round.courseName?.trim() || "this round");
     try {
       // Single URL in the message only — iOS duplicates the link when `url` is also set.
       await Share.share({
@@ -619,6 +625,10 @@ export default function RoundDetailsScreen() {
   const kavOffset = headerHeight + 32;
   const isScheduledOrTournament =
     round.mode === "scheduled" || round.mode === "tournament";
+  const resolvedTournamentTitle = resolveTournamentTitle(round);
+  /** Avoid flashing course name as headline before GET /api/rounds/:token returns a title. */
+  const tournamentTitlePending =
+    round.mode === "tournament" && !resolvedTournamentTitle && !apiResolved;
 
   return (
     <View style={styles.screenRoot}>
@@ -674,9 +684,29 @@ export default function RoundDetailsScreen() {
               <Text style={styles.modeBadgeText}>Tournament</Text>
             </View>
           ) : null}
-          <Text style={[styles.title, styles.titleBelowHero]} numberOfLines={3}>
-            {round.courseName}
-          </Text>
+          {tournamentTitlePending ? (
+            <View
+              style={[styles.titleBelowHero, styles.tournamentTitleLoading]}
+              accessibilityLabel="Loading tournament title"
+            >
+              <ActivityIndicator size="small" color={colors.muted} />
+            </View>
+          ) : (
+            <Text style={[styles.title, styles.titleBelowHero]} numberOfLines={3}>
+              {round.mode === "tournament"
+                ? (resolvedTournamentTitle || round.courseName)
+                : round.courseName}
+            </Text>
+          )}
+          {round.mode === "tournament" &&
+          !tournamentTitlePending &&
+          resolvedTournamentTitle &&
+          round.courseName?.trim() &&
+          resolvedTournamentTitle.toLowerCase() !== round.courseName.trim().toLowerCase() ? (
+            <Text style={styles.tournamentCourseSubtitle} numberOfLines={2}>
+              {round.courseName}
+            </Text>
+          ) : null}
         </>
       ) : (
         <>
@@ -699,20 +729,10 @@ export default function RoundDetailsScreen() {
           </View>
         </>
       )}
-      {isScheduledOrTournament ? (
+      {isScheduledOrTournament && round.teeTime ? (
         <View style={styles.whenBlock}>
-          <Text style={styles.whenDate}>
-            {new Date(round.teeTime as string).toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "short",
-              day: "numeric",
-            })}
-          </Text>
-          <Text style={styles.whenTime}>
-            {new Date(round.teeTime as string).toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-            })}
+          <Text style={styles.whenFriendlyLine}>
+            {formatFriendlyTeeDateTime(round.teeTime)}
           </Text>
         </View>
       ) : null}
@@ -968,15 +988,22 @@ export default function RoundDetailsScreen() {
               (round.mode === "scheduled" || round.mode === "tournament") && round.imageUrl
                 ? [round.imageUrl, ...playerAvatars]
                 : playerAvatars;
-            const datePart = (round.teeTime ?? round.targetDate)
-              ? new Date(round.teeTime ?? round.targetDate).toLocaleDateString(
-                  "en-US",
-                  { month: "short", day: "numeric" },
-                )
-              : "";
+            const datePart = round.teeTime
+              ? formatFriendlyTeeDateTime(round.teeTime)
+              : round.targetDate
+                ? new Date(round.targetDate).toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })
+                : "";
+            const chatDisplayName =
+              round.mode === "tournament"
+                ? (resolveTournamentTitle(round) || round.courseName)
+                : round.courseName;
             const chatTitle =
-              (round.mode === "scheduled" || round.mode === "tournament") && round.courseName
-                ? `${round.courseName} · ${datePart}`
+              (round.mode === "scheduled" || round.mode === "tournament") && chatDisplayName
+                ? `${chatDisplayName} · ${datePart}`
                 : datePart || "Group chat";
             router.push({
               pathname: "/conversation/[id]/chat",
@@ -1303,6 +1330,11 @@ const styles = StyleSheet.create({
   titleBelowHero: {
     marginTop: 8,
   },
+  tournamentTitleLoading: {
+    minHeight: 36,
+    justifyContent: "center",
+    alignItems: "flex-start",
+  },
   modeBadgeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1346,6 +1378,12 @@ const styles = StyleSheet.create({
   whenBlock: { gap: 2, marginTop: 2 },
   whenDate: { color: colors.text, fontWeight: "700", fontSize: 18 },
   whenTime: { color: colors.muted, fontWeight: "600", fontSize: 16 },
+  whenFriendlyLine: {
+    color: colors.text,
+    fontWeight: "700",
+    fontSize: 17,
+    lineHeight: 24,
+  },
   claimedRow: { marginTop: 10, gap: 6 },
   claimedLabel: {
     color: colors.muted,

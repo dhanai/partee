@@ -1,5 +1,6 @@
 import { Image } from "expo-image";
 import { apiGet, toAbsoluteUrl } from "./api";
+import { resolveTournamentTitle } from "./round-card-meta";
 import type { DiscoverRound, MineRound, RoundDetails } from "../types/round";
 
 type RoundResponse = { round: RoundDetails };
@@ -10,6 +11,8 @@ export type RoundListHint = {
   inviteToken: string;
   mode: "scheduled" | "planning" | "tournament";
   courseName: string;
+  /** Tournament headline when mode is tournament (list + detail bootstrap). */
+  tournamentTitle?: string | null;
   imageUrl: string;
   teeTime: string | null;
   targetDate: string;
@@ -29,6 +32,40 @@ export type RoundListHint = {
 const CACHE_TTL_MS = 1000 * 60 * 3;
 const cache = new Map<string, { data: RoundDetails; updatedAt: number }>();
 const inflightPrefetch = new Map<string, Promise<void>>();
+
+/** List cards can subscribe so they re-render when detail JSON is cached for the same invite token. */
+const detailCacheListeners = new Map<string, Set<() => void>>();
+
+export function subscribeRoundDetailCache(inviteToken: string, onUpdate: () => void): () => void {
+  const t = inviteToken.trim();
+  if (!t) return () => {};
+  let set = detailCacheListeners.get(t);
+  if (!set) {
+    set = new Set();
+    detailCacheListeners.set(t, set);
+  }
+  set.add(onUpdate);
+  return () => {
+    const s = detailCacheListeners.get(t);
+    if (!s) return;
+    s.delete(onUpdate);
+    if (s.size === 0) detailCacheListeners.delete(t);
+  };
+}
+
+function notifyRoundDetailCache(inviteToken: string) {
+  const t = inviteToken.trim();
+  if (!t) return;
+  const set = detailCacheListeners.get(t);
+  if (!set) return;
+  set.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      /* ignore */
+    }
+  });
+}
 
 function isFresh(entry: { updatedAt: number } | undefined) {
   if (!entry) return false;
@@ -55,6 +92,19 @@ export function setCachedRoundDetails(round: RoundDetails) {
     data: round,
     updatedAt: Date.now(),
   });
+  notifyRoundDetailCache(round.inviteToken);
+}
+
+/**
+ * Discover / My Rounds list payloads sometimes omit `tournamentTitle` until refetch.
+ * After opening round detail, {@link setCachedRoundDetails} holds the full GET payload — use it
+ * for list card headlines so they match the detail screen without waiting for a list reload.
+ */
+export function resolveTournamentTitleForCard(row: DiscoverRound | MineRound): string | null {
+  const fromRow = resolveTournamentTitle(row);
+  if (fromRow) return fromRow;
+  const cached = getCachedRoundDetails(row.inviteToken);
+  return cached ? resolveTournamentTitle(cached) : null;
 }
 
 export function buildRoundListHint(round: DiscoverRound | MineRound): string {
@@ -64,6 +114,7 @@ export function buildRoundListHint(round: DiscoverRound | MineRound): string {
     inviteToken: round.inviteToken,
     mode: round.mode,
     courseName: (round.courseName ?? "").trim() || "Round",
+    tournamentTitle: resolveTournamentTitleForCard(round) ?? null,
     imageUrl: round.imageUrl,
     teeTime: round.teeTime ?? null,
     targetDate: round.targetDate,
@@ -125,7 +176,7 @@ function hintToRoundDetails(h: RoundListHint): RoundDetails {
     totalSpots,
     status: "forming",
     joinPolicy: h.joinPolicy,
-    tournamentTitle: null,
+    tournamentTitle: h.tournamentTitle ?? null,
     tournamentDetails: null,
     hostId: h.hostId ?? "",
     hostName: h.hostName ?? "",
@@ -155,6 +206,8 @@ function mergeHintOntoCached(cached: RoundDetails, hint: RoundListHint): RoundDe
     planningLocation: hint.planningLocation,
     joinPolicy: hint.joinPolicy,
     totalSpots: hint.totalSpots,
+    tournamentTitle:
+      hint.tournamentTitle !== undefined ? hint.tournamentTitle : cached.tournamentTitle,
     hostId: hint.hostId || cached.hostId,
     hostName: hint.hostName || cached.hostName,
     hostAvatar: hint.hostAvatar !== undefined ? hint.hostAvatar : cached.hostAvatar,
@@ -199,7 +252,11 @@ export function prefetchRoundDetails(
   inviteToken: string,
   getToken: () => Promise<string | null>,
 ) {
-  if (hasFreshRoundDetails(inviteToken)) return;
+  /**
+   * Do NOT skip when `hasFreshRoundDetails` — a "fresh" cache may predate `tournament_title`
+   * being set (or may be from bootstrap/hint). Skipping prefetch then blocks the list card
+   * from ever seeing the title until TTL expires or the user opens detail again.
+   */
   const existing = inflightPrefetch.get(inviteToken);
   if (existing) return;
   const run = (async () => {

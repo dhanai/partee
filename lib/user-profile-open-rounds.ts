@@ -10,6 +10,7 @@ type RowWithCourse = {
   id: string;
   inviteToken: string;
   courseName: string | null;
+  tournamentTitle: string | null;
   teeTime: Date | string | null;
   targetDate: Date | string;
   mode: "scheduled" | "planning" | "tournament";
@@ -55,6 +56,7 @@ export type ProfileOpenRoundJson = {
   id: string;
   inviteToken: string;
   courseName: string | null;
+  tournamentTitle: string | null;
   mode: "scheduled" | "planning" | "tournament";
   teeTime: string | null;
   targetDate: string;
@@ -110,6 +112,7 @@ export async function getHostedOpenRoundsForProfile(
       id: rounds.id,
       inviteToken: rounds.inviteToken,
       courseName: rounds.courseName,
+      tournamentTitle: rounds.tournamentTitle,
       teeTime: rounds.teeTime,
       targetDate: rounds.targetDate,
       mode: rounds.mode,
@@ -182,6 +185,7 @@ export async function getHostedOpenRoundsForProfile(
       id: r.id,
       inviteToken: r.inviteToken,
       courseName: r.courseName,
+      tournamentTitle: r.tournamentTitle,
       mode: r.mode,
       teeTime: r.teeTime ? toIsoTimestamp(r.teeTime) : null,
       targetDate: toIsoTimestamp(r.targetDate),

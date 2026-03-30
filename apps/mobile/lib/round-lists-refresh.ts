@@ -21,6 +21,8 @@ export type OptimisticRoundListPatch = {
   visibility: "private" | "public";
   joinPolicy: "instant" | "approval";
   customImageUrl: string | null;
+  /** When set (e.g. after saving round edit), list cards update headline without waiting for refetch. */
+  tournamentTitle?: string | null;
 };
 
 type Listener = (payload: RoundListsRefreshPayload) => void;
@@ -88,6 +90,8 @@ export function applyOptimisticToMineRound(row: MineRound, p: OptimisticRoundLis
     targetDate: p.targetDate,
     totalSpots: p.totalSpots,
     joinPolicy: p.joinPolicy,
+    tournamentTitle:
+      p.tournamentTitle !== undefined ? p.tournamentTitle : row.tournamentTitle,
   };
 }
 
@@ -114,5 +118,7 @@ export function applyOptimisticToRoundDetails(
     joinPolicy: p.joinPolicy,
     customImageUrl: p.customImageUrl,
     spotsRemaining: Math.max(0, p.totalSpots - row.confirmedPlayers.length),
+    tournamentTitle:
+      p.tournamentTitle !== undefined ? p.tournamentTitle : row.tournamentTitle,
   };
 }

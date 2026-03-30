@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { toAbsoluteUrl } from "../lib/api";
+import { getCachedRoundDetails, subscribeRoundDetailCache } from "../lib/round-details-cache";
+import { normalizeRoundListMode, resolveTournamentTitle } from "../lib/round-card-meta";
 import { RoundCoverImage } from "./round-cover-image";
 import {
   planningWindowTheme,
@@ -17,8 +20,13 @@ export type { PlanningTimeWindow };
 
 export type RoundListCardProps = {
   roundId: string;
-  mode: "scheduled" | "planning";
+  /** `tournament` uses the scheduled layout (hero image) with tournament title as headline. */
+  mode: "scheduled" | "planning" | "tournament";
   courseName: string | null;
+  /** Shown as primary headline for tournament cards when set; falls back to course name. */
+  tournamentTitle?: string | null;
+  /** When set, headline also reads from detail cache after prefetch/open (same token). */
+  inviteToken?: string;
   imageUrl: string;
   joinPolicy: "instant" | "approval";
   totalSpots: number;
@@ -50,6 +58,8 @@ export function RoundListCard({
   roundId,
   mode,
   courseName,
+  tournamentTitle,
+  inviteToken,
   imageUrl,
   joinPolicy,
   totalSpots,
@@ -66,21 +76,54 @@ export function RoundListCard({
   footer,
   delayPressIn,
 }: RoundListCardProps) {
+  const modeNorm = normalizeRoundListMode(mode);
+  const [detailCacheGeneration, bumpFromDetailCache] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    if (!inviteToken?.trim()) return;
+    return subscribeRoundDetailCache(inviteToken.trim(), bumpFromDetailCache);
+  }, [inviteToken]);
+
+  const displayTournamentTitle = useMemo(() => {
+    const fromList = tournamentTitle?.trim();
+    if (fromList) return fromList;
+    const t = inviteToken?.trim();
+    if (!t) return null;
+    const cached = getCachedRoundDetails(t);
+    return cached ? resolveTournamentTitle(cached) : null;
+  }, [tournamentTitle, inviteToken, detailCacheGeneration]);
+
   const planningMetaLine =
-    mode === "planning"
+    modeNorm === "planning"
       ? planningLocation?.trim()
         ? `${primaryMeta} · ${planningLocation.trim()}`
         : primaryMeta
       : null;
 
   const planningTheme =
-    mode === "planning" ? planningWindowTheme(preferredTimeWindow) : null;
+    modeNorm === "planning" ? planningWindowTheme(preferredTimeWindow) : null;
+
+  /** Tournament layout when mode says so, or list omitted title but we have it from detail cache / title field. */
+  const isTournamentCard =
+    modeNorm === "tournament" ||
+    (modeNorm !== "planning" && Boolean(displayTournamentTitle));
+  const isScheduledLike =
+    modeNorm === "scheduled" ||
+    modeNorm === "tournament" ||
+    (modeNorm !== "planning" && Boolean(displayTournamentTitle));
+  const tournamentHeadline = isTournamentCard
+    ? displayTournamentTitle || courseName?.trim() || "Course TBD"
+    : null;
+  const showCourseSubline =
+    isTournamentCard &&
+    Boolean(displayTournamentTitle) &&
+    Boolean(courseName?.trim()) &&
+    displayTournamentTitle!.toLowerCase() !== courseName!.trim().toLowerCase();
 
   return (
     <Pressable
       style={({ pressed }) => [
         styles.card,
-        mode === "planning" && styles.planningCard,
+        modeNorm === "planning" && styles.planningCard,
         planningTheme?.card,
         pressed && { opacity: 0.85 },
       ]}
@@ -92,7 +135,7 @@ export function RoundListCard({
       <View style={styles.cardBody}>
         <View style={styles.cardForeground} pointerEvents="box-none">
           <View style={styles.cardPressInner} pointerEvents="none">
-            {mode === "scheduled" ? (
+            {isScheduledLike ? (
               <>
                 <RoundCoverImage
                   recyclingKey={`${roundId}:${imageUrl}`}
@@ -101,9 +144,24 @@ export function RoundListCard({
                   transitionMs={260}
                 />
                 <View style={styles.topRow}>
-                  <Text style={styles.cardTitle}>{courseName ?? "Course TBD"}</Text>
-                  <Text style={styles.badgeMuted}>
-                    {joinPolicy === "instant" ? "Instant" : "Approval"}
+                  <View style={styles.titleBlock}>
+                    <Text style={styles.cardTitle} numberOfLines={isTournamentCard ? 3 : 2}>
+                      {isTournamentCard ? tournamentHeadline : courseName ?? "Course TBD"}
+                    </Text>
+                    {showCourseSubline ? (
+                      <Text style={styles.courseSubline} numberOfLines={2}>
+                        {courseName}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text
+                    style={isTournamentCard ? styles.badgeTournament : styles.badgeMuted}
+                  >
+                    {isTournamentCard
+                      ? "Tournament"
+                      : joinPolicy === "instant"
+                        ? "Instant"
+                        : "Approval"}
                   </Text>
                 </View>
                 <Text style={styles.cardMeta}>{primaryMeta}</Text>
@@ -182,11 +240,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 8,
   },
+  titleBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
   cardTitle: {
     fontSize: 20,
     fontWeight: "700",
     color: colors.text,
-    flex: 1,
+  },
+  courseSubline: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.muted,
   },
   planDate: {
     fontSize: 20,
@@ -203,6 +270,17 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: "hidden",
     fontWeight: "600",
+  },
+  badgeTournament: {
+    backgroundColor: "#f5f0d8",
+    color: colors.text,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    overflow: "hidden",
+    fontWeight: "700",
+    borderWidth: 1,
+    borderColor: "rgba(201, 162, 39, 0.35)",
   },
   spotsRow: {
     flexDirection: "row",

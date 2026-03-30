@@ -6,6 +6,10 @@ export type DiscoverRound = {
   preferredTimeWindows?: string[] | null;
   planningLocation: string | null;
   courseName: string;
+  /** Tournament display title; list cards use as headline when set. */
+  tournamentTitle?: string | null;
+  /** Rare: snake_case from some API layers — prefer {@link tournamentTitle}. */
+  tournament_title?: string | null;
   teeTime: string | null;
   targetDate: string;
   effectiveDate: string;
@@ -45,6 +49,7 @@ export type RoundDetails = {
   joinPolicy: "instant" | "approval";
   /** Tournament-only display name; falls back to course name when null. */
   tournamentTitle?: string | null;
+  tournament_title?: string | null;
   /** Tournament-only markdown-like body (see `TournamentMarkdownBody`). */
   tournamentDetails?: string | null;
   hostId: string;
@@ -79,6 +84,9 @@ export type MineRound = {
   id: string;
   inviteToken: string;
   courseName: string | null;
+  /** Tournament headline on list cards when set. */
+  tournamentTitle?: string | null;
+  tournament_title?: string | null;
   teeTime: string | null;
   targetDate: string;
   mode: "scheduled" | "planning" | "tournament";
@@ -88,6 +96,8 @@ export type MineRound = {
   status: "forming" | "confirmed" | "completed";
   joinPolicy: "instant" | "approval";
   imageUrl: string;
+  /** Present on profile open-rounds rows; used for list hint hydration. */
+  spotsRemaining?: number;
   totalSpots?: number;
   confirmedCount?: number;
   confirmedPlayers?: Array<{

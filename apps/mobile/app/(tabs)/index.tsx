@@ -25,6 +25,7 @@ import {
   formatPlanningWindow,
   formatScheduledCardMeta,
   getTimeWindows,
+  resolveTournamentTitle,
 } from "../../lib/round-card-meta";
 import { prefetchPublicProfile } from "../../lib/public-profile-cache";
 import { buildRoundListHint, prefetchRoundOpen } from "../../lib/round-details-cache";
@@ -609,8 +610,16 @@ export default function DiscoverScreen() {
           ) : (
             <RoundListCard
               roundId={item.round.id}
-              mode={item.round.mode === "scheduled" ? "scheduled" : "planning"}
+              mode={
+                item.round.mode === "planning"
+                  ? "planning"
+                  : item.round.mode === "tournament"
+                    ? "tournament"
+                    : "scheduled"
+              }
               courseName={item.round.courseName}
+              tournamentTitle={resolveTournamentTitle(item.round)}
+              inviteToken={item.round.inviteToken}
               imageUrl={item.round.imageUrl}
               joinPolicy={item.round.joinPolicy}
               totalSpots={item.round.totalSpots}

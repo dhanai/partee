@@ -10,6 +10,7 @@ import {
   formatPlanningWindow,
   formatScheduledCardMeta,
   getTimeWindows,
+  resolveTournamentTitle,
 } from "../lib/round-card-meta";
 import { buildRoundListHint, prefetchRoundOpen } from "../lib/round-details-cache";
 import { colors } from "../lib/theme";
@@ -19,6 +20,7 @@ type ProfileOpenRoundApi = {
   id: string;
   inviteToken: string;
   courseName: string | null;
+  tournamentTitle: string | null;
   mode: "scheduled" | "planning" | "tournament";
   teeTime: string | null;
   targetDate: string;
@@ -37,6 +39,7 @@ function toMineRoundForHint(r: ProfileOpenRoundApi): MineRound {
     id: r.id,
     inviteToken: r.inviteToken,
     courseName: r.courseName,
+    tournamentTitle: r.tournamentTitle ?? null,
     teeTime: r.teeTime,
     targetDate: r.targetDate,
     mode: r.mode,
@@ -113,8 +116,16 @@ export function ProfileOpenRoundsSection({ userId, viewerIsSelf = false }: Props
           <View key={round.id} style={styles.cardWrap}>
             <RoundListCard
               roundId={round.id}
-              mode={round.mode === "scheduled" ? "scheduled" : "planning"}
+              mode={
+                round.mode === "planning"
+                  ? "planning"
+                  : round.mode === "tournament"
+                    ? "tournament"
+                    : "scheduled"
+              }
               courseName={round.courseName}
+              tournamentTitle={resolveTournamentTitle(round)}
+              inviteToken={round.inviteToken}
               imageUrl={round.imageUrl}
               joinPolicy={round.joinPolicy}
               totalSpots={round.totalSpots}

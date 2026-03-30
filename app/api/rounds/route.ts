@@ -10,6 +10,10 @@ import { notifyRoundInvites } from "@/lib/notify-user";
 import { publishAfterRoundCreated, publishRoundInviteToast } from "@/lib/parfade-ably-publish";
 import { buildRoundInvitePushBody, formatChatPushTitleLine } from "@/lib/round-invite-push-message";
 import { resolveRoundImageUrl } from "@/lib/round-images";
+import {
+  getRoundsDbCapabilities,
+  roundInsertReturningFields,
+} from "@/lib/rounds-db-capabilities";
 import { textArraySql, timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 const createRoundSchema = z
@@ -160,6 +164,25 @@ export async function POST(req: Request) {
     const user = await requireDbUser(req);
     rawBody = await req.json();
     const parsed = createRoundSchema.parse(rawBody);
+    const dbCap = await getRoundsDbCapabilities();
+    if (parsed.tournamentMode && !dbCap.hasTournamentModeEnum) {
+      return NextResponse.json(
+        {
+          error:
+            "Tournament rounds are not available on this server yet. Please run database migrations (or contact support).",
+        },
+        { status: 503 },
+      );
+    }
+    if (parsed.tournamentMode && !dbCap.hasTournamentCopyColumns) {
+      return NextResponse.json(
+        {
+          error:
+            "Tournament title/details require a database migration. Run migrations or contact support.",
+        },
+        { status: 503 },
+      );
+    }
     const roundMode: "planning" | "scheduled" | "tournament" = parsed.planningMode
       ? "planning"
       : parsed.tournamentMode
@@ -218,6 +241,12 @@ export async function POST(req: Request) {
 
     let invitedCount = 0;
     const [createdRound] = await db.transaction(async (tx) => {
+      /**
+       * Omit tournament fields from INSERT when not in tournament mode. Use an explicit
+       * `returning(...)` list when `tournament_*` columns are missing: Drizzle’s default
+       * `returning()` includes every table column, so Postgres would error on RETURNING
+       * even if INSERT did not reference those columns — which broke scheduled/planning.
+       */
       const [newRound] = await tx
         .insert(rounds)
         .values({
@@ -243,16 +272,18 @@ export async function POST(req: Request) {
           groupId: parsed.groupId ?? null,
           status: "forming",
           inviteToken: nanoid(12),
-          tournamentTitle:
-            parsed.tournamentMode && parsed.tournamentTitle?.trim()
-              ? parsed.tournamentTitle.trim()
-              : null,
-          tournamentDetails:
-            parsed.tournamentMode && parsed.tournamentDetails?.trim()
-              ? parsed.tournamentDetails.trim()
-              : null,
+          ...(parsed.tournamentMode
+            ? {
+                tournamentTitle: parsed.tournamentTitle?.trim()
+                  ? parsed.tournamentTitle.trim()
+                  : null,
+                tournamentDetails: parsed.tournamentDetails?.trim()
+                  ? parsed.tournamentDetails.trim()
+                  : null,
+              }
+            : {}),
         })
-        .returning();
+        .returning(roundInsertReturningFields(dbCap.hasTournamentCopyColumns));
 
       await tx.insert(spots).values({
         roundId: newRound.id,
@@ -344,6 +375,9 @@ export async function POST(req: Request) {
       round: {
         ...createdRound,
         ...timeWindowResponseFields(createdRound.preferredTimeWindow),
+        ...(!dbCap.hasTournamentCopyColumns
+          ? { tournamentTitle: null, tournamentDetails: null }
+          : {}),
       },
       invitePath: `/round/${createdRound.inviteToken}`,
       invitedCount,
