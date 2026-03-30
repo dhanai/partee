@@ -15,10 +15,11 @@ import {
   getOrCreateRoundConversation,
   removeRoundChatParticipant,
 } from "@/lib/round-conversation";
+import { cancelJoinRequestForRound } from "@/lib/round-join-request-cancel";
 import { delay } from "@/lib/utils";
 
 const joinSchema = z.object({
-  action: z.enum(["claim", "decline", "request"]).default("claim"),
+  action: z.enum(["claim", "decline", "request", "cancel_request"]).default("claim"),
 });
 
 type RouteContext = {
@@ -64,6 +65,22 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     if (!round) {
       return NextResponse.json({ error: "Round not found." }, { status: 404 });
+    }
+
+    if (parsed.action === "cancel_request") {
+      const result = await cancelJoinRequestForRound({
+        roundId: round.id,
+        userId: user.id,
+        inviteToken: params.token,
+      });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json({
+        ok: true,
+        status: null as null,
+        me: { id: user.id, name: user.name, avatar: user.avatar },
+      });
     }
 
     const targetStatus = desiredStatus(parsed.action, round.joinPolicy);

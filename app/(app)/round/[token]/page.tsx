@@ -155,6 +155,28 @@ export default function RoundInvitePage({
     void searchFinalizeCourses(debouncedFinalizeQuery);
   }, [debouncedFinalizeQuery, searchFinalizeCourses]);
 
+  async function cancelJoinRequest() {
+    setRsvpBusy(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch(`/api/rounds/${params.token}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel_request" }),
+      });
+      const json = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok) {
+        setError(json.error ?? "Unable to cancel request.");
+      } else {
+        setMessage("Join request canceled.");
+        await loadRound();
+      }
+    } finally {
+      setRsvpBusy(false);
+    }
+  }
+
   async function rsvp(action: "claim" | "decline") {
     setRsvpBusy(true);
     setMessage(null);
@@ -475,7 +497,7 @@ export default function RoundInvitePage({
 
           <SignedIn>
             <div className="parfade-card">
-              {hasResponded && !message ? (
+              {hasResponded && !message && round.currentUserSpotStatus !== "requested" ? (
                 <div className="flex items-center gap-2">
                   <span className={`h-2 w-2 rounded-full ${round.currentUserSpotStatus === "confirmed" ? "bg-fairway" : round.currentUserSpotStatus === "declined" ? "bg-red-400" : "bg-gold"}`} />
                   <p className="text-sm text-charcoal-400">
@@ -483,6 +505,30 @@ export default function RoundInvitePage({
                   </p>
                 </div>
               ) : null}
+
+              {round.currentUserSpotStatus === "requested" && (
+                <div className="mt-4 rounded-lg border border-charcoal-100 bg-charcoal-50/80 p-4">
+                  <p className="text-sm font-semibold text-charcoal">Request pending</p>
+                  <p className="mt-1 text-sm text-charcoal-400">
+                    Waiting for the host to approve or decline your request.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void cancelJoinRequest()}
+                    disabled={rsvpBusy}
+                    className="parfade-btn-secondary mt-3 inline-flex w-full items-center justify-center gap-2 disabled:opacity-40"
+                  >
+                    {rsvpBusy ? (
+                      <>
+                        <ParfadeSpinner size="sm" variant="muted" aria-label="Updating" />
+                        Updating…
+                      </>
+                    ) : (
+                      "Cancel request"
+                    )}
+                  </button>
+                </div>
+              )}
 
               {message && <p className="text-sm font-medium text-fairway">{message}</p>}
               {error && <p className="text-sm text-red-600">{error}</p>}

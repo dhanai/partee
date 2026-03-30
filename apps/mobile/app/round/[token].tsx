@@ -394,6 +394,37 @@ export default function RoundDetailsScreen() {
     }
   }
 
+  async function cancelJoinRequest() {
+    if (!token || !round || round.currentUserSpotStatus !== "requested") return;
+    const prevRound = round;
+    setBusy(true);
+    setError(null);
+    setRound({ ...round, currentUserSpotStatus: null });
+    try {
+      const authToken = await getToken();
+      await apiPost<{ ok?: boolean; status?: string | null }>(
+        `/api/rounds/${token}/join`,
+        { action: "cancel_request" },
+        authToken,
+      );
+      hapticSuccess();
+      showSnackbar("Join request canceled");
+      setRound((current) => {
+        if (current) setCachedRoundDetails(current);
+        return current;
+      });
+      emitRoundListsShouldRefresh();
+      void loadRound({ silent: true });
+    } catch (cancelError) {
+      setRound(prevRound);
+      setError(
+        cancelError instanceof Error ? cancelError.message : "Unable to cancel request.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function rsvp(action: "claim" | "decline") {
     if (!token || !round) return;
     const prevRound = round;
@@ -568,9 +599,14 @@ export default function RoundDetailsScreen() {
 
   const canInviteUsers = apiResolved && (round.isHost || round.currentUserSpotStatus === "confirmed");
   const canUseGroupChat = apiResolved && (round.isHost || round.currentUserSpotStatus === "confirmed");
+  const pendingJoinRequest =
+    apiResolved &&
+    !round.isHost &&
+    round.currentUserSpotStatus === "requested";
   const showRsvpActions =
     apiResolved &&
     !round.isHost &&
+    !pendingJoinRequest &&
     (!round.currentUserSpotStatus ||
       round.currentUserSpotStatus === "invited" ||
       round.currentUserSpotStatus === "declined");
@@ -730,6 +766,35 @@ export default function RoundDetailsScreen() {
         </View>
       ) : null}
 
+      {pendingJoinRequest ? (
+        <View style={styles.joinRequestPendingBlock}>
+          <View style={styles.joinRequestPendingRow}>
+            <Ionicons name="hourglass-outline" size={22} color={colors.mustard} />
+            <View style={styles.joinRequestPendingTextCol}>
+              <Text style={styles.joinRequestPendingTitle}>Request pending</Text>
+              <Text style={styles.joinRequestPendingSub}>
+                You asked to join. The host will approve or decline.
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            style={({ pressed }) => [
+              btn.secondaryButton,
+              styles.fullWidthSecondaryBtn,
+              pressed && !busy && btn.pressed,
+              busy && styles.disabledButton,
+            ]}
+            onPress={() => void cancelJoinRequest()}
+            disabled={busy}
+            accessibilityLabel="Cancel join request"
+          >
+            <Text style={btn.secondaryText}>
+              {busy ? "Updating..." : "Cancel request"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       {showRsvpActions ? (
         <View style={btn.actions}>
           <Pressable
@@ -743,7 +808,13 @@ export default function RoundDetailsScreen() {
           >
             <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
             <Text style={btn.primaryText}>
-              {busy ? "Updating..." : round.mode === "planning" ? "I'm in" : "Claim spot"}
+              {busy
+                ? "Updating..."
+                : round.joinPolicy === "approval"
+                  ? "Request to join"
+                  : round.mode === "planning"
+                    ? "I'm in"
+                    : "Claim spot"}
             </Text>
           </Pressable>
           <Pressable
@@ -1045,14 +1116,29 @@ export default function RoundDetailsScreen() {
                     void presentAddRoundToCalendar(round);
                   },
                 },
-                {
-                  key: "unclaim",
-                  label: "Unclaim spot",
-                  icon: "close-circle-outline" as const,
-                  onPress: () => {
-                    void rsvp("decline");
-                  },
-                },
+                ...(round.currentUserSpotStatus === "requested"
+                  ? [
+                      {
+                        key: "cancel-request",
+                        label: "Cancel join request",
+                        icon: "close-circle-outline" as const,
+                        onPress: () => {
+                          void cancelJoinRequest();
+                        },
+                      },
+                    ]
+                  : round.currentUserSpotStatus === "confirmed"
+                    ? [
+                        {
+                          key: "unclaim",
+                          label: "Unclaim spot",
+                          icon: "close-circle-outline" as const,
+                          onPress: () => {
+                            void rsvp("decline");
+                          },
+                        },
+                      ]
+                    : []),
                 {
                   key: "report",
                   label: "Report round",
@@ -1259,6 +1345,33 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.5 },
   /** Single primary CTA in a column (finalize); overrides `flex: 1` from shared RSVP styles. */
   fullWidthPrimaryBtn: { flex: 0, width: "100%", alignSelf: "stretch" },
+  fullWidthSecondaryBtn: { flex: 0, width: "100%", alignSelf: "stretch", marginTop: 10 },
+  joinRequestPendingBlock: {
+    marginTop: 16,
+    width: "100%",
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 0,
+  },
+  joinRequestPendingRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  joinRequestPendingTextCol: { flex: 1, minWidth: 0, gap: 4 },
+  joinRequestPendingTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  joinRequestPendingSub: {
+    fontSize: 14,
+    color: colors.muted,
+    lineHeight: 20,
+  },
   errorText: {
     color: colors.danger,
     backgroundColor: "#fee4e2",
