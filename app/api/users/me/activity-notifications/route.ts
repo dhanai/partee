@@ -1,9 +1,24 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { groupJoinRequests, inAppNotifications, users } from "@/db/schema";
+import { courses, groupJoinRequests, inAppNotifications, rounds, users } from "@/db/schema";
+import { buildRoundNavHintJson } from "@/lib/activity-notification-round-hint";
 import { requireDbUser } from "@/lib/auth";
+import { formatVenueLabel } from "@/lib/round-invite-push-message";
 import { toIsoTimestamp } from "@/lib/utils";
+
+function inferRoundRsvpSpotStatus(input: {
+  type: string;
+  stored?: string;
+  title: string;
+}): "confirmed" | "requested" | "declined" {
+  if (input.type === "round_rsvp_declined") return "declined";
+  if (input.stored === "confirmed" || input.stored === "requested" || input.stored === "declined") {
+    return input.stored;
+  }
+  if (input.title === "Join request") return "requested";
+  return "confirmed";
+}
 
 const LIMIT = 50;
 
@@ -74,13 +89,110 @@ export async function GET(req: Request) {
       }
     }
 
+    const roundRsvpRows = rows.filter(
+      (r) => r.type === "round_rsvp_accepted" || r.type === "round_rsvp_declined",
+    );
+    const roundIdsForJoin = [
+      ...new Set(
+        roundRsvpRows
+          .map((r) => (r.data as { roundId?: string }).roundId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const inviteTokensForJoin = [
+      ...new Set(
+        roundRsvpRows
+          .map((r) => (r.data as { inviteToken?: string }).inviteToken)
+          .filter((t): t is string => Boolean(t)),
+      ),
+    ];
+
+    type LiveRoundRow = {
+      id: string;
+      inviteToken: string;
+      mode: "planning" | "scheduled";
+      teeTime: Date | null;
+      targetDate: Date;
+      courseName: string | null;
+      planningLocation: string | null;
+      preferredTimeWindow: string[] | null;
+      joinPolicy: "instant" | "approval";
+      totalSpots: number;
+      customImageUrl: string | null;
+      courseMetadata: unknown | null;
+      hostId: string;
+      hostName: string;
+      hostAvatar: string | null;
+    };
+
+    const roundById = new Map<string, LiveRoundRow>();
+    const roundByInviteToken = new Map<string, LiveRoundRow>();
+
+    if (roundIdsForJoin.length > 0 || inviteTokensForJoin.length > 0) {
+      const conds = [];
+      if (roundIdsForJoin.length > 0) conds.push(inArray(rounds.id, roundIdsForJoin));
+      if (inviteTokensForJoin.length > 0) conds.push(inArray(rounds.inviteToken, inviteTokensForJoin));
+      const whereClause = conds.length === 1 ? conds[0]! : or(...conds);
+
+      const roundRows = await db
+        .select({
+          id: rounds.id,
+          inviteToken: rounds.inviteToken,
+          mode: rounds.mode,
+          teeTime: rounds.teeTime,
+          targetDate: rounds.targetDate,
+          courseName: rounds.courseName,
+          planningLocation: rounds.planningLocation,
+          preferredTimeWindow: rounds.preferredTimeWindow,
+          joinPolicy: rounds.joinPolicy,
+          totalSpots: rounds.totalSpots,
+          customImageUrl: rounds.customImageUrl,
+          hostId: rounds.hostId,
+          hostName: users.name,
+          hostAvatar: users.avatar,
+          courseMetadata: courses.metadata,
+        })
+        .from(rounds)
+        .innerJoin(users, eq(users.id, rounds.hostId))
+        .leftJoin(courses, eq(courses.id, rounds.courseId))
+        .where(whereClause);
+
+      for (const row of roundRows) {
+        const live: LiveRoundRow = {
+          id: row.id,
+          inviteToken: row.inviteToken,
+          mode: row.mode as "planning" | "scheduled",
+          teeTime: row.teeTime,
+          targetDate: row.targetDate,
+          courseName: row.courseName,
+          planningLocation: row.planningLocation,
+          preferredTimeWindow: row.preferredTimeWindow,
+          joinPolicy: row.joinPolicy as "instant" | "approval",
+          totalSpots: row.totalSpots,
+          customImageUrl: row.customImageUrl,
+          courseMetadata: row.courseMetadata,
+          hostId: row.hostId,
+          hostName: row.hostName,
+          hostAvatar: row.hostAvatar,
+        };
+        roundById.set(row.id, live);
+        roundByInviteToken.set(row.inviteToken, live);
+      }
+    }
+
     const items = rows.flatMap((r) => {
       try {
         const d = r.data as {
+          roundId?: string;
           inviteToken?: string;
           groupId?: string;
           postId?: string;
           actorUserId?: string;
+          mode?: "planning" | "scheduled";
+          teeTimeIso?: string | null;
+          targetDateIso?: string;
+          venueLabel?: string;
+          spotStatus?: "confirmed" | "requested" | "declined";
         };
         const inviteToken = typeof d.inviteToken === "string" ? d.inviteToken : "";
         const groupId = typeof d.groupId === "string" ? d.groupId : "";
@@ -94,6 +206,74 @@ export async function GET(req: Request) {
         const requestEntry = groupId && actorUserId
           ? pendingRequestMap.get(`${groupId}:${actorUserId}`)
           : undefined;
+
+        let roundRsvpMeta:
+          | {
+              mode: "planning" | "scheduled";
+              teeTimeIso: string | null;
+              targetDateIso: string;
+              venueLabel: string;
+              spotStatus: "confirmed" | "requested" | "declined";
+              preferredTimeWindows: string[] | null;
+            }
+          | undefined;
+
+        let roundHint: string | undefined;
+
+        if (r.type === "round_rsvp_accepted" || r.type === "round_rsvp_declined") {
+          const spotStatus = inferRoundRsvpSpotStatus({
+            type: r.type,
+            stored: d.spotStatus,
+            title: r.title,
+          });
+          const live =
+            (typeof d.roundId === "string" ? roundById.get(d.roundId) : undefined) ??
+            (typeof d.inviteToken === "string" ? roundByInviteToken.get(d.inviteToken) : undefined);
+          if (live) {
+            roundRsvpMeta = {
+              mode: live.mode,
+              teeTimeIso: live.teeTime?.toISOString() ?? null,
+              targetDateIso: live.targetDate.toISOString(),
+              venueLabel: formatVenueLabel({
+                courseName: live.courseName,
+                planningLocation: live.planningLocation,
+              }),
+              spotStatus,
+              preferredTimeWindows: live.preferredTimeWindow,
+            };
+            roundHint = buildRoundNavHintJson({
+              id: live.id,
+              inviteToken: live.inviteToken,
+              mode: live.mode,
+              courseName: live.courseName,
+              teeTime: live.teeTime,
+              targetDate: live.targetDate,
+              preferredTimeWindow: live.preferredTimeWindow,
+              planningLocation: live.planningLocation,
+              joinPolicy: live.joinPolicy,
+              totalSpots: live.totalSpots,
+              customImageUrl: live.customImageUrl,
+              courseMetadata: (live.courseMetadata ?? null) as Record<string, unknown> | null,
+              hostId: live.hostId,
+              hostName: live.hostName,
+              hostAvatar: live.hostAvatar,
+            });
+          } else if (
+            typeof d.venueLabel === "string" &&
+            d.venueLabel.length > 0 &&
+            typeof d.targetDateIso === "string" &&
+            (d.mode === "planning" || d.mode === "scheduled")
+          ) {
+            roundRsvpMeta = {
+              mode: d.mode,
+              teeTimeIso: d.teeTimeIso ?? null,
+              targetDateIso: d.targetDateIso,
+              venueLabel: d.venueLabel,
+              spotStatus,
+              preferredTimeWindows: null,
+            };
+          }
+        }
 
         return [
           {
@@ -110,6 +290,8 @@ export async function GET(req: Request) {
             stillPending: requestEntry?.pending ?? false,
             joinRequestId: requestEntry?.requestId ?? null,
             createdAt: toIsoTimestamp(r.createdAt),
+            ...(roundRsvpMeta ? { roundRsvpMeta } : {}),
+            ...(roundHint ? { roundHint } : {}),
           },
         ];
       } catch (rowErr) {

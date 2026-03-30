@@ -1,3 +1,5 @@
+import { formatPlanningWindow } from "./round-card-meta";
+
 /** Mirrors server `formatInviterFirstLastInitial` — keep in sync with lib/round-invite-push-message.ts */
 export function formatInviterFirstLastInitial(name: string): string {
   const t = name.trim();
@@ -17,6 +19,8 @@ export type RoundRsvpNotificationMeta = {
   targetDateIso: string;
   venueLabel: string;
   spotStatus: "confirmed" | "requested" | "declined";
+  /** Live round preferred windows — updates when host edits the round */
+  preferredTimeWindows?: string[] | null;
 };
 
 /** Device-local calendar date (weekday, month, day) matching server push intent without UTC skew. */
@@ -40,11 +44,44 @@ function formatRoundInviteDateLocal(
   });
 }
 
-function formatWhenClauseLocal(
-  mode: "planning" | "scheduled",
-  teeTimeIso: string | null,
-  targetDateIso: string,
-): string {
+function formatWhenClauseLocal(meta: RoundRsvpNotificationMeta): string {
+  const { mode, teeTimeIso, targetDateIso, preferredTimeWindows } = meta;
+
+  if (mode === "scheduled" && teeTimeIso) {
+    const d = new Date(teeTimeIso);
+    if (!Number.isNaN(d.getTime())) {
+      const now = new Date();
+      const sameYear = d.getFullYear() === now.getFullYear();
+      const datePart = d.toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        ...(sameYear ? {} : { year: "numeric" as const }),
+      });
+      const timePart = d.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      return ` on ${datePart} at ${timePart}`;
+    }
+  }
+
+  if (mode === "planning") {
+    const d = new Date(targetDateIso);
+    if (Number.isNaN(d.getTime())) return "";
+    const now = new Date();
+    const sameYear = d.getFullYear() === now.getFullYear();
+    const datePart = d.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      ...(sameYear ? {} : { year: "numeric" as const }),
+    });
+    const win = formatPlanningWindow(preferredTimeWindows ?? null);
+    if (win && win !== "Anytime") return ` on ${datePart} · ${win}`;
+    return ` on ${datePart}`;
+  }
+
   const datePart = formatRoundInviteDateLocal(teeTimeIso, targetDateIso, mode);
   return datePart ? ` on ${datePart}` : "";
 }
@@ -57,7 +94,7 @@ export function formatHostRsvpBodyLocal(guestName: string, meta: RoundRsvpNotifi
     return `${who} declined your invite to ${venue}.`;
   }
   const who = formatInviterFirstLastInitial(guestName);
-  const when = formatWhenClauseLocal(meta.mode, meta.teeTimeIso, meta.targetDateIso);
+  const when = formatWhenClauseLocal(meta);
   if (meta.spotStatus === "requested") {
     return `${who} asked to join ${venue}${when}.`;
   }

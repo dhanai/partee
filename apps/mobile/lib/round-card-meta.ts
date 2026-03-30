@@ -33,15 +33,52 @@ export function formatPlanningWindow(
   return arr.map(cap).join(" or ");
 }
 
+/**
+ * Scheduled rounds: when `teeTime` is set, date and time must come from the **same** instant.
+ * Mixing `targetDate` / effectiveDate for the date with `teeTime` for the clock can show the
+ * wrong time (e.g. tee after local midnight vs targetDate still "yesterday").
+ */
 export function formatScheduledCardMeta(effectiveDateIso: string, teeTime: string | null) {
-  const datePart = new Date(effectiveDateIso).toLocaleDateString();
-  const timePart = teeTime
-    ? `at ${new Date(teeTime).toLocaleTimeString([], {
+  if (teeTime) {
+    const d = new Date(teeTime);
+    if (!Number.isNaN(d.getTime())) {
+      const datePart = d.toLocaleDateString();
+      const timePart = d.toLocaleTimeString(undefined, {
         hour: "numeric",
         minute: "2-digit",
-      })}`
-    : "• time TBD";
-  return `${datePart} ${timePart}`;
+      });
+      return `${datePart} at ${timePart}`;
+    }
+  }
+  const datePart = new Date(effectiveDateIso).toLocaleDateString();
+  return `${datePart} • time TBD`;
+}
+
+/** Mine rounds list + notifications: one label for when the round happens. */
+export function formatMineRoundWhenLabel(round: {
+  mode: "scheduled" | "planning";
+  teeTime: string | null;
+  targetDate: string;
+  preferredTimeWindow?: string | null;
+  preferredTimeWindows?: string[] | null;
+}): string {
+  if (round.mode === "planning") {
+    return formatPlanningWindow(getTimeWindows(round));
+  }
+  if (round.mode === "scheduled" && round.teeTime) {
+    const d = new Date(round.teeTime);
+    if (!Number.isNaN(d.getTime())) {
+      const dateText = d.toLocaleDateString();
+      const timeText = d.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      return `${dateText} at ${timeText}`;
+    }
+  }
+  const effectiveDate = new Date(round.teeTime ?? round.targetDate);
+  const dateText = effectiveDate.toLocaleDateString();
+  return `${dateText} • ${formatPlanningWindow(getTimeWindows(round))}`;
 }
 
 export function formatPlanningHeaderDate(targetDateIso: string) {

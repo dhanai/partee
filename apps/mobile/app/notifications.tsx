@@ -5,8 +5,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { subscribeNotificationsListsRefresh } from "../lib/notifications-list-refresh";
 import { ActivityIndicator, Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from "react-native";
 import { apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../lib/api";
-import { buildRoundListHint, prefetchRoundOpen } from "../lib/round-details-cache";
-import { formatPlanningWindow, getTimeWindows } from "../lib/round-card-meta";
+import {
+  buildRoundListHint,
+  parseRoundListHint,
+  prefetchRoundOpen,
+} from "../lib/round-details-cache";
+import { formatHostRsvpBodyLocal, type RoundRsvpNotificationMeta } from "../lib/host-rsvp-notification-copy";
+import { formatMineRoundWhenLabel } from "../lib/round-card-meta";
 import { useNotificationBadge } from "../lib/notification-badge-context";
 import { colors } from "../lib/theme";
 import { MineRound } from "../types/round";
@@ -42,6 +47,9 @@ type ActivityNotificationItem = {
   stillPending: boolean;
   joinRequestId: string | null;
   createdAt: string;
+  roundRsvpMeta?: RoundRsvpNotificationMeta;
+  /** Live round bootstrap JSON — matches `/api/rounds/:token` when round still exists */
+  roundHint?: string;
 };
 
 type ActivityNotificationsResponse = {
@@ -203,21 +211,6 @@ export default function NotificationsScreen() {
     } finally {
       setGroupRequestBusyId(null);
     }
-  }
-
-  function formatWhen(round: MineRound) {
-    const effectiveDate = new Date(round.teeTime ?? round.targetDate);
-    const dateText = effectiveDate.toLocaleDateString();
-    if (round.mode === "scheduled" && round.teeTime) {
-      return `${dateText} at ${new Date(round.teeTime).toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      })}`;
-    }
-    if (round.mode === "planning") {
-      return formatPlanningWindow(getTimeWindows(round));
-    }
-    return `${dateText} • ${formatPlanningWindow(getTimeWindows(round))}`;
   }
 
   type SectionRow =
@@ -391,21 +384,31 @@ export default function NotificationsScreen() {
       }
       if (row.kind === "round_update") {
         const item = row.item;
+        const rsvpBody = item.roundRsvpMeta
+          ? formatHostRsvpBodyLocal(item.actorName ?? "", item.roundRsvpMeta)
+          : item.body;
+        const rsvpCover =
+          item.roundHint != null && item.roundHint.length > 0
+            ? parseRoundListHint(item.roundHint)?.imageUrl ?? ""
+            : "";
         return (
           <Pressable
             style={styles.notificationCard}
             onPressIn={() =>
-              prefetchRoundOpen(item.inviteToken, "", () => getTokenRef.current())
+              prefetchRoundOpen(item.inviteToken, rsvpCover, () => getTokenRef.current())
             }
             onPress={() =>
               router.push({
                 pathname: "/round/[token]",
-                params: { token: item.inviteToken },
+                params: {
+                  token: item.inviteToken,
+                  ...(item.roundHint ? { roundHint: item.roundHint } : {}),
+                },
               })
             }
           >
             <Text style={styles.notificationTitle}>{item.title}</Text>
-            <Text style={styles.notificationMeta}>{item.body}</Text>
+            <Text style={styles.notificationMeta}>{rsvpBody}</Text>
             <Text
               style={[
                 styles.notificationPill,
@@ -486,7 +489,7 @@ export default function NotificationsScreen() {
           }
         >
           <Text style={styles.notificationTitle}>{round.courseName ?? "Round invite"}</Text>
-          <Text style={styles.notificationMeta}>{formatWhen(round)}</Text>
+          <Text style={styles.notificationMeta}>{formatMineRoundWhenLabel(round)}</Text>
           <Text style={styles.notificationPill}>
             {round.spotStatus === "requested" ? "Request pending" : "Invited"}
           </Text>
