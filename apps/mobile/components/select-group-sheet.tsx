@@ -7,12 +7,12 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import {
   AnimatedBottomSheetFrame,
   BottomSheetScrollView,
+  BottomSheetTextInput,
 } from "./animated-bottom-sheet-frame";
 import { apiGet, toAbsoluteUrl } from "../lib/api";
 import { colors } from "../lib/theme";
@@ -32,7 +32,8 @@ function useDebounce(value: string, delayMs: number) {
   return debounced;
 }
 
-const SNAP_POINTS = ["60%"] as const;
+/** Match `InviteFriendsSheet` — single detent + keyboard-friendly search. */
+const SNAP_POINTS = ["55%"] as const;
 
 type SelectGroupSheetProps = {
   visible: boolean;
@@ -56,7 +57,7 @@ export function SelectGroupSheet({
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<GroupOption[]>([]);
-  const debouncedQuery = useDebounce(query, 200);
+  const debouncedQuery = useDebounce(query, 320);
 
   useEffect(() => {
     if (!visible) return;
@@ -125,7 +126,7 @@ export function SelectGroupSheet({
             <ActivityIndicator size="small" color={colors.muted} />
           </View>
         ) : filtered.length === 0 ? (
-          query.trim().length > 0 ? (
+          debouncedQuery.trim().length > 0 ? (
             <Text style={styles.emptyText}>No groups match your search.</Text>
           ) : (
             <View style={styles.emptyState}>
@@ -154,7 +155,7 @@ export function SelectGroupSheet({
                   />
                 ) : (
                   <View style={[styles.avatar, styles.avatarFallback]}>
-                    <Ionicons name="people" size={16} color={colors.fairway} />
+                    <Ionicons name="people" size={14} color={colors.fairway} />
                   </View>
                 )}
                 <Text style={styles.listName} numberOfLines={1}>{group.name}</Text>
@@ -178,7 +179,10 @@ export function SelectGroupSheet({
 }
 
 const styles = StyleSheet.create({
-  sheet: { paddingHorizontal: 16, paddingTop: 4 },
+  sheet: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
   title: {
     fontSize: 18,
     fontWeight: "700",
@@ -242,7 +246,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  avatar: { width: 34, height: 34, borderRadius: 10 },
+  /** Match `InviteFriendsSheet` — row avatar size. */
+  avatar: { width: 30, height: 30, borderRadius: 999 },
   avatarFallback: {
     backgroundColor: colors.fairwaySoft,
     alignItems: "center",

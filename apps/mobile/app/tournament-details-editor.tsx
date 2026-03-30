@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
   Modal,
@@ -7,33 +8,39 @@ import {
   Text,
   TextInput,
   View,
+  type TextInput as RNTextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  AnimatedBottomSheetFrame,
-  BottomSheetScrollView,
-  BottomSheetTextInput,
-} from "./animated-bottom-sheet-frame";
+  commitTournamentDetailsEditor,
+  takeTournamentDetailsEditorSeed,
+} from "../lib/tournament-details-editor-bridge";
 import { applyWrap, insertSnippet, type TextSelection } from "../lib/tournament-markdown-insert";
 import { colors } from "../lib/theme";
 
-const SNAP = ["82%"] as const;
+/** Match `group/[groupId]/post.tsx` — native multiline sizing. */
+const INPUT_MIN_H = 120;
+const INPUT_MAX_H = 280;
+/** Extra space so caret clears the sticky toolbar above the keyboard (toolbar is busier than post). */
+const STICKY_TOOLBAR_CONTENT_H = 56;
 const MAX_LEN = 8000;
 
-type Props = {
-  visible: boolean;
-  onClose: () => void;
-  value: string;
-  onChange: (next: string) => void;
-};
-
-export function TournamentDetailsEditorSheet({ visible, onClose, value, onChange }: Props) {
-  const inputRef = useRef<ComponentRef<typeof BottomSheetTextInput> | null>(null);
+export default function TournamentDetailsEditorScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const inputRef = useRef<RNTextInput | null>(null);
+  const [value, setValue] = useState("");
   const [selection, setSelection] = useState<TextSelection>({ start: 0, end: 0 });
   const pendingSelectionRef = useRef<TextSelection | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("https://");
+
+  useEffect(() => {
+    setValue(takeTournamentDetailsEditorSeed());
+  }, []);
 
   useEffect(() => {
     const p = pendingSelectionRef.current;
@@ -44,13 +51,15 @@ export function TournamentDetailsEditorSheet({ visible, onClose, value, onChange
     });
   }, [value]);
 
-  const commit = useCallback(
-    (next: string, sel: TextSelection) => {
-      pendingSelectionRef.current = sel;
-      onChange(next);
-    },
-    [onChange],
+  const stickyOffset = useMemo(
+    () => ({ opened: insets.bottom - 8 }),
+    [insets.bottom],
   );
+
+  const commit = useCallback((next: string, sel: TextSelection) => {
+    pendingSelectionRef.current = sel;
+    setValue(next);
+  }, []);
 
   const onBold = useCallback(() => {
     const { next, selection: sel } = applyWrap(value, selection, "**", "**");
@@ -88,83 +97,64 @@ export function TournamentDetailsEditorSheet({ visible, onClose, value, onChange
     Keyboard.dismiss();
   }, [value, selection, linkLabel, linkUrl, commit]);
 
+  const handleDone = useCallback(() => {
+    commitTournamentDetailsEditor(value.slice(0, MAX_LEN));
+    Keyboard.dismiss();
+    router.back();
+  }, [value, router]);
+
   return (
-    <>
-      <AnimatedBottomSheetFrame
-        visible={visible}
-        onClose={onClose}
-        snapPoints={SNAP}
-        keyboardBlurBehavior="restore"
-        enableContentPanningGesture={false}
-        backdropAccessibilityLabel="Dismiss tournament details"
+    <View style={styles.root}>
+      <KeyboardAwareScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bottomOffset={STICKY_TOOLBAR_CONTENT_H + 12}
       >
-        <BottomSheetScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text style={styles.sheetTitle}>Tournament details</Text>
-          <Text style={styles.sheetHint}>
-            Format with the toolbar: bold, italic, underline, and links.
-          </Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Tournament details</Text>
+          <Text style={styles.charCount}>{value.length}/{MAX_LEN}</Text>
+        </View>
+        <Text style={styles.subtitle}>
+          Use the toolbar for bold, italic, underline, and links. Swipe down to close without saving.
+        </Text>
 
-          <View style={styles.toolbar}>
-            <Pressable
-              style={styles.toolBtn}
-              onPress={onBold}
-              accessibilityLabel="Bold"
-              hitSlop={6}
-            >
-              <Text style={styles.toolIcon}>B</Text>
-            </Pressable>
-            <Pressable
-              style={styles.toolBtn}
-              onPress={onItalic}
-              accessibilityLabel="Italic"
-              hitSlop={6}
-            >
-              <Text style={[styles.toolIcon, styles.toolItalic]}>I</Text>
-            </Pressable>
-            <Pressable
-              style={styles.toolBtn}
-              onPress={onUnderline}
-              accessibilityLabel="Underline"
-              hitSlop={6}
-            >
-              <Text style={[styles.toolIcon, styles.toolUnderline]}>U</Text>
-            </Pressable>
-            <Pressable
-              style={styles.toolBtn}
-              onPress={openLinkModal}
-              accessibilityLabel="Insert link"
-              hitSlop={6}
-            >
-              <Ionicons name="link-outline" size={22} color={colors.fairway} />
-            </Pressable>
-            <View style={styles.toolbarSpacer} />
-            <Text style={styles.charCount}>
-              {value.length}/{MAX_LEN}
-            </Text>
-          </View>
+        <TextInput
+          ref={inputRef}
+          style={styles.input}
+          value={value}
+          onChangeText={(t) => setValue(t.slice(0, MAX_LEN))}
+          onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
+          placeholder="Prizes, format, rules, dress code…"
+          placeholderTextColor={colors.muted}
+          multiline
+          scrollEnabled
+          maxLength={MAX_LEN}
+          textAlignVertical="top"
+        />
+      </KeyboardAwareScrollView>
 
-          <BottomSheetTextInput
-            ref={inputRef}
-            style={styles.input}
-            value={value}
-            onChangeText={(t) => onChange(t.slice(0, MAX_LEN))}
-            onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
-            placeholder="Prizes, format, rules, dress code…"
-            placeholderTextColor={colors.muted}
-            multiline
-            maxLength={MAX_LEN}
-            textAlignVertical="top"
-          />
-
-          <Pressable style={styles.doneBtn} onPress={() => { Keyboard.dismiss(); onClose(); }}>
-            <Text style={styles.doneBtnText}>Done</Text>
+      <KeyboardStickyView offset={stickyOffset}>
+        <View style={[styles.toolbar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          <Pressable style={styles.toolBtn} onPress={onBold} accessibilityLabel="Bold" hitSlop={6}>
+            <Text style={styles.toolIcon}>B</Text>
           </Pressable>
-        </BottomSheetScrollView>
-      </AnimatedBottomSheetFrame>
+          <Pressable style={styles.toolBtn} onPress={onItalic} accessibilityLabel="Italic" hitSlop={6}>
+            <Text style={[styles.toolIcon, styles.toolItalic]}>I</Text>
+          </Pressable>
+          <Pressable style={styles.toolBtn} onPress={onUnderline} accessibilityLabel="Underline" hitSlop={6}>
+            <Text style={[styles.toolIcon, styles.toolUnderline]}>U</Text>
+          </Pressable>
+          <Pressable style={styles.toolBtn} onPress={openLinkModal} accessibilityLabel="Insert link" hitSlop={6}>
+            <Ionicons name="link-outline" size={22} color={colors.fairway} />
+          </Pressable>
+          <View style={styles.toolbarSpacer} />
+          <Pressable style={styles.done} onPress={handleDone} accessibilityLabel="Save details">
+            <Text style={styles.doneText}>Done</Text>
+          </Pressable>
+        </View>
+      </KeyboardStickyView>
 
       <Modal visible={linkOpen} transparent animationType="fade">
         <Pressable style={styles.modalBackdrop} onPress={() => setLinkOpen(false)}>
@@ -200,36 +190,63 @@ export function TournamentDetailsEditorSheet({ visible, onClose, value, onChange
           </Pressable>
         </Pressable>
       </Modal>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { maxHeight: "100%" },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 24 },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.text,
+  root: {
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
     marginBottom: 6,
   },
-  sheetHint: {
-    fontSize: 14,
+  title: {
+    flex: 1,
+    color: colors.text,
+    fontWeight: "700",
+    fontSize: 18,
+  },
+  subtitle: {
     color: colors.muted,
+    fontSize: 14,
     lineHeight: 20,
     marginBottom: 12,
+  },
+  input: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    color: colors.text,
+    textAlignVertical: "top",
+    minHeight: INPUT_MIN_H,
+    maxHeight: INPUT_MAX_H,
   },
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingTop: 10,
+    paddingHorizontal: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: 6,
   },
   toolBtn: {
     minWidth: 36,
@@ -237,7 +254,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   toolIcon: {
     fontSize: 18,
@@ -246,31 +265,24 @@ const styles = StyleSheet.create({
   },
   toolItalic: { fontStyle: "italic", fontWeight: "700" },
   toolUnderline: { textDecorationLine: "underline" },
-  toolbarSpacer: { flex: 1 },
-  charCount: { fontSize: 12, color: colors.muted },
-  input: {
-    minHeight: 220,
-    maxHeight: 360,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.text,
-    backgroundColor: colors.background,
+  toolbarSpacer: {
+    flex: 1,
+    minWidth: 8,
   },
-  doneBtn: {
-    marginTop: 14,
-    alignSelf: "flex-end",
+  charCount: {
+    fontSize: 12,
+    color: colors.muted,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  done: {
+    flexShrink: 0,
+    backgroundColor: colors.fairway,
+    borderRadius: 999,
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
   },
-  doneBtnText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: colors.fairway,
-  },
+  doneText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",

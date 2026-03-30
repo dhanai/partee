@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, {
@@ -28,7 +28,10 @@ import { InviteFriendsSheet } from "../../components/invite-friends-sheet";
 import { PlanningTimeWindowChips } from "../../components/planning-time-window-chips";
 import { SelectGroupSheet } from "../../components/select-group-sheet";
 import { TimePickerModal } from "../../components/time-picker-modal";
-import { TournamentDetailsEditorSheet } from "../../components/tournament-details-editor-sheet";
+import {
+  consumeTournamentDetailsEditorCommit,
+  seedTournamentDetailsEditor,
+} from "../../lib/tournament-details-editor-bridge";
 
 type CourseResult = {
   id: string;
@@ -119,7 +122,6 @@ export default function CreateScreen() {
   const [joinPolicy, setJoinPolicy] = useState<"instant" | "approval">("instant");
   const [tournamentTitle, setTournamentTitle] = useState("");
   const [tournamentDetails, setTournamentDetails] = useState("");
-  const [tournamentDetailsSheetOpen, setTournamentDetailsSheetOpen] = useState(false);
   const [tournamentMaxParticipants, setTournamentMaxParticipants] = useState("48");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -187,7 +189,6 @@ export default function CreateScreen() {
     setTournamentMaxParticipants("48");
     setTournamentTitle("");
     setTournamentDetails("");
-    setTournamentDetailsSheetOpen(false);
     setVisibility("private");
     setJoinPolicy("instant");
     setSubmitting(false);
@@ -220,6 +221,13 @@ export default function CreateScreen() {
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const c = consumeTournamentDetailsEditorCommit();
+      if (c) setTournamentDetails(c.value);
+    }, []),
+  );
 
   useEffect(() => {
     let active = true;
@@ -775,24 +783,14 @@ export default function CreateScreen() {
                   style={styles.secondaryButton}
                   onPress={() => {
                     Keyboard.dismiss();
-                    setTournamentDetailsSheetOpen(true);
+                    seedTournamentDetailsEditor(tournamentDetails);
+                    router.push("/tournament-details-editor");
                   }}
                 >
                   <Text style={styles.secondaryButtonText}>
-                    {tournamentDetails.trim()
-                      ? "Edit details & formatting"
-                      : "Add details (formatting, links…)"}
+                    {tournamentDetails.trim() ? "Edit tournament details" : "Add tournament details"}
                   </Text>
                 </Pressable>
-                {tournamentDetails.trim() ? (
-                  <Text style={styles.fieldHint} numberOfLines={4}>
-                    {tournamentDetails.trim()}
-                  </Text>
-                ) : (
-                  <Text style={styles.fieldHint}>
-                    Optional — prizes, format, dress code, registration links.
-                  </Text>
-                )}
               </>
             ) : null}
 
@@ -976,13 +974,6 @@ export default function CreateScreen() {
           setSelectedFriends([]);
           setGroupSheetOpen(false);
         }}
-      />
-
-      <TournamentDetailsEditorSheet
-        visible={tournamentDetailsSheetOpen}
-        onClose={() => setTournamentDetailsSheetOpen(false)}
-        value={tournamentDetails}
-        onChange={setTournamentDetails}
       />
     </ScrollView>
   );

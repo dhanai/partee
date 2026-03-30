@@ -355,6 +355,18 @@ export default function RootLayout() {
                 sheetExpandsWhenScrolledToEdge: true,
               }}
             />
+            <Stack.Screen
+              name="tournament-details-editor"
+              options={{
+                title: "",
+                headerShown: false,
+                presentation: "formSheet",
+                sheetAllowedDetents: [0.55, 1.0],
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 16,
+                sheetExpandsWhenScrolledToEdge: true,
+              }}
+            />
                 </Stack>
               </View>
               </SnackbarProvider>

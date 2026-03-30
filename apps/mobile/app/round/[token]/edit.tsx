@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
@@ -26,7 +26,10 @@ import { RoundDetails } from "../../../types/round";
 import { DatePickerModal } from "../../../components/date-picker-modal";
 import { PlanningTimeWindowChips } from "../../../components/planning-time-window-chips";
 import { TimePickerModal } from "../../../components/time-picker-modal";
-import { TournamentDetailsEditorSheet } from "../../../components/tournament-details-editor-sheet";
+import {
+  consumeTournamentDetailsEditorCommit,
+  seedTournamentDetailsEditor,
+} from "../../../lib/tournament-details-editor-bridge";
 
 type RoundResponse = { round: RoundDetails };
 type CourseResult = { id: string; name: string; address: string };
@@ -788,24 +791,14 @@ export default function EditRoundScreen() {
               style={styles.secondaryButton}
               onPress={() => {
                 Keyboard.dismiss();
-                setTournamentDetailsSheetOpen(true);
+                seedTournamentDetailsEditor(tournamentDetails);
+                router.push("/tournament-details-editor");
               }}
             >
               <Text style={styles.secondaryButtonText}>
-                {tournamentDetails.trim()
-                  ? "Edit details & formatting"
-                  : "Add details (formatting, links…)"}
+                {tournamentDetails.trim() ? "Edit tournament details" : "Add tournament details"}
               </Text>
             </Pressable>
-            {tournamentDetails.trim() ? (
-              <Text style={styles.fieldHint} numberOfLines={4}>
-                {tournamentDetails.trim()}
-              </Text>
-            ) : (
-              <Text style={styles.fieldHint}>
-                Optional — prizes, format, dress code, registration links.
-              </Text>
-            )}
           </>
         ) : null}
 
@@ -827,13 +820,6 @@ export default function EditRoundScreen() {
         value={teeTimeValue}
         onChange={setTeeTimeValue}
         onClose={() => setTimePickerOpen(false)}
-      />
-
-      <TournamentDetailsEditorSheet
-        visible={tournamentDetailsSheetOpen}
-        onClose={() => setTournamentDetailsSheetOpen(false)}
-        value={tournamentDetails}
-        onChange={setTournamentDetails}
       />
     </ScrollView>
   );
