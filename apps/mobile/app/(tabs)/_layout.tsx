@@ -87,7 +87,15 @@ export default function TabsLayout() {
           headerTitleContainerStyle: {
             paddingLeft: 0,
           },
-          headerTitle: () => <ParfadeLogo compact />,
+          headerTitle: () => (
+            <Pressable
+              onPress={() => router.navigate("/(tabs)")}
+              accessibilityRole="button"
+              accessibilityLabel="Discover"
+            >
+              <ParfadeLogo compact />
+            </Pressable>
+          ),
           tabBarActiveTintColor: colors.fairway,
           tabBarInactiveTintColor: colors.muted,
           tabBarShowLabel: true,
