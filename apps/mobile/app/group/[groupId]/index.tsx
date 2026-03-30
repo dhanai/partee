@@ -32,7 +32,7 @@ import { InitialAvatar } from "../../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../../components/report-sheet";
 import { useAbly } from "ably/react";
-import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin } from "../../../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../../lib/api";
 import { hapticLight } from "../../../lib/haptics";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
 import { parfadeGroupChannel, parfadePostChannel } from "../../../lib/parfade-ably-channels";
@@ -796,7 +796,7 @@ export default function GroupLandingScreen() {
       {isMember ? (
         <Pressable style={styles.composerRow} onPress={openNewAnnouncement}>
           {meAvatar ? (
-            <Image source={meAvatar} style={styles.composerAvatar} transition={0} />
+            <Image source={toAbsoluteUrl(meAvatar)} style={styles.composerAvatar} transition={0} />
           ) : (
             <View style={[styles.composerAvatar, styles.composerAvatarFallback]}>
               <Ionicons name="person" size={16} color={colors.muted} />
@@ -841,7 +841,7 @@ export default function GroupLandingScreen() {
                 <View style={styles.postHeader}>
                   <Pressable style={styles.postAuthorTap} onPress={() => goToProfile(item.user)}>
                     {postAuthorAvatar ? (
-                      <Image source={postAuthorAvatar} style={styles.postAvatar} transition={0} />
+                      <Image source={toAbsoluteUrl(postAuthorAvatar)} style={styles.postAvatar} transition={0} />
                     ) : (
                       <InitialAvatar name={item.user.name} size={40} maxInitials={2} />
                     )}
@@ -917,7 +917,7 @@ export default function GroupLandingScreen() {
                 <Pressable onPress={() => goToProfile(item.user)}>
                   {actAvatar ? (
                     <Image
-                      source={actAvatar}
+                      source={toAbsoluteUrl(actAvatar)}
                       style={styles.activityAvatar}
                       transition={0}
                     />
@@ -945,7 +945,7 @@ export default function GroupLandingScreen() {
               <Pressable style={styles.activityRow} onPress={() => goToProfile(item.user)}>
                 {joinAvatar ? (
                   <Image
-                    source={joinAvatar}
+                    source={toAbsoluteUrl(joinAvatar)}
                     style={styles.activityAvatar}
                     transition={0}
                   />
@@ -1096,7 +1096,7 @@ export default function GroupLandingScreen() {
               <View key={comment.id} style={styles.commentRow}>
                 <Pressable onPress={() => goToProfile(comment.user)}>
                   {commentAvatar ? (
-                    <Image source={commentAvatar} style={styles.commentAvatar} transition={0} />
+                    <Image source={toAbsoluteUrl(commentAvatar)} style={styles.commentAvatar} transition={0} />
                   ) : (
                     <InitialAvatar name={comment.user.name} size={32} maxInitials={2} />
                   )}
@@ -1133,7 +1133,7 @@ export default function GroupLandingScreen() {
         </BottomSheetScrollView>
         <View style={styles.commentInputRow}>
           {meAvatar ? (
-            <Image source={meAvatar} style={styles.commentInputAvatar} transition={0} />
+            <Image source={toAbsoluteUrl(meAvatar)} style={styles.commentInputAvatar} transition={0} />
           ) : (
             <View style={[styles.commentInputAvatar, styles.commentAvatarFallback]}>
               <Ionicons name="person" size={12} color={colors.muted} />
