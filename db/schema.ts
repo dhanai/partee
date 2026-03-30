@@ -165,6 +165,7 @@ export const inAppNotifications = pgTable(
         roundId?: string;
         inviteToken?: string;
         groupId?: string;
+        postId?: string;
         actorUserId: string;
       }>()
       .notNull(),
