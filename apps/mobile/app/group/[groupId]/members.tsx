@@ -15,7 +15,7 @@ import {
   View,
 } from "react-native";
 import { InviteFriendsSheet } from "../../../components/invite-friends-sheet";
-import { apiDelete, apiGet, apiPost } from "../../../lib/api";
+import { apiDelete, apiGet, apiPost, toAbsoluteUrl } from "../../../lib/api";
 import { useSnackbar } from "../../../lib/snackbar-context";
 import { colors } from "../../../lib/theme";
 import { InitialAvatar } from "../../../components/initial-avatar";
@@ -158,7 +158,7 @@ export default function GroupMembersScreen() {
               }
             >
               {item.avatar ? (
-                <Image source={{ uri: item.avatar }} style={styles.avatar} />
+                <Image source={{ uri: toAbsoluteUrl(item.avatar) }} style={styles.avatar} />
               ) : (
                 <InitialAvatar name={item.name} size={42} maxInitials={2} />
               )}

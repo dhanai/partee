@@ -76,7 +76,7 @@ type ConversationMeta = {
   title: string;
   participantAvatars: string[];
   avatarUserIds: (string | null)[];
-  participants: { id: string; name: string }[];
+  participants: { id: string; name: string; avatar: string | null }[];
 };
 
 export default function ConversationChatScreen() {
@@ -164,7 +164,7 @@ function ConversationChatContent() {
           title: data.title,
           participantAvatars: avatars.slice(0, 4),
           avatarUserIds: userIds.slice(0, 4),
-          participants: allParticipants.map((p) => ({ id: p.id, name: p.name })),
+          participants: allParticipants.map((p) => ({ id: p.id, name: p.name, avatar: p.avatar ?? null })),
         });
       } catch {
         /* header stays default */
@@ -648,8 +648,13 @@ function ConversationChatContent() {
 
   const userInfoMap = useMemo(() => {
     const map: Record<string, { name: string; avatar: string | null }> = {};
+    if (meta?.participants) {
+      for (const p of meta.participants) {
+        map[p.id] = { name: p.name, avatar: p.avatar ?? null };
+      }
+    }
     for (const m of msgs) {
-      if (m.user?.id && !(m.user.id in map)) {
+      if (m.user?.id) {
         map[m.user.id] = {
           name: m.user.name,
           avatar: m.user.avatar,
@@ -657,7 +662,7 @@ function ConversationChatContent() {
       }
     }
     return map;
-  }, [msgs]);
+  }, [msgs, meta?.participants]);
 
   const userAvatarMap = useMemo(() => {
     const map: Record<string, string | null> = {};

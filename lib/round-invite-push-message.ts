@@ -139,11 +139,6 @@ function formatWhenClauseForPush(input: {
   targetDate: Date;
 }): string {
   const datePart = formatRoundInviteDateForPush(input.teeTime, input.targetDate, input.mode);
-  if (input.mode === "scheduled" && input.teeTime != null) {
-    const t = input.teeTime instanceof Date ? input.teeTime : new Date(input.teeTime);
-    const timePart = t.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-    return ` on ${datePart} at ${timePart}`;
-  }
   return ` on ${datePart}`;
 }
 
@@ -166,11 +161,6 @@ export function buildRoundInvitePushBody(input: {
     courseName: input.courseName,
     planningLocation: input.planningLocation,
   });
-  if (input.teeTime != null) {
-    const t = input.teeTime instanceof Date ? input.teeTime : new Date(input.teeTime);
-    const timeStr = t.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-    return `${who} is inviting you to play a round at ${venue} on ${dateStr} at ${timeStr}.`;
-  }
   return `${who} is inviting you to play a round at ${venue} on ${dateStr}.`;
 }
 
