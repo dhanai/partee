@@ -34,6 +34,13 @@ export type AnimatedBottomSheetFrameProps = {
   keyboardBehavior?: "interactive" | "extend" | "fillParent";
   /** What happens when the keyboard is dismissed. Only effective with snapPoints. */
   keyboardBlurBehavior?: "none" | "restore";
+  /** Android: how the window resizes when the keyboard opens (passed through to BottomSheetModal). */
+  androidKeyboardInputMode?: "adjustResize" | "adjustPan";
+  /**
+   * Inset from the top of the container for snap math (safe area). Keeps percentage detents from
+   * sitting under the status bar / notch.
+   */
+  topInset?: number;
   /** Allow dragging the sheet closed from the content area. Default true. Set false for scrollable sheets. */
   enableContentPanningGesture?: boolean;
 };
@@ -59,6 +66,8 @@ export function AnimatedBottomSheetFrame({
   maxDynamicContentSize,
   keyboardBehavior,
   keyboardBlurBehavior,
+  androidKeyboardInputMode,
+  topInset,
   enableContentPanningGesture = true,
 }: AnimatedBottomSheetFrameProps) {
   const ref = useRef<BottomSheetModal>(null);
@@ -112,6 +121,7 @@ export function AnimatedBottomSheetFrame({
       ref={ref}
       index={0}
       snapPoints={useDynamic ? undefined : [...snapPoints!]}
+      topInset={topInset}
       enableDynamicSizing={useDynamic}
       maxDynamicContentSize={maxDynamicContentSize}
       enablePanDownToClose
@@ -124,6 +134,7 @@ export function AnimatedBottomSheetFrame({
       backgroundStyle={[styles.background, bgOverride]}
       keyboardBehavior={keyboardBehavior}
       keyboardBlurBehavior={keyboardBlurBehavior}
+      android_keyboardInputMode={androidKeyboardInputMode}
     >
       {useDynamic ? (
         <BottomSheetView

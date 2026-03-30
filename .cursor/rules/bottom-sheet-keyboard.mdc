@@ -1,0 +1,61 @@
+---
+description: Canonical @gorhom/bottom-sheet + AnimatedBottomSheetFrame patterns (keyboard, sizing, inputs)
+globs: apps/mobile/**/*.tsx
+alwaysApply: true
+---
+
+# Mobile bottom sheets (Parfade)
+
+This project uses **`AnimatedBottomSheetFrame`** (`apps/mobile/components/animated-bottom-sheet-frame.tsx`) on top of **`@gorhom/bottom-sheet`**. Getting keyboard + height wrong is a recurring issue — follow the patterns below.
+
+## 1. Sheet wrapper (`AnimatedBottomSheetFrame`)
+
+- Re-export **`BottomSheetScrollView`**, **`BottomSheetTextInput`**, **`BottomSheetView`** from the same module — import from **`animated-bottom-sheet-frame`**, not raw `react-native` `TextInput` / `ScrollView` inside sheets.
+- Optional props: **`snapPoints`**, **`maxDynamicContentSize`**, **`keyboardBehavior`**, **`keyboardBlurBehavior`**, **`topInset`**, **`androidKeyboardInputMode`**, **`enableContentPanningGesture`**, **`dragHandle`**.
+
+## 2. Height: dynamic (fit content) vs fixed snap
+
+**Prefer dynamic sizing** for variable-height forms so the sheet is not arbitrarily tall:
+
+- **Omit `snapPoints`** (or pass nothing usable) → **`enableDynamicSizing`** is on inside `AnimatedBottomSheetFrame`.
+- Set **`maxDynamicContentSize`** ≈ `windowHeight - topInset - margin` (see game hole editor).
+
+Use **fixed percentage snaps** (e.g. `["55%"]`) only for **simple, predictable** UI (invite search, date pickers) where height is stable.
+
+**Do not** use a **fixed % or large pixel snap** of the window for **keyboard-heavy** score/forms — when the keyboard is **hidden**, the sheet stays **too tall**. Dynamic sizing fixes that.
+
+**Tap-only editors** (e.g. Skins/Wolf): same dynamic + `maxDynamicContentSize`; no inner scroll if everything fits.
+
+## 3. Keyboard + scrollable forms (stroke entry, dots, targets, etc.)
+
+Reference: **`apps/mobile/app/games/session/[sessionId].tsx`** hole editor (non–Skins/Wolf branch).
+
+1. **`useKeyboardHeight()`** — `apps/mobile/lib/use-keyboard-height.ts` (iOS `keyboardWillShow` / `WillHide`, Android `Did*`).
+2. **`snapPoints`**: omit (`undefined`) + **`maxDynamicContentSize`** = safe max height.
+3. **`BottomSheetScrollView`** with **`contentContainerStyle`** that adds **`paddingBottom: 28 + keyboardHeight`** when **`keyboardHeight > 0`** so the sheet grows with the keyboard.
+4. **`keyboardBehavior="extend"`** + **`keyboardBlurBehavior="restore"`** (with snap points omitted, dynamic behavior still pairs with these for focus/keyboard handling).
+5. **`topInset={useSafeAreaInsets().top}`** so percentage/detents and layout respect the notch.
+6. **`enableContentPanningGesture={false}`** when the sheet body scrolls.
+7. Text fields: **`BottomSheetTextInput`** only.
+
+## 4. Simple keyboard sheets (search, single field)
+
+- **`snapPoints={["55%"]}`** (or similar **single** detent) is OK.
+- Default **`keyboardBehavior`** (`interactive`) is fine; **`keyboardBlurBehavior="restore"`** helps.
+- **`BottomSheetTextInput`**, **`enableContentPanningGesture={false}`** if scrollable.
+
+## 5. Anti-patterns (avoid)
+
+- **`TextInput`** from `react-native` inside a sheet that should move with the keyboard — use **`BottomSheetTextInput`**.
+- **`keyboardBehavior="extend"`** with **two** percentage detents **and** expecting “pixel-perfect” growth — prefer **dynamic** + **keyboard height padding** for score forms.
+- **`keyboardBehavior="fillParent"`** unless you intentionally want near full-screen.
+- **`keyboardBehavior="interactive"`** + **very tall** snap (e.g. 85% window) — can shove the sheet off the top; use **moderate** snaps or **dynamic** sizing.
+- **Nested** `ScrollView` from RN where **`BottomSheetScrollView`** should measure the sheet.
+
+## 6. Quick checklist (new sheet with inputs)
+
+- [ ] `BottomSheetTextInput` / `BottomSheetScrollView` from `animated-bottom-sheet-frame`
+- [ ] `topInset` from safe area
+- [ ] Height: dynamic (`maxDynamicContentSize`) + keyboard padding **or** a **single** modest snap for simple cases
+- [ ] `keyboardBlurBehavior="restore"` when using keyboard props
+- [ ] `enableContentPanningGesture={false}` if scrollable body

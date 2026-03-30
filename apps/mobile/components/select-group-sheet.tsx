@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AnimatedBottomSheetFrame,
   BottomSheetScrollView,
@@ -32,7 +33,7 @@ function useDebounce(value: string, delayMs: number) {
   return debounced;
 }
 
-/** Match `InviteFriendsSheet` — single detent + keyboard-friendly search. */
+/** Same detent as `InviteFriendsSheet`. */
 const SNAP_POINTS = ["55%"] as const;
 
 type SelectGroupSheetProps = {
@@ -84,20 +85,24 @@ export function SelectGroupSheet({
     return groups.filter((g) => g.name.toLowerCase().includes(q));
   }, [groups, debouncedQuery]);
 
+  const insets = useSafeAreaInsets();
+
   return (
     <AnimatedBottomSheetFrame
       visible={visible}
       onClose={onClose}
       snapPoints={SNAP_POINTS}
+      topInset={insets.top}
       sheetStyle={styles.sheet}
       enableContentPanningGesture={false}
+      keyboardBlurBehavior={groups.length > 3 ? "restore" : undefined}
       dragHandle
     >
       <Text style={styles.title}>Select Group</Text>
 
       {groups.length > 3 && (
         <View style={styles.inputRow}>
-          <TextInput
+          <BottomSheetTextInput
             value={query}
             onChangeText={setQuery}
             placeholder="Search groups..."
@@ -210,6 +215,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#ece8e1",
   },
+  /** Fills fixed snap (55%) — required so all rows scroll inside the sheet instead of being clipped. */
   scroll: { flex: 1 },
   scrollContent: { gap: 8, paddingBottom: 8 },
   listLoading: { paddingVertical: 24, alignItems: "center" },

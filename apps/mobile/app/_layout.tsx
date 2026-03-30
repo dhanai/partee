@@ -3,7 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { ClerkProvider, useAuth, useClerk } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
@@ -16,6 +16,7 @@ import { ChatUnreadProvider } from "../lib/chat-unread-context";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { SnackbarProvider } from "../lib/snackbar-context";
 import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
+import { setApiAuthGetToken } from "../lib/api-auth-token";
 import { setApiSessionInvalidHandler } from "../lib/api-session-invalid";
 import { clearAllCaches } from "../lib/clear-all-caches";
 import { initializeParfadeMobileAds } from "../lib/parfade-admob";
@@ -68,6 +69,16 @@ function ApiSessionInvalidBridge() {
     });
     return () => setApiSessionInvalidHandler(null);
   }, [signOut]);
+  return null;
+}
+
+/** Lets API + Ably retry once with a fresh JWT after resume-from-background 401s. */
+function ApiAuthTokenBridge() {
+  const { getToken } = useAuth();
+  useLayoutEffect(() => {
+    setApiAuthGetToken(getToken);
+    return () => setApiAuthGetToken(null);
+  }, [getToken]);
   return null;
 }
 
@@ -135,6 +146,7 @@ export default function RootLayout() {
       <GameTypesBootstrap />
       <ClerkLoadedSplashSync />
       <ApiSessionInvalidBridge />
+      <ApiAuthTokenBridge />
       <SessionHealthCheck />
       <NotificationBadgeProvider>
         <ChatUnreadProvider>

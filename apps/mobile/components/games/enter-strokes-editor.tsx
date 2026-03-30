@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { GamePlayerRow } from "../../lib/games-api";
+import { BottomSheetTextInput } from "../animated-bottom-sheet-frame";
 import { colors } from "../../lib/theme";
 
 export type EnterStrokesPayload = {
@@ -8,7 +9,6 @@ export type EnterStrokesPayload = {
 };
 
 type Props = {
-  holeNumber: number;
   players: GamePlayerRow[];
   initial?: EnterStrokesPayload | null;
   onSave: (payload: EnterStrokesPayload) => void;
@@ -59,7 +59,6 @@ export function EnterStrokesEditor({
 
   return (
     <View style={styles.root}>
-      <Text style={styles.heading}>Hole {holeNumber}</Text>
       <Text style={styles.sub}>Enter each player's stroke count for this hole.</Text>
 
       {roster.map((p) => (
@@ -67,7 +66,7 @@ export function EnterStrokesEditor({
           <Text style={styles.playerName} numberOfLines={1}>
             {displayName(p)}
           </Text>
-          <TextInput
+          <BottomSheetTextInput
             style={styles.scoreInput}
             value={scores[p.userId] ?? ""}
             onChangeText={(text) => {
@@ -103,17 +102,10 @@ export function EnterStrokesEditor({
 
 const styles = StyleSheet.create({
   root: { paddingBottom: 16 },
-  heading: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: colors.text,
-    textAlign: "center",
-    marginBottom: 4,
-  },
   sub: {
     fontSize: 13,
     color: colors.muted,
-    textAlign: "center",
+    textAlign: "left",
     marginBottom: 16,
   },
   playerRow: {

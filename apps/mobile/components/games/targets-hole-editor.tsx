@@ -20,14 +20,12 @@ function displayName(p: GamePlayerRow): string {
 }
 
 export function TargetsHoleEditor({
-  holeNumber,
   players,
   category,
   initial,
   onCancel,
   onSave,
 }: {
-  holeNumber: number;
   players: GamePlayerRow[];
   category: string;
   initial: TargetsPayload | null;
@@ -94,9 +92,14 @@ export function TargetsHoleEditor({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 20, paddingTop: 12 },
-  heading: { fontSize: 18, fontWeight: "700", color: colors.text },
-  sub: { fontSize: 14, color: colors.muted, marginBottom: 16 },
+  container: { flex: 1, paddingHorizontal: 20, paddingTop: 0 },
+  sub: {
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: "left",
+    marginBottom: 16,
+    lineHeight: 18,
+  },
   list: { gap: 8, flex: 1 },
   row: {
     flexDirection: "row",

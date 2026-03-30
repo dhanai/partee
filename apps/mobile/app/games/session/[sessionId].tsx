@@ -20,7 +20,11 @@ import {
   useNavigation,
   useRouter,
 } from "expo-router";
-import { AnimatedBottomSheetFrame } from "../../../components/animated-bottom-sheet-frame";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  AnimatedBottomSheetFrame,
+  BottomSheetScrollView,
+} from "../../../components/animated-bottom-sheet-frame";
 import { GameSettingsSheetContent, gameSettingsSheetStyles } from "../../../components/game-settings-sheet-content";
 import { GameEndHousePromoModal } from "../../../components/game-end-house-promo-modal";
 import {
@@ -73,6 +77,7 @@ import { useAbly } from "ably/react";
 import { parfadeGameSessionChannel } from "../../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../../lib/parfade-ably-messages";
 import { emitGamesListShouldRefresh } from "../../../lib/games-list-refresh";
+import { useKeyboardHeight } from "../../../lib/use-keyboard-height";
 import { colors } from "../../../lib/theme";
 
 function parseWolfLetterOrder(settings: Record<string, unknown>): string[] {
@@ -86,8 +91,6 @@ function normalizeRouteParam(p: string | string[] | undefined): string | undefin
   return Array.isArray(p) ? p[0] : p;
 }
 
-const HOLE_EDITOR_MAX_HEIGHT_RATIO = 0.9;
-
 const SCROLL_PAD = 16;
 const HOLE_GRID_GAP = 10;
 const HOLE_COLS = 3;
@@ -99,8 +102,9 @@ function chunkBy<T>(arr: T[], size: number): T[][] {
 }
 
 export default function GameSessionScreen() {
-  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
-  const holeEditorMaxHeight = Math.round(windowHeight * HOLE_EDITOR_MAX_HEIGHT_RATIO);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   const router = useRouter();
   /** Root stack (same bar as title “Game” / back to Games). Leaf `useNavigation()` targets an inner navigator for this route depth. */
   const rootNavigation = useNavigation("/");
@@ -492,6 +496,11 @@ export default function GameSessionScreen() {
   const progressPct = holesCount > 0 ? Math.min(100, (holesLogged / holesCount) * 100) : 0;
   const holeRows = chunkBy(holeNumbers, HOLE_COLS);
 
+  /** Skins / Wolf: tap-only editors — size sheet to content (no inner scroll). */
+  const holeEditorContentFit =
+    scoringMode === "pick_lowest" || scoringMode === "wolf_pick";
+  const holeEditorDynamicMax = Math.round(windowHeight - insets.top - 24);
+
   return (
     <>
       {houseGameEndPromo ? (
@@ -803,20 +812,18 @@ export default function GameSessionScreen() {
             if (!saving) setEditorHole(null);
           }}
           backdropAccessibilityLabel="Dismiss hole editor"
-          maxDynamicContentSize={holeEditorMaxHeight}
+          snapPoints={undefined}
+          maxDynamicContentSize={holeEditorDynamicMax}
+          keyboardBehavior={holeEditorContentFit ? undefined : "extend"}
+          keyboardBlurBehavior={holeEditorContentFit ? undefined : "restore"}
+          topInset={insets.top}
+          enableContentPanningGesture={false}
+          dragHandle
           sheetStyle={styles.holeEditorSheet}
           backgroundStyle={styles.holeEditorBackground}
         >
-          {session.gameType !== "wolf" && session.gameType !== "skins" ? (
-            <Text style={styles.holeEditorTitle}>Hole {editorHole}</Text>
-          ) : null}
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-            showsVerticalScrollIndicator
-            bounces={false}
-          >
-            {saving ? (
+          {holeEditorContentFit ? (
+            saving ? (
               <ActivityIndicator color={colors.fairway} style={{ marginVertical: 20 }} />
             ) : scoringMode === "pick_lowest" && editorHole != null ? (
               <SkinsHoleEditor
@@ -842,37 +849,55 @@ export default function GameSessionScreen() {
                 onCancel={() => setEditorHole(null)}
                 onSave={(p) => void saveHole(p)}
               />
-            ) : scoringMode === "enter_strokes" && editorHole != null ? (
-              <EnterStrokesEditor
-                holeNumber={editorHole}
-                players={players}
-                initial={(editorPayload?.payload as EnterStrokesPayload) ?? null}
-                onCancel={() => setEditorHole(null)}
-                onSave={(p) => void saveHole(p)}
-              />
-            ) : scoringMode === "enter_dots" && editorHole != null ? (
-              <DotsHoleEditor
-                holeNumber={editorHole}
-                players={players}
-                initial={(editorPayload?.payload as DotsPayload) ?? null}
-                onCancel={() => setEditorHole(null)}
-                onSave={(p) => void saveHole(p)}
-              />
-            ) : scoringMode === "enter_targets" && editorHole != null ? (
-              <TargetsHoleEditor
-                holeNumber={editorHole}
-                players={players}
-                category={String(session.settings?.targetCategory ?? "pars")}
-                initial={(editorPayload?.payload as TargetsPayload) ?? null}
-                onCancel={() => setEditorHole(null)}
-                onSave={(p) => void saveHole(p)}
-              />
-            ) : (
-              <Text style={styles.muted}>
-                Editing for this game is not supported in this app version.
-              </Text>
-            )}
-          </ScrollView>
+            ) : null
+          ) : (
+            <>
+              {session.gameType !== "wolf" && session.gameType !== "skins" ? (
+                <Text style={styles.holeEditorTitle}>Hole {editorHole}</Text>
+              ) : null}
+              <BottomSheetScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                bounces={false}
+                contentContainerStyle={[
+                  styles.holeEditorScrollContent,
+                  keyboardHeight > 0 && {
+                    paddingBottom: 28 + keyboardHeight,
+                  },
+                ]}
+              >
+                {saving ? (
+                  <ActivityIndicator color={colors.fairway} style={{ marginVertical: 20 }} />
+                ) : scoringMode === "enter_strokes" && editorHole != null ? (
+                  <EnterStrokesEditor
+                    players={players}
+                    initial={(editorPayload?.payload as EnterStrokesPayload) ?? null}
+                    onCancel={() => setEditorHole(null)}
+                    onSave={(p) => void saveHole(p)}
+                  />
+                ) : scoringMode === "enter_dots" && editorHole != null ? (
+                  <DotsHoleEditor
+                    players={players}
+                    initial={(editorPayload?.payload as DotsPayload) ?? null}
+                    onCancel={() => setEditorHole(null)}
+                    onSave={(p) => void saveHole(p)}
+                  />
+                ) : scoringMode === "enter_targets" && editorHole != null ? (
+                  <TargetsHoleEditor
+                    players={players}
+                    category={String(session.settings?.targetCategory ?? "pars")}
+                    initial={(editorPayload?.payload as TargetsPayload) ?? null}
+                    onCancel={() => setEditorHole(null)}
+                    onSave={(p) => void saveHole(p)}
+                  />
+                ) : (
+                  <Text style={styles.muted}>
+                    Editing for this game is not supported in this app version.
+                  </Text>
+                )}
+              </BottomSheetScrollView>
+            </>
+          )}
         </AnimatedBottomSheetFrame>
 
         <OverflowMenuSheet
@@ -1142,12 +1167,15 @@ const styles = StyleSheet.create({
   completeBtnText: { fontSize: 16, fontWeight: "800", color: "#fff" },
   holeEditorSheet: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 8,
+  },
+  holeEditorScrollContent: {
+    paddingBottom: 28,
   },
   holeEditorBackground: {
     backgroundColor: colors.background,
   },
-  holeEditorTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 12 },
+  holeEditorTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 6 },
   howToPlaySheet: { paddingHorizontal: 16, paddingTop: 8 },
   howToPlayTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 14 },
   howToPlayBody: { fontSize: 15, color: colors.text, lineHeight: 22, paddingBottom: 16 },

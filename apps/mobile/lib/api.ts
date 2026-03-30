@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { getTokenForApiRetry } from "./api-auth-token";
 import { ApiSessionInvalidError, notifyApiSessionInvalid } from "./api-session-invalid";
 
 type ApiError = {
@@ -11,6 +12,8 @@ type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   token?: string | null;
   body?: unknown;
+  /** Internal: avoid infinite retry on 401. */
+  _retry401?: boolean;
 };
 
 const fallbackBaseUrl = "http://localhost:3000";
@@ -70,6 +73,13 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   });
 
   const raw = await res.text();
+
+  if (res.status === 401 && options.token && !options._retry401) {
+    const fresh = await getTokenForApiRetry();
+    if (fresh) {
+      return requestJson<T>(path, { ...options, token: fresh, _retry401: true });
+    }
+  }
 
   if (res.status === 401 && options.token) {
     notifyApiSessionInvalid();

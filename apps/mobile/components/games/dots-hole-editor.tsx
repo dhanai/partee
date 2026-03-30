@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { GamePlayerRow } from "../../lib/games-api";
 import { colors } from "../../lib/theme";
@@ -25,13 +25,11 @@ function displayName(p: GamePlayerRow): string {
 }
 
 export function DotsHoleEditor({
-  holeNumber,
   players,
   initial,
   onCancel,
   onSave,
 }: {
-  holeNumber: number;
   players: GamePlayerRow[];
   initial: DotsPayload | null;
   onCancel: () => void;
@@ -67,9 +65,11 @@ export function DotsHoleEditor({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Hole {holeNumber} — Dots</Text>
+      <Text style={styles.sub}>
+        Tap each achievement that applies to each player for this hole.
+      </Text>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.players}>
         {players.map((p) => {
           const playerDots = dots[p.userId] ?? new Set();
           return (
@@ -102,7 +102,7 @@ export function DotsHoleEditor({
             </View>
           );
         })}
-      </ScrollView>
+      </View>
 
       <View style={styles.actions}>
         <Pressable style={styles.cancelBtn} onPress={onCancel}>
@@ -118,9 +118,15 @@ export function DotsHoleEditor({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 20, paddingTop: 12 },
-  heading: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 12 },
-  scroll: { flex: 1 },
+  container: { paddingHorizontal: 20, paddingTop: 0 },
+  sub: {
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: "left",
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  players: { paddingBottom: 4 },
   playerBlock: { marginBottom: 16 },
   playerName: { fontSize: 15, fontWeight: "700", color: colors.text, marginBottom: 8 },
   chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

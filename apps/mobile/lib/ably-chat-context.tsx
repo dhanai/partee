@@ -5,6 +5,7 @@ import * as Ably from "ably";
 import { AblyProvider } from "ably/react";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiBaseUrl } from "./api";
+import { getTokenForApiRetry } from "./api-auth-token";
 import { notifyApiSessionInvalid } from "./api-session-invalid";
 
 const MountedContext = createContext(false);
@@ -44,13 +45,22 @@ export function AblyChatProviders({ children }: { children: ReactNode }) {
               callback("No Clerk session", null);
               return;
             }
-            const res = await fetch(`${apiBaseUrl}/api/ably/token`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${jwt}`,
-                Accept: "application/json",
-              },
-            });
+            const fetchToken = (bearer: string) =>
+              fetch(`${apiBaseUrl}/api/ably/token`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${bearer}`,
+                  Accept: "application/json",
+                },
+              });
+
+            let res = await fetchToken(jwt);
+            if (!res.ok && res.status === 401) {
+              const fresh = await getTokenForApiRetry();
+              if (fresh) {
+                res = await fetchToken(fresh);
+              }
+            }
             if (!res.ok) {
               if (res.status === 401) {
                 notifyApiSessionInvalid();
