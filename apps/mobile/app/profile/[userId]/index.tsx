@@ -20,6 +20,7 @@ import { FullscreenImageViewer } from "../../../components/fullscreen-image-view
 import { InitialAvatar } from "../../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { ParfadeProfileLiveRefresh } from "../../../components/parfade-profile-live-refresh";
+import { ProfileOpenRoundsSection } from "../../../components/profile-open-rounds-section";
 import { ProfileStatCategoryCards } from "../../../components/profile-stat-category-cards";
 import { ReportSheet } from "../../../components/report-sheet";
 import { hapticSuccess } from "../../../lib/haptics";
@@ -418,7 +419,11 @@ export default function PublicProfileScreen() {
       <View style={btn.actions}>
         {profile.user.relationship !== "self" ? (
           <Pressable
-            style={[btn.button, btn.primaryButton, busy && styles.disabledButton]}
+            style={({ pressed }) => [
+              btn.primaryButton,
+              pressed && !busy && btn.pressed,
+              busy && styles.disabledButton,
+            ]}
             onPress={() => void handleFollowAction()}
             disabled={busy}
           >
@@ -427,7 +432,11 @@ export default function PublicProfileScreen() {
         ) : null}
         {isMutual ? (
           <Pressable
-            style={[btn.button, btn.secondaryButton, dmBusy && styles.disabledButton]}
+            style={({ pressed }) => [
+              btn.secondaryButton,
+              pressed && !dmBusy && btn.pressed,
+              dmBusy && styles.disabledButton,
+            ]}
             onPress={() => void openOrCreateDm()}
             disabled={dmBusy}
           >
@@ -437,11 +446,17 @@ export default function PublicProfileScreen() {
       </View>
 
       {userId ? (
-        <ProfileStatCategoryCards
-          userId={userId}
-          grouped={groupedStats}
-          loading={statsLoading}
-        />
+        <>
+          <ProfileOpenRoundsSection
+            userId={Array.isArray(userId) ? userId[0] : userId}
+            viewerIsSelf={profile.user.relationship === "self"}
+          />
+          <ProfileStatCategoryCards
+            userId={userId}
+            grouped={groupedStats}
+            loading={statsLoading}
+          />
+        </>
       ) : null}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}

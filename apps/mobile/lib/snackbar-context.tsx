@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { StyleSheet, Text } from "react-native";
+import { Modal, StyleSheet, Text } from "react-native";
 import Reanimated, {
   Easing,
   FadeIn,
@@ -41,22 +41,35 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
   return (
     <SnackbarContext.Provider value={{ show }}>
       {children}
-      {message ? (
-        <Reanimated.View
-          key={key}
-          entering={SlideInDown.duration(280).easing(Easing.out(Easing.ease))}
-          exiting={SlideOutDown.duration(220).easing(Easing.in(Easing.ease))}
-          pointerEvents="none"
-          style={styles.container}
-        >
+      {/* Native Modal so the toast sits above @gorhom/bottom-sheet (native modal layer). */}
+      <Modal
+        visible={message != null}
+        transparent
+        animationType="none"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        onRequestClose={() => {
+          /* dismiss handled by timer */
+        }}
+      >
+        {message ? (
           <Reanimated.View
-            entering={FadeIn.duration(200)}
-            style={styles.chip}
+            key={key}
+            entering={SlideInDown.duration(280).easing(Easing.out(Easing.ease))}
+            exiting={SlideOutDown.duration(220).easing(Easing.in(Easing.ease))}
+            pointerEvents="none"
+            style={styles.modalRoot}
           >
-            <Text style={styles.text}>{message}</Text>
+            <Reanimated.View
+              entering={FadeIn.duration(200)}
+              style={styles.chip}
+              pointerEvents="none"
+            >
+              <Text style={styles.text}>{message}</Text>
+            </Reanimated.View>
           </Reanimated.View>
-        </Reanimated.View>
-      ) : null}
+        ) : null}
+      </Modal>
     </SnackbarContext.Provider>
   );
 }
@@ -70,13 +83,11 @@ export function useSnackbar() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    position: "absolute",
-    bottom: 100,
-    left: 0,
-    right: 0,
+  modalRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+    paddingBottom: 100,
     alignItems: "center",
-    zIndex: 9999,
   },
   chip: {
     backgroundColor: "#2c2c2c",

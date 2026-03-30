@@ -9,13 +9,10 @@ import {
   Text,
   View,
 } from "react-native";
-import { Image } from "expo-image";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AnimatedBottomSheetFrame } from "./animated-bottom-sheet-frame";
-import { toAbsoluteUrl } from "../lib/api";
+import { hapticSuccess } from "../lib/haptics";
+import { useSnackbar } from "../lib/snackbar-context";
 import { colors } from "../lib/theme";
-
-const MAP_HEIGHT = 208;
 
 type Props = {
   visible: boolean;
@@ -25,6 +22,16 @@ type Props = {
   courseLatitude: number | null | undefined;
   courseLongitude: number | null | undefined;
 };
+
+/** API may serialize lat/lng as strings; match server-side parseCoord. */
+function parseCoord(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 function buildCopyText(
   courseName: string,
@@ -54,8 +61,6 @@ function openDirections(
 
   if (hasCoords) {
     if (Platform.OS === "ios") {
-      // `q=` with a venue name is treated as an address search and often shows "Invalid address".
-      // `daddr` with coordinates opens directions to that point.
       void Linking.openURL(`http://maps.apple.com/?daddr=${lat},${lng}`);
       return;
     }
@@ -79,24 +84,10 @@ export function RoundCourseLocationSheet({
   courseLatitude,
   courseLongitude,
 }: Props) {
-  const insets = useSafeAreaInsets();
+  const { show: showSnackbar } = useSnackbar();
 
-  const lat =
-    typeof courseLatitude === "number" && !Number.isNaN(courseLatitude)
-      ? courseLatitude
-      : null;
-  const lng =
-    typeof courseLongitude === "number" && !Number.isNaN(courseLongitude)
-      ? courseLongitude
-      : null;
-
-  /** Same satellite preview as round hero when coords exist — no native maps module required. */
-  const mapPreviewUri = useMemo(() => {
-    if (lat == null || lng == null) return null;
-    return toAbsoluteUrl(
-      `/api/images/course-satellite?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
-    );
-  }, [lat, lng]);
+  const lat = parseCoord(courseLatitude);
+  const lng = parseCoord(courseLongitude);
 
   const copyText = useMemo(
     () => buildCopyText(courseName, courseAddress, lat, lng),
@@ -111,7 +102,15 @@ export function RoundCourseLocationSheet({
 
   const handleCopy = useCallback(async () => {
     await Clipboard.setStringAsync(copyText);
-  }, [copyText]);
+    hapticSuccess();
+    if (courseAddress?.trim()) {
+      showSnackbar("Address copied");
+    } else if (lat != null && lng != null) {
+      showSnackbar("Coordinates copied");
+    } else {
+      showSnackbar("Location copied");
+    }
+  }, [copyText, courseAddress, lat, lng, showSnackbar]);
 
   const handleDirections = useCallback(() => {
     openDirections(courseName, lat, lng, courseAddress);
@@ -121,40 +120,22 @@ export function RoundCourseLocationSheet({
     <AnimatedBottomSheetFrame
       visible={visible}
       onClose={onClose}
-      snapPoints={["58%"]}
       enableContentPanningGesture={false}
       sheetStyle={{ paddingHorizontal: 20, paddingTop: 4 }}
     >
-      <Text style={styles.sheetTitle} numberOfLines={2}>
+      <Text
+        style={[styles.sheetTitle, !courseAddress?.trim() && styles.sheetTitleSolo]}
+        numberOfLines={2}
+      >
         {courseName}
       </Text>
       {courseAddress?.trim() ? (
-        <Text style={styles.sheetAddress} numberOfLines={3}>
+        <Text style={styles.sheetAddress} numberOfLines={4}>
           {courseAddress.trim()}
         </Text>
       ) : null}
 
-      {mapPreviewUri ? (
-        <View style={styles.mapWrap}>
-          <Image
-            source={{ uri: mapPreviewUri }}
-            style={styles.mapImage}
-            contentFit="cover"
-            transition={200}
-            accessibilityLabel={`Map preview near ${courseName}`}
-          />
-        </View>
-      ) : (
-        <View style={styles.mapFallback}>
-          <Ionicons name="map-outline" size={40} color={colors.muted} />
-          <Text style={styles.fallbackText}>
-            Map preview needs coordinates from the course listing. You can still copy the address or open
-            directions.
-          </Text>
-        </View>
-      )}
-
-      <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <View style={styles.actions}>
         <Pressable
           style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
           onPress={() => void handleCopy()}
@@ -181,40 +162,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 6,
   },
+  /** Extra space before actions when there is no address line. */
+  sheetTitleSolo: {
+    marginBottom: 18,
+  },
   sheetAddress: {
     fontSize: 14,
     color: colors.muted,
-    marginBottom: 12,
+    marginBottom: 20,
     lineHeight: 20,
-  },
-  mapWrap: {
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  mapImage: {
-    width: "100%",
-    height: MAP_HEIGHT,
-    backgroundColor: colors.fairwaySoft,
-  },
-  mapFallback: {
-    minHeight: MAP_HEIGHT,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    gap: 8,
-  },
-  fallbackText: {
-    fontSize: 13,
-    color: colors.muted,
-    textAlign: "center",
-    lineHeight: 18,
   },
   actions: {
     flexDirection: "row",

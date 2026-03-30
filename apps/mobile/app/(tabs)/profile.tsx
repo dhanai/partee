@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { InitialAvatar } from "../../components/initial-avatar";
+import { ProfileOpenRoundsSection } from "../../components/profile-open-rounds-section";
 import { ProfileStatCategoryCards } from "../../components/profile-stat-category-cards";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { apiGet, publicWebOrigin, toAbsoluteUrl } from "../../lib/api";
@@ -242,20 +243,29 @@ export default function ProfileScreen() {
           ) : null}
 
           <View style={btn.actions}>
-            <Pressable style={[btn.button, btn.primaryButton]} onPress={() => router.push("/profile/edit")}>
+            <Pressable
+              style={({ pressed }) => [btn.primaryButton, pressed && btn.pressed]}
+              onPress={() => router.push("/profile/edit")}
+            >
               <Text style={btn.primaryText}>Edit profile</Text>
             </Pressable>
-            <Pressable style={[btn.button, btn.secondaryButton]} onPress={() => void handleShareProfile()}>
+            <Pressable
+              style={({ pressed }) => [btn.secondaryButton, pressed && btn.pressed]}
+              onPress={() => void handleShareProfile()}
+            >
               <Text style={btn.secondaryText}>Share profile</Text>
             </Pressable>
           </View>
 
           {myUserId ? (
-            <ProfileStatCategoryCards
-              userId={myUserId}
-              grouped={groupedStats}
-              loading={statsLoading}
-            />
+            <>
+              <ProfileOpenRoundsSection userId={myUserId} viewerIsSelf />
+              <ProfileStatCategoryCards
+                userId={myUserId}
+                grouped={groupedStats}
+                loading={statsLoading}
+              />
+            </>
           ) : null}
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}

@@ -733,19 +733,29 @@ export default function RoundDetailsScreen() {
       {showRsvpActions ? (
         <View style={btn.actions}>
           <Pressable
-            style={[btn.button, btn.primaryButton, busy && styles.disabledButton]}
+            style={({ pressed }) => [
+              btn.primaryButton,
+              pressed && !busy && btn.pressed,
+              busy && styles.disabledButton,
+            ]}
             onPress={() => void rsvp("claim")}
             disabled={busy}
           >
+            <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
             <Text style={btn.primaryText}>
               {busy ? "Updating..." : round.mode === "planning" ? "I'm in" : "Claim spot"}
             </Text>
           </Pressable>
           <Pressable
-            style={[btn.button, btn.secondaryButton, busy && styles.disabledButton]}
+            style={({ pressed }) => [
+              btn.secondaryButton,
+              pressed && !busy && btn.pressed,
+              busy && styles.disabledButton,
+            ]}
             onPress={() => void rsvp("decline")}
             disabled={busy}
           >
+            <Ionicons name="close-circle-outline" size={20} color={colors.fairway} />
             <Text style={btn.secondaryText}>Decline</Text>
           </Pressable>
         </View>
@@ -838,10 +848,16 @@ export default function RoundDetailsScreen() {
           </View>
           {finalizeError ? <Text style={styles.errorText}>{finalizeError}</Text> : null}
           <Pressable
-            style={[btn.button, btn.primaryButton, finalizeBusy && styles.disabledButton]}
+            style={({ pressed }) => [
+              btn.primaryButton,
+              styles.fullWidthPrimaryBtn,
+              pressed && !finalizeBusy && btn.pressed,
+              finalizeBusy && styles.disabledButton,
+            ]}
             onPress={() => void finalizeRound()}
             disabled={finalizeBusy}
           >
+            <Ionicons name="calendar-outline" size={20} color="#fff" />
             <Text style={btn.primaryText}>
               {finalizeBusy ? "Finalizing..." : "Finalize round"}
             </Text>
@@ -1241,6 +1257,8 @@ const styles = StyleSheet.create({
   chatPreviewTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
   chatPreviewSubtitle: { fontSize: 13, color: colors.muted, lineHeight: 18 },
   disabledButton: { opacity: 0.5 },
+  /** Single primary CTA in a column (finalize); overrides `flex: 1` from shared RSVP styles. */
+  fullWidthPrimaryBtn: { flex: 0, width: "100%", alignSelf: "stretch" },
   errorText: {
     color: colors.danger,
     backgroundColor: "#fee4e2",
