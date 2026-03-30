@@ -188,7 +188,7 @@ export async function GET(req: Request) {
         and(
           eq(spots.userId, user.id),
           ne(rounds.hostId, user.id),
-          eq(spots.status, "invited"),
+          inArray(spots.status, ["invited", "declined"]),
         ),
       )
       .orderBy(asc(rounds.targetDate));

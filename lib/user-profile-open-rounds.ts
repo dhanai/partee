@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
@@ -70,7 +70,8 @@ export type ProfileOpenRoundJson = {
 
 /**
  * Hosted rounds that are still "open" in time (effective tee/target strictly after now),
- * including when full. Others only see public rounds; the host sees their public + private.
+ * including when full. Others see public rounds, or private rounds where they have a spot
+ * (invited / declined / requested / confirmed); the host sees their public + private.
  */
 export async function getHostedOpenRoundsForProfile(
   hostUserId: string,
@@ -85,7 +86,23 @@ export async function getHostedOpenRoundsForProfile(
     futureCond,
   ];
   if (viewerUserId !== hostUserId) {
-    conditions.push(eq(rounds.visibility, "public"));
+    conditions.push(
+      or(
+        eq(rounds.visibility, "public"),
+        exists(
+          db
+            .select()
+            .from(spots)
+            .where(
+              and(
+                eq(spots.roundId, rounds.id),
+                eq(spots.userId, viewerUserId),
+                inArray(spots.status, ["invited", "declined", "requested", "confirmed"]),
+              ),
+            ),
+        ),
+      )!,
+    );
   }
 
   const rawRows = await db

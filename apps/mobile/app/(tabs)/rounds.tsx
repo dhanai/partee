@@ -486,21 +486,27 @@ export default function MyRoundsScreen() {
         delete next[round.id];
         return next;
       });
-      setInvited((prev) => prev.filter((r) => r.id !== round.id));
 
-      if (json.me) {
-        if (json.status === "confirmed" || json.status === "requested") {
-          const nextPlayers =
-            json.status === "confirmed"
-              ? withMeInConfirmed(round.confirmedPlayers, json.me)
-              : (round.confirmedPlayers ?? []);
-          const nextRow: MineRound = {
-            ...round,
-            spotStatus: json.status,
-            confirmedPlayers: nextPlayers,
-            confirmedCount: nextPlayers.length,
-          };
-          setJoined((prev) => upsertJoinedRoundSorted(prev, nextRow));
+      if (json.status === "declined") {
+        setInvited((prev) =>
+          prev.map((r) => (r.id === round.id ? { ...r, spotStatus: "declined" } : r)),
+        );
+      } else {
+        setInvited((prev) => prev.filter((r) => r.id !== round.id));
+        if (json.me) {
+          if (json.status === "confirmed" || json.status === "requested") {
+            const nextPlayers =
+              json.status === "confirmed"
+                ? withMeInConfirmed(round.confirmedPlayers, json.me)
+                : (round.confirmedPlayers ?? []);
+            const nextRow: MineRound = {
+              ...round,
+              spotStatus: json.status,
+              confirmedPlayers: nextPlayers,
+              confirmedCount: nextPlayers.length,
+            };
+            setJoined((prev) => upsertJoinedRoundSorted(prev, nextRow));
+          }
         }
       }
 
@@ -540,7 +546,7 @@ export default function MyRoundsScreen() {
       ? "Create your first round and invite friends to get a game going."
       : activeTab === "joined"
         ? "Claim a spot from Discover and your joined rounds will show up here."
-        : "When someone invites you to a round, it will appear here until you accept or decline.";
+        : "Invites show here until you respond. Declined rounds stay listed so you can open them again.";
   const listHeader = (
     <>
       <Text style={styles.heading}>My rounds</Text>
@@ -685,19 +691,22 @@ export default function MyRoundsScreen() {
           void loadTabRounds(activeTab, { reset: false });
         }}
         renderItem={({ item: round }) => {
-          const inviteOutcome = inviteResponseByRound[round.id];
+          const optimisticInviteOutcome = inviteResponseByRound[round.id];
+          const effectiveInviteOutcome =
+            optimisticInviteOutcome ??
+            (round.spotStatus === "declined" ? "declined" : undefined);
           const rowBusy = inviteActionRoundId === round.id;
           const swipeVariant: "host" | "invite" | "none" =
             activeTab === "hosting"
               ? "host"
-              : activeTab === "invited" && !inviteOutcome
+              : activeTab === "invited" && !effectiveInviteOutcome
                 ? "invite"
                 : "none";
           const swipeEnabled =
             activeTab === "hosting"
               ? !hostActionRoundId
               : activeTab === "invited"
-                ? !inviteOutcome && !inviteActionRoundId
+                ? !effectiveInviteOutcome && !inviteActionRoundId
                 : false;
           const effectiveIso = round.teeTime ?? round.targetDate;
           const imageUrl = round.imageUrl ?? "/images/event-fallback.svg";
@@ -772,15 +781,15 @@ export default function MyRoundsScreen() {
                 footer={
                   activeTab === "invited" ? (
                     <View style={styles.inviteFooter}>
-                      {inviteOutcome ? (
+                      {effectiveInviteOutcome ? (
                         <Text
                           style={
-                            inviteOutcome === "declined"
+                            effectiveInviteOutcome === "declined"
                               ? styles.inviteResponseTextMuted
                               : styles.inviteResponseText
                           }
                         >
-                          {inviteResponseLabel(inviteOutcome)}
+                          {inviteResponseLabel(effectiveInviteOutcome)}
                         </Text>
                       ) : rowBusy ? (
                         <ActivityIndicator color={colors.fairway} style={styles.inviteRowSpinner} />
