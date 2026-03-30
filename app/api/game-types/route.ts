@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getEnabledGameTypes, toPublicGameType } from "@/lib/game-types-config";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const types = await getEnabledGameTypes();
