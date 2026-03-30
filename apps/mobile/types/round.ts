@@ -33,6 +33,10 @@ export type RoundDetails = {
   planningLocation: string | null;
   courseId?: string | null;
   courseName: string;
+  /** From `courses.metadata` (Google Places) when available */
+  courseAddress?: string | null;
+  courseLatitude?: number | null;
+  courseLongitude?: number | null;
   teeTime: string | null;
   targetDate: string;
   visibility: "private" | "public";

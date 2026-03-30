@@ -144,18 +144,21 @@ function ConversationChatContent() {
             .filter((p) => p.avatar)
             .map((p) => [p.avatar!, p.id]),
         );
-        let userIds: (string | null)[] = rawAvatars.map((a, i) => {
+        // `participantAvatars` from the API is only *other* members (viewer excluded). Do not index
+        // into `allParticipants` — that array includes the viewer, so [0] can pair someone else's
+        // photo with the viewer's id and the header online dot shows true whenever *you* are online.
+        let userIds: (string | null)[] = rawAvatars.map((a) => {
           if (!a) return null;
-          return allParticipants[i]?.id ?? avatarToUserId.get(a) ?? null;
+          return avatarToUserId.get(a) ?? null;
         });
 
         if (data.type === "group" && data.imageUrl) {
           avatars = [data.imageUrl];
           userIds = [null];
         } else if (data.roundMode === "scheduled" && data.imageUrl) {
-          const userSlotIds = rawAvatars.flatMap((a, i) => {
-            if (!a) return [];
-            return [allParticipants[i]?.id ?? null];
+          const userSlotIds = rawAvatars.map((a) => {
+            if (!a) return null;
+            return avatarToUserId.get(a) ?? null;
           });
           avatars = [data.imageUrl, ...avatars];
           userIds = [null, ...userSlotIds];

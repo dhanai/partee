@@ -54,16 +54,23 @@ function groupChatPreviewSubtitle(last: RoundDetails["lastChatMessage"]): string
   const cut = snippet.length > max ? `${snippet.slice(0, max)}…` : snippet;
   return `${formatInviterFirstLastInitial(last.senderName)}: ${cut}`;
 }
-import { AnimatedBottomSheetFrame } from "../../components/animated-bottom-sheet-frame";
+import {
+  AnimatedBottomSheetFrame,
+  BottomSheetScrollView,
+} from "../../components/animated-bottom-sheet-frame";
 import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../components/report-sheet";
+import { RoundCourseLocationSheet } from "../../components/round-course-location-sheet";
 import { RoundDetailSection } from "../../components/round-detail-section";
 import { PlanningRoundBadge } from "../../components/planning-round-badge";
 import { getTimeWindows } from "../../lib/round-card-meta";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
 import { getGameDefinitions } from "../../lib/games-registry";
+
+/** Caps sheet height so it does not extend under the status bar; list scrolls inside. */
+const SIDE_GAMES_SHEET_SNAP_POINTS = ["78%"] as const;
 
 type CourseResult = { id: string; name: string; address: string };
 
@@ -137,6 +144,7 @@ export default function RoundDetailsScreen() {
   const [finalizeExpanded, setFinalizeExpanded] = useState(true);
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
   const [sideGamesSheetOpen, setSideGamesSheetOpen] = useState(false);
+  const [courseLocationSheetOpen, setCourseLocationSheetOpen] = useState(false);
   const confirmedPlayerIds = useMemo(
     () => new Set(round?.confirmedPlayers.map((p) => p.id) ?? []),
     [round],
@@ -227,11 +235,12 @@ export default function RoundDetailsScreen() {
     }, [token, loadRound]),
   );
 
+  /** Only cache after GET succeeds — bootstrap/hint rows omit courseAddress/coords and would poison the 3‑min cache. */
   useEffect(() => {
-    if (round) {
+    if (round && apiResolved) {
       setCachedRoundDetails(round);
     }
-  }, [round]);
+  }, [round, apiResolved]);
 
   useLayoutEffect(() => {
     if (loading || !round || !apiResolved) {
@@ -600,14 +609,29 @@ export default function RoundDetailsScreen() {
       {round.mode === "scheduled" ? (
         <>
           <View style={styles.heroCard}>
-            <RoundCoverImage
-              recyclingKey={`${round.id}:${round.imageUrl}`}
-              uri={toAbsoluteUrl(round.imageUrl)}
-              style={styles.hero}
-              transitionMs={320}
-            />
+            <View style={styles.heroImageWrap}>
+              <RoundCoverImage
+                recyclingKey={`${round.id}:${round.imageUrl}`}
+                uri={toAbsoluteUrl(round.imageUrl)}
+                style={styles.hero}
+                transitionMs={320}
+              />
+              <Pressable
+                style={styles.heroLocationPin}
+                onPress={() => setCourseLocationSheetOpen(true)}
+                hitSlop={8}
+                accessibilityLabel="Course location and directions"
+                accessibilityRole="button"
+              >
+                <View style={styles.heroLocationPinInner}>
+                  <Ionicons name="location" size={22} color={colors.fairway} />
+                </View>
+              </Pressable>
+            </View>
           </View>
-          <Text style={styles.title}>{round.courseName}</Text>
+          <Text style={[styles.title, styles.titleBelowHero]} numberOfLines={3}>
+            {round.courseName}
+          </Text>
         </>
       ) : (
         <>
@@ -615,7 +639,7 @@ export default function RoundDetailsScreen() {
             preferredTimeWindow={getTimeWindows(round)}
             compact
           />
-          <Text style={styles.title}>
+          <Text style={[styles.title, { marginTop: 8 }]}>
             {new Date(round.targetDate).toLocaleDateString("en-US", {
               weekday: "long",
               month: "long",
@@ -1050,39 +1074,59 @@ export default function RoundDetailsScreen() {
         visible={sideGamesSheetOpen}
         onClose={() => setSideGamesSheetOpen(false)}
         backdropAccessibilityLabel="Dismiss side games"
+        snapPoints={SIDE_GAMES_SHEET_SNAP_POINTS}
+        enableContentPanningGesture={false}
         sheetStyle={styles.sideGamesSheet}
       >
-        <Text style={styles.sideGamesTitle}>Side games</Text>
-        <Text style={styles.sideGamesSub}>
-          Pick a game — confirmed players are added automatically.
-        </Text>
-        <View style={styles.sideGamesGrid}>
-          {getGameDefinitions().filter((g) => g.implemented).map((g) => (
-            <Pressable
-              key={g.id}
-              style={({ pressed }) => [
-                styles.sideGameCard,
-                pressed && { opacity: 0.7 },
-              ]}
-              onPress={() => {
-                setSideGamesSheetOpen(false);
-                setTimeout(() => {
-                  router.push({
-                    pathname: "/games/create",
-                    params: { gameType: g.id, roundInviteToken: token },
-                  });
-                }, 300);
-              }}
-            >
-              <Ionicons name="golf-outline" size={22} color={colors.fairway} />
-              <Text style={styles.sideGameCardTitle}>{g.title}</Text>
-              <Text style={styles.sideGameCardSub} numberOfLines={2}>
-                {g.subtitle}
-              </Text>
-            </Pressable>
-          ))}
+        <View style={styles.sideGamesSheetInner}>
+          <Text style={styles.sideGamesTitle}>Side games</Text>
+          <Text style={styles.sideGamesSub}>
+            Pick a game — confirmed players are added automatically.
+          </Text>
+          <BottomSheetScrollView
+            style={styles.sideGamesScroll}
+            contentContainerStyle={styles.sideGamesScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {getGameDefinitions()
+              .filter((g) => g.implemented)
+              .map((g) => (
+                <Pressable
+                  key={g.id}
+                  style={({ pressed }) => [
+                    styles.sideGameCard,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                  onPress={() => {
+                    setSideGamesSheetOpen(false);
+                    setTimeout(() => {
+                      router.push({
+                        pathname: "/games/create",
+                        params: { gameType: g.id, roundInviteToken: token },
+                      });
+                    }, 300);
+                  }}
+                >
+                  <Ionicons name="golf-outline" size={22} color={colors.fairway} />
+                  <Text style={styles.sideGameCardTitle}>{g.title}</Text>
+                  <Text style={styles.sideGameCardSub} numberOfLines={2}>
+                    {g.subtitle}
+                  </Text>
+                </Pressable>
+              ))}
+          </BottomSheetScrollView>
         </View>
       </AnimatedBottomSheetFrame>
+
+      <RoundCourseLocationSheet
+        visible={courseLocationSheetOpen}
+        onClose={() => setCourseLocationSheetOpen(false)}
+        courseName={round.courseName}
+        courseAddress={round.courseAddress}
+        courseLatitude={round.courseLatitude}
+        courseLongitude={round.courseLongitude}
+      />
     </View>
   );
 }
@@ -1100,12 +1144,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  heroImageWrap: {
+    position: "relative",
+    width: "100%",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
   hero: {
     width: "100%",
     height: 180,
     borderRadius: 12,
   },
-  title: { fontSize: 28, fontWeight: "700", color: colors.text, marginTop: 8 },
+  heroLocationPin: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+  },
+  heroLocationPinInner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(0,0,0,0.08)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  titleBelowHero: {
+    marginTop: 8,
+  },
   whenBlock: { gap: 2, marginTop: 2 },
   whenDate: { color: colors.text, fontWeight: "700", fontSize: 18 },
   whenTime: { color: colors.muted, fontWeight: "600", fontSize: 16 },
@@ -1235,10 +1312,12 @@ const styles = StyleSheet.create({
   },
   listTitle: { color: colors.text, fontWeight: "600" },
   listMeta: { color: colors.muted, fontSize: 12 },
-  sideGamesSheet: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
+  sideGamesSheet: { paddingHorizontal: 16, paddingTop: 8, flex: 1 },
+  sideGamesSheetInner: { flex: 1, minHeight: 0 },
   sideGamesTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 4 },
-  sideGamesSub: { fontSize: 14, color: colors.muted, marginBottom: 16 },
-  sideGamesGrid: { gap: 10 },
+  sideGamesSub: { fontSize: 14, color: colors.muted, marginBottom: 12 },
+  sideGamesScroll: { flex: 1 },
+  sideGamesScrollContent: { gap: 10, paddingBottom: 8 },
   sideGameCard: {
     backgroundColor: "#f9f7f3",
     borderRadius: 14,

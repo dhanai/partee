@@ -6,6 +6,7 @@ import { conversationParticipants, conversations, courses, messages, rounds, spo
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { ensureDbUser, requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
+import { resolveCourseLocation } from "@/lib/round-course-location";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
 import { textArraySql, timeWindowResponseFields } from "@/lib/round-time-window-compat";
@@ -108,6 +109,9 @@ export async function GET(req: Request, { params }: RouteContext) {
       joinPolicy: rounds.joinPolicy,
       customImageUrl: rounds.customImageUrl,
       courseMetadata: courses.metadata,
+      courseDbAddress: courses.address,
+      courseDbLat: courses.lat,
+      courseDbLng: courses.lng,
       hostId: rounds.hostId,
       hostName: users.name,
       hostAvatar: users.avatar,
@@ -121,7 +125,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     .leftJoin(users, eq(users.id, rounds.hostId))
     .leftJoin(spots, eq(spots.roundId, rounds.id))
     .where(eq(rounds.inviteToken, token))
-    .groupBy(rounds.id, users.name, users.avatar, courses.metadata);
+    .groupBy(rounds.id, users.name, users.avatar, courses.id);
 
   if (!round) {
     return NextResponse.json({ error: "Round not found." }, { status: 404 });
@@ -213,6 +217,13 @@ export async function GET(req: Request, { params }: RouteContext) {
     }
   }
 
+  const courseMeta = round.courseMetadata as Record<string, unknown> | null | undefined;
+  const courseLocation = resolveCourseLocation(courseMeta, {
+    address: round.courseDbAddress,
+    lat: round.courseDbLat,
+    lng: round.courseDbLng,
+  });
+
   return NextResponse.json({
     round: {
       id: round.id,
@@ -222,6 +233,9 @@ export async function GET(req: Request, { params }: RouteContext) {
       planningLocation: round.planningLocation,
       courseId: round.courseId,
       courseName: round.courseName ?? "Course TBD",
+      courseAddress: courseLocation.address,
+      courseLatitude: courseLocation.latitude,
+      courseLongitude: courseLocation.longitude,
       teeTime: round.teeTime,
       targetDate: round.targetDate,
       visibility: round.visibility,
