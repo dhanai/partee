@@ -14,7 +14,7 @@ export function formatInviterFirstLastInitial(name: string): string {
 }
 
 export type RoundRsvpNotificationMeta = {
-  mode: "planning" | "scheduled";
+  mode: "planning" | "scheduled" | "tournament";
   teeTimeIso: string | null;
   targetDateIso: string;
   venueLabel: string;
@@ -47,7 +47,7 @@ function formatRoundInviteDateLocal(
 function formatWhenClauseLocal(meta: RoundRsvpNotificationMeta): string {
   const { mode, teeTimeIso, targetDateIso, preferredTimeWindows } = meta;
 
-  if (mode === "scheduled" && teeTimeIso) {
+  if ((mode === "scheduled" || mode === "tournament") && teeTimeIso) {
     const d = new Date(teeTimeIso);
     if (!Number.isNaN(d.getTime())) {
       const now = new Date();

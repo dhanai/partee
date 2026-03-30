@@ -26,6 +26,7 @@ import { RoundDetails } from "../../../types/round";
 import { DatePickerModal } from "../../../components/date-picker-modal";
 import { PlanningTimeWindowChips } from "../../../components/planning-time-window-chips";
 import { TimePickerModal } from "../../../components/time-picker-modal";
+import { TournamentDetailsEditorSheet } from "../../../components/tournament-details-editor-sheet";
 
 type RoundResponse = { round: RoundDetails };
 type CourseResult = { id: string; name: string; address: string };
@@ -58,6 +59,7 @@ export default function EditRoundScreen() {
   const [snapshotReady, setSnapshotReady] = useState(false);
 
   const [planningMode, setPlanningMode] = useState(true);
+  const [roundMode, setRoundMode] = useState<"planning" | "scheduled" | "tournament">("scheduled");
   const [preferredTimeWindow, setPreferredTimeWindow] = useState<string[]>(["morning"]);
   const [planningLocation, setPlanningLocation] = useState("");
   const [planningLocationIsValidated, setPlanningLocationIsValidated] = useState(true);
@@ -89,6 +91,9 @@ export default function EditRoundScreen() {
   const [visibility, setVisibility] = useState<"private" | "public">("private");
   const [joinPolicy, setJoinPolicy] = useState<"instant" | "approval">("instant");
   const [customImageUrl, setCustomImageUrl] = useState<string | null>(null);
+  const [tournamentTitle, setTournamentTitle] = useState("");
+  const [tournamentDetails, setTournamentDetails] = useState("");
+  const [tournamentDetailsSheetOpen, setTournamentDetailsSheetOpen] = useState(false);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -112,12 +117,15 @@ export default function EditRoundScreen() {
         }
 
         loadedRoundMetaRef.current = { id: round.id };
+        setRoundMode(round.mode);
         setPlanningMode(round.mode === "planning");
         setPreferredTimeWindow(getTimeWindows(round) ?? ["morning"]);
         setTotalSpots(round.totalSpots);
         setVisibility(round.visibility);
         setJoinPolicy(round.joinPolicy);
         setCustomImageUrl(round.customImageUrl ?? null);
+        setTournamentTitle(round.tournamentTitle?.trim() ?? "");
+        setTournamentDetails(round.tournamentDetails ?? "");
 
         if (round.mode === "planning") {
           setPlanningLocation(round.planningLocation ?? "");
@@ -125,7 +133,7 @@ export default function EditRoundScreen() {
           const d = new Date(round.targetDate);
           d.setHours(0, 0, 0, 0);
           setTargetDate(d);
-        } else {
+        } else if (round.mode === "scheduled" || round.mode === "tournament") {
           if (round.courseId) {
             setSelectedCourse({
               id: round.courseId,
@@ -245,14 +253,20 @@ export default function EditRoundScreen() {
           planningLocationIsValidated,
       );
     }
-    return Boolean(selectedCourse && teeDate);
+    if (!selectedCourse || !teeDate) return false;
+    if (roundMode === "tournament") {
+      return totalSpots >= 2 && totalSpots <= 200;
+    }
+    return true;
   }, [
     planningMode,
+    roundMode,
     targetDate,
     planningLocation,
     planningLocationIsValidated,
     selectedCourse,
     teeDate,
+    totalSpots,
     submitting,
   ]);
 
@@ -273,6 +287,8 @@ export default function EditRoundScreen() {
         visibility,
         joinPolicy,
         customImageUrl: customImageUrl ?? null,
+        tournamentTitle: roundMode === "tournament" ? tournamentTitle.trim() : "",
+        tournamentDetails: roundMode === "tournament" ? tournamentDetails : "",
       }),
     [
       planningMode,
@@ -286,6 +302,9 @@ export default function EditRoundScreen() {
       visibility,
       joinPolicy,
       customImageUrl,
+      roundMode,
+      tournamentTitle,
+      tournamentDetails,
     ],
   );
   currentSnapshotRef.current = currentSnapshot;
@@ -402,7 +421,7 @@ export default function EditRoundScreen() {
           optimistic: {
             roundId: meta.id,
             inviteToken: token,
-            mode: planningMode ? "planning" : "scheduled",
+            mode: roundMode,
             preferredTimeWindow: planningMode ? (preferredTimeWindow[0] ?? null) : null,
             preferredTimeWindows: planningMode ? (preferredTimeWindow.length > 0 ? preferredTimeWindow : null) : null,
             planningLocation: planningMode ? planningLocation.trim() : null,
@@ -429,6 +448,7 @@ export default function EditRoundScreen() {
     token,
     canSubmit,
     planningMode,
+    roundMode,
     teeDate,
     teeTimeValue,
     targetDate,
@@ -439,6 +459,8 @@ export default function EditRoundScreen() {
     visibility,
     joinPolicy,
     customImageUrl,
+    tournamentTitle,
+    tournamentDetails,
     currentSnapshot,
   ]);
 
@@ -594,6 +616,19 @@ export default function EditRoundScreen() {
           </>
         ) : (
           <>
+            {roundMode === "tournament" ? (
+              <>
+                <Text style={styles.label}>Tournament title</Text>
+                <TextInput
+                  value={tournamentTitle}
+                  onChangeText={setTournamentTitle}
+                  placeholder="Optional — e.g. Spring Cup 2026"
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                  maxLength={120}
+                />
+              </>
+            ) : null}
             <Text style={styles.label}>Course search</Text>
             <View style={styles.inputRow}>
               <TextInput
@@ -687,20 +722,44 @@ export default function EditRoundScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.label}>Looking for</Text>
-        <View style={styles.row}>
-          {([1, 2, 3] as const).map((n) => (
-            <Pressable
-              key={n}
-              style={[styles.pill, totalSpots === n + 1 && styles.pillActive]}
-              onPress={() => setTotalSpots(n + 1)}
-            >
-              <Text style={[styles.pillText, totalSpots === n + 1 && styles.pillTextActive]}>
-                {n}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        {roundMode === "tournament" ? (
+          <>
+            <Text style={styles.label}>Max participants</Text>
+            <TextInput
+              value={String(totalSpots)}
+              onChangeText={(t) => {
+                const n = parseInt(t.replace(/[^\d]/g, ""), 10);
+                if (t.trim() === "") {
+                  setTotalSpots(2);
+                  return;
+                }
+                if (Number.isFinite(n)) setTotalSpots(Math.min(200, Math.max(2, n)));
+              }}
+              keyboardType="number-pad"
+              placeholder="2–200"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
+            <Text style={styles.fieldHint}>Total field including you (2–200).</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.label}>Looking for</Text>
+            <View style={styles.row}>
+              {([1, 2, 3] as const).map((n) => (
+                <Pressable
+                  key={n}
+                  style={[styles.pill, totalSpots === n + 1 && styles.pillActive]}
+                  onPress={() => setTotalSpots(n + 1)}
+                >
+                  <Text style={[styles.pillText, totalSpots === n + 1 && styles.pillTextActive]}>
+                    {n}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
 
         <Text style={styles.label}>Join policy</Text>
         <View style={styles.row}>
@@ -722,6 +781,34 @@ export default function EditRoundScreen() {
           </Pressable>
         </View>
 
+        {roundMode === "tournament" ? (
+          <>
+            <Text style={styles.label}>Tournament details</Text>
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => {
+                Keyboard.dismiss();
+                setTournamentDetailsSheetOpen(true);
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>
+                {tournamentDetails.trim()
+                  ? "Edit details & formatting"
+                  : "Add details (formatting, links…)"}
+              </Text>
+            </Pressable>
+            {tournamentDetails.trim() ? (
+              <Text style={styles.fieldHint} numberOfLines={4}>
+                {tournamentDetails.trim()}
+              </Text>
+            ) : (
+              <Text style={styles.fieldHint}>
+                Optional — prizes, format, dress code, registration links.
+              </Text>
+            )}
+          </>
+        ) : null}
+
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -740,6 +827,13 @@ export default function EditRoundScreen() {
         value={teeTimeValue}
         onChange={setTeeTimeValue}
         onClose={() => setTimePickerOpen(false)}
+      />
+
+      <TournamentDetailsEditorSheet
+        visible={tournamentDetailsSheetOpen}
+        onClose={() => setTournamentDetailsSheetOpen(false)}
+        value={tournamentDetails}
+        onChange={setTournamentDetails}
       />
     </ScrollView>
   );
@@ -788,6 +882,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     color: colors.text,
+  },
+  fieldHint: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: -4,
   },
   inputRow: {
     position: "relative",

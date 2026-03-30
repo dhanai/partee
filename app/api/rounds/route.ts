@@ -15,6 +15,8 @@ import { textArraySql, timeWindowResponseFields } from "@/lib/round-time-window-
 const createRoundSchema = z
   .object({
     planningMode: z.boolean().default(false),
+    /** When true, same fields as scheduled (course + tee) but `mode` is `tournament` and up to 200 spots. */
+    tournamentMode: z.boolean().default(false),
     preferredTimeWindow: z.preprocess(
       (val) => (typeof val === "string" ? [val] : val),
       z.array(z.enum(["morning", "afternoon", "twilight"])).max(3),
@@ -23,7 +25,10 @@ const createRoundSchema = z
     courseId: z.string().uuid().optional().nullable(),
     teeTime: z.string().datetime().optional().nullable(),
     targetDate: z.string().datetime().optional().nullable(),
-    totalSpots: z.preprocess((v) => (typeof v === "string" ? Number(v) : v), z.number().int().min(1).max(4)),
+    totalSpots: z.preprocess(
+      (v) => (typeof v === "string" ? Number(v) : v),
+      z.number().int().min(2).max(200),
+    ),
     visibility: z.enum(["private", "public"]),
     joinPolicy: z.enum(["instant", "approval"]).default("instant"),
     customImageUrl: z
@@ -43,9 +48,32 @@ const createRoundSchema = z
       .nullable(),
     inviteeUserIds: z.array(z.string().uuid()).max(30).default([]),
     groupId: z.string().uuid().optional().nullable(),
+    tournamentTitle: z.string().trim().max(120).optional().nullable(),
+    tournamentDetails: z.string().max(8000).optional().nullable(),
   })
   .superRefine((payload, ctx) => {
+    if (payload.planningMode && payload.tournamentMode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tournamentMode"],
+        message: "Cannot combine planning and tournament.",
+      });
+    }
+    if (!payload.tournamentMode && (payload.tournamentTitle || payload.tournamentDetails)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tournamentTitle"],
+        message: "Tournament title and details are only allowed for tournament rounds.",
+      });
+    }
     if (payload.planningMode) {
+      if (payload.totalSpots > 4) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["totalSpots"],
+          message: "Planning rounds support at most 4 total spots.",
+        });
+      }
       if (!payload.targetDate) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -62,19 +90,52 @@ const createRoundSchema = z
       }
       return;
     }
-    if (payload.preferredTimeWindow && payload.preferredTimeWindow.length > 0) {
+    if (payload.tournamentMode) {
+      if (payload.totalSpots > 200) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["totalSpots"],
+          message: "Tournament max participants cannot exceed 200.",
+        });
+      }
+    } else if (payload.totalSpots > 4) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["totalSpots"],
+        message: "Scheduled rounds support at most 4 total spots.",
+      });
+    }
+    if (payload.preferredTimeWindow && payload.preferredTimeWindow.length > 0 && !payload.planningMode) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["preferredTimeWindow"],
         message: "preferredTimeWindow is only valid for planning rounds.",
       });
     }
-    if (payload.planningLocation) {
+    if (payload.planningLocation && !payload.planningMode) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["planningLocation"],
         message: "planningLocation is only valid for planning rounds.",
       });
+    }
+
+    if (payload.tournamentMode) {
+      if (!payload.courseId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["courseId"],
+          message: "Course is required for tournament rounds.",
+        });
+      }
+      if (!payload.teeTime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["teeTime"],
+          message: "Tee time is required for tournament rounds.",
+        });
+      }
+      return;
     }
 
     if (!payload.courseId) {
@@ -99,6 +160,11 @@ export async function POST(req: Request) {
     const user = await requireDbUser(req);
     rawBody = await req.json();
     const parsed = createRoundSchema.parse(rawBody);
+    const roundMode: "planning" | "scheduled" | "tournament" = parsed.planningMode
+      ? "planning"
+      : parsed.tournamentMode
+        ? "tournament"
+        : "scheduled";
     const now = Date.now();
     let teeTime: Date | null = null;
     let targetDate: Date;
@@ -156,7 +222,7 @@ export async function POST(req: Request) {
         .insert(rounds)
         .values({
           hostId: user.id,
-          mode: parsed.planningMode ? "planning" : "scheduled",
+          mode: roundMode,
           courseId: course?.id ?? null,
           courseName: course?.name ?? null,
           teeTime,
@@ -177,6 +243,14 @@ export async function POST(req: Request) {
           groupId: parsed.groupId ?? null,
           status: "forming",
           inviteToken: nanoid(12),
+          tournamentTitle:
+            parsed.tournamentMode && parsed.tournamentTitle?.trim()
+              ? parsed.tournamentTitle.trim()
+              : null,
+          tournamentDetails:
+            parsed.tournamentMode && parsed.tournamentDetails?.trim()
+              ? parsed.tournamentDetails.trim()
+              : null,
         })
         .returning();
 

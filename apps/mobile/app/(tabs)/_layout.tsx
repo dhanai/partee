@@ -18,7 +18,8 @@ export default function TabsLayout() {
   const { showBadge: showNotificationBadge } = useNotificationBadge();
   const { hasAnyUnreadChat } = useChatUnread();
   const [createSheetOpen, setCreateSheetOpen] = useState(false);
-  const showAdvancedCreateTypes = false;
+  /** Event is experimental; tournament is a first-class create path. */
+  const showEventCreateOption = false;
   const getTokenRef = useRef(getToken);
 
   useEffect(() => {
@@ -225,30 +226,30 @@ export default function TabsLayout() {
           </View>
         </Pressable>
 
-        {showAdvancedCreateTypes ? (
-          <>
-            <Pressable style={styles.optionRow} onPress={() => goToCreateOption("tournament")}>
-              <View style={styles.optionIconWrap}>
-                <Ionicons name="trophy-outline" size={18} color={colors.fairway} />
-              </View>
-              <View style={styles.optionTextWrap}>
-                <Text style={styles.optionTitle}>Tournament</Text>
-                <Text style={styles.optionSubtitle}>Placeholder flow for upcoming support.</Text>
-              </View>
-            </Pressable>
+        <Pressable style={styles.optionRow} onPress={() => goToCreateOption("tournament")}>
+          <View style={styles.optionIconWrap}>
+            <Ionicons name="trophy-outline" size={18} color={colors.fairway} />
+          </View>
+          <View style={styles.optionTextWrap}>
+            <Text style={styles.optionTitle}>Tournament</Text>
+            <Text style={styles.optionSubtitle}>
+              Course, tee time, larger field — title, details, max participants.
+            </Text>
+          </View>
+        </Pressable>
 
-            <Pressable style={styles.optionRow} onPress={() => goToCreateOption("event")}>
-              <View style={styles.optionIconWrap}>
-                <Ionicons name="sparkles-outline" size={18} color={colors.fairway} />
-              </View>
-              <View style={styles.optionTextWrap}>
-                <Text style={styles.optionTitle}>Event</Text>
-                <Text style={styles.optionSubtitle}>
-                  Meetup, market, tournament side-event and more.
-                </Text>
-              </View>
-            </Pressable>
-          </>
+        {showEventCreateOption ? (
+          <Pressable style={styles.optionRow} onPress={() => goToCreateOption("event")}>
+            <View style={styles.optionIconWrap}>
+              <Ionicons name="sparkles-outline" size={18} color={colors.fairway} />
+            </View>
+            <View style={styles.optionTextWrap}>
+              <Text style={styles.optionTitle}>Event</Text>
+              <Text style={styles.optionSubtitle}>
+                Meetup, market, tournament side-event and more.
+              </Text>
+            </View>
+          </Pressable>
         ) : null}
       </AnimatedBottomSheetFrame>
     </>

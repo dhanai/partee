@@ -56,7 +56,7 @@ export function formatScheduledCardMeta(effectiveDateIso: string, teeTime: strin
 
 /** Mine rounds list + notifications: one label for when the round happens. */
 export function formatMineRoundWhenLabel(round: {
-  mode: "scheduled" | "planning";
+  mode: "scheduled" | "planning" | "tournament";
   teeTime: string | null;
   targetDate: string;
   preferredTimeWindow?: string | null;
@@ -65,7 +65,7 @@ export function formatMineRoundWhenLabel(round: {
   if (round.mode === "planning") {
     return formatPlanningWindow(getTimeWindows(round));
   }
-  if (round.mode === "scheduled" && round.teeTime) {
+  if ((round.mode === "scheduled" || round.mode === "tournament") && round.teeTime) {
     const d = new Date(round.teeTime);
     if (!Number.isNaN(d.getTime())) {
       const dateText = d.toLocaleDateString();

@@ -28,6 +28,7 @@ import { InviteFriendsSheet } from "../../components/invite-friends-sheet";
 import { PlanningTimeWindowChips } from "../../components/planning-time-window-chips";
 import { SelectGroupSheet } from "../../components/select-group-sheet";
 import { TimePickerModal } from "../../components/time-picker-modal";
+import { TournamentDetailsEditorSheet } from "../../components/tournament-details-editor-sheet";
 
 type CourseResult = {
   id: string;
@@ -90,7 +91,10 @@ export default function CreateScreen() {
   }, [mode]);
   const isPlanningRound = createType === "planning";
   const isScheduledRound = createType === "scheduled";
-  const isRoundType = isPlanningRound || isScheduledRound;
+  const isTournamentRound = createType === "tournament";
+  /** Course + tee time (scheduled or tournament). */
+  const isScheduledLike = isScheduledRound || isTournamentRound;
+  const isRoundType = isPlanningRound || isScheduledLike;
   const [targetDate, setTargetDate] = useState<Date | null>(null);
   const [planningLocation, setPlanningLocation] = useState("");
   const [planningLocationIsValidated, setPlanningLocationIsValidated] = useState(true);
@@ -113,6 +117,10 @@ export default function CreateScreen() {
   const [totalSpots, setTotalSpots] = useState(4);
   const [visibility, setVisibility] = useState<"private" | "public">("private");
   const [joinPolicy, setJoinPolicy] = useState<"instant" | "approval">("instant");
+  const [tournamentTitle, setTournamentTitle] = useState("");
+  const [tournamentDetails, setTournamentDetails] = useState("");
+  const [tournamentDetailsSheetOpen, setTournamentDetailsSheetOpen] = useState(false);
+  const [tournamentMaxParticipants, setTournamentMaxParticipants] = useState("48");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -176,6 +184,10 @@ export default function CreateScreen() {
     setLoadingCourses(false);
     setSelectedCourse(null);
     setTotalSpots(4);
+    setTournamentMaxParticipants("48");
+    setTournamentTitle("");
+    setTournamentDetails("");
+    setTournamentDetailsSheetOpen(false);
     setVisibility("private");
     setJoinPolicy("instant");
     setSubmitting(false);
@@ -200,10 +212,10 @@ export default function CreateScreen() {
   }, [session, groupIdParam]);
 
   useEffect(() => {
-    if (!isScheduledRound) {
+    if (!isScheduledLike) {
       setTeeDate(null);
     }
-  }, [isScheduledRound]);
+  }, [isScheduledLike]);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -254,11 +266,23 @@ export default function CreateScreen() {
           planningLocationIsValidated,
       );
     }
+    if (isTournamentRound) {
+      const n = parseInt(tournamentMaxParticipants.trim(), 10);
+      return Boolean(
+        selectedCourse &&
+          teeDate &&
+          Number.isFinite(n) &&
+          n >= 2 &&
+          n <= 200,
+      );
+    }
     if (isScheduledRound) return Boolean(selectedCourse && teeDate);
     return false;
   }, [
     isPlanningRound,
     isScheduledRound,
+    isTournamentRound,
+    tournamentMaxParticipants,
     targetDate,
     planningLocation,
     planningLocationIsValidated,
@@ -309,7 +333,7 @@ export default function CreateScreen() {
   }
 
   useEffect(() => {
-    if (!isScheduledRound) return;
+    if (!isScheduledLike) return;
     if (selectedCourse && debouncedCourseQuery.trim() === selectedCourse.name) return;
     let active = true;
 
@@ -346,7 +370,7 @@ export default function CreateScreen() {
     return () => {
       active = false;
     };
-  }, [debouncedCourseQuery, isScheduledRound, selectedCourse]);
+  }, [debouncedCourseQuery, isScheduledLike, selectedCourse]);
 
 
   useEffect(() => {
@@ -416,7 +440,7 @@ export default function CreateScreen() {
     try {
       const token = await getToken();
       let teeTimeIso: string | undefined;
-      if (isScheduledRound && teeDate) {
+      if (isScheduledLike && teeDate) {
         const combined = new Date(teeDate);
         combined.setHours(
           teeTimeValue.getHours(),
@@ -426,6 +450,14 @@ export default function CreateScreen() {
         );
         teeTimeIso = combined.toISOString();
       }
+
+      const tournamentSpotsParsed = isTournamentRound
+        ? parseInt(tournamentMaxParticipants.trim(), 10)
+        : null;
+      const totalSpotsPayload =
+        isTournamentRound && tournamentSpotsParsed != null && Number.isFinite(tournamentSpotsParsed)
+          ? tournamentSpotsParsed
+          : totalSpots;
 
       const planningTargetDateIso =
         isPlanningRound && targetDate
@@ -440,16 +472,23 @@ export default function CreateScreen() {
         "/api/rounds",
         {
           planningMode: isPlanningRound,
+          tournamentMode: isTournamentRound,
           preferredTimeWindow: isPlanningRound ? preferredTimeWindow : undefined,
           planningLocation: isPlanningRound ? planningLocation.trim() : undefined,
           courseId: isPlanningRound ? undefined : selectedCourse?.id,
           teeTime: teeTimeIso,
           targetDate: planningTargetDateIso,
-          totalSpots,
+          totalSpots: totalSpotsPayload,
           visibility,
           joinPolicy,
           inviteeUserIds: selectedFriends.map((friend) => friend.id),
           groupId: selectedGroupId || undefined,
+          ...(isTournamentRound
+            ? {
+                tournamentTitle: tournamentTitle.trim() || undefined,
+                tournamentDetails: tournamentDetails.trim() || undefined,
+              }
+            : {}),
         },
         token,
       );
@@ -488,12 +527,18 @@ export default function CreateScreen() {
       automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
     >
       <Text style={styles.title}>
-        {createType === "planning" ? "Planning Round" : "Scheduled Tee Time"}
+        {createType === "planning"
+          ? "Planning Round"
+          : createType === "tournament"
+            ? "Tournament"
+            : "Scheduled Tee Time"}
       </Text>
       <Text style={styles.copy}>
         {createType === "planning"
           ? "Find players first. Lock details later."
-          : "Set it up. Blast invites. Tee off."}
+          : createType === "tournament"
+            ? "Set course, tee time, and max field size. Then invite players."
+            : "Set it up. Blast invites. Tee off."}
       </Text>
 
       <View style={styles.card}>
@@ -562,8 +607,21 @@ export default function CreateScreen() {
                 </Pressable>
               ))}
           </>
-        ) : isScheduledRound ? (
+        ) : isScheduledLike ? (
           <>
+            {isTournamentRound ? (
+              <>
+                <Text style={styles.label}>Tournament title</Text>
+                <TextInput
+                  value={tournamentTitle}
+                  onChangeText={setTournamentTitle}
+                  placeholder="Optional — e.g. Spring Cup 2026"
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                  maxLength={120}
+                />
+              </>
+            ) : null}
             <Text style={styles.label}>Course search</Text>
             <View style={styles.inputRow}>
               <TextInput
@@ -658,20 +716,37 @@ export default function CreateScreen() {
               </Pressable>
             </View>
 
-            <Text style={styles.label}>Looking for</Text>
-            <View style={styles.row}>
-              {([1, 2, 3] as const).map((n) => (
-                <Pressable
-                  key={n}
-                  style={[styles.pill, totalSpots === n + 1 && styles.pillActive]}
-                  onPress={() => setTotalSpots(n + 1)}
-                >
-                  <Text style={[styles.pillText, totalSpots === n + 1 && styles.pillTextActive]}>
-                    {n}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            {isTournamentRound ? (
+              <>
+                <Text style={styles.label}>Max participants</Text>
+                <TextInput
+                  value={tournamentMaxParticipants}
+                  onChangeText={setTournamentMaxParticipants}
+                  keyboardType="number-pad"
+                  placeholder="e.g. 48"
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                />
+                <Text style={styles.fieldHint}>Total field including you (2–200).</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.label}>Looking for</Text>
+                <View style={styles.row}>
+                  {([1, 2, 3] as const).map((n) => (
+                    <Pressable
+                      key={n}
+                      style={[styles.pill, totalSpots === n + 1 && styles.pillActive]}
+                      onPress={() => setTotalSpots(n + 1)}
+                    >
+                      <Text style={[styles.pillText, totalSpots === n + 1 && styles.pillTextActive]}>
+                        {n}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            )}
 
             <Text style={styles.label}>Join policy</Text>
             <View style={styles.row}>
@@ -692,6 +767,34 @@ export default function CreateScreen() {
                 </Text>
               </Pressable>
             </View>
+
+            {isTournamentRound ? (
+              <>
+                <Text style={styles.label}>Tournament details</Text>
+                <Pressable
+                  style={styles.secondaryButton}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setTournamentDetailsSheetOpen(true);
+                  }}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {tournamentDetails.trim()
+                      ? "Edit details & formatting"
+                      : "Add details (formatting, links…)"}
+                  </Text>
+                </Pressable>
+                {tournamentDetails.trim() ? (
+                  <Text style={styles.fieldHint} numberOfLines={4}>
+                    {tournamentDetails.trim()}
+                  </Text>
+                ) : (
+                  <Text style={styles.fieldHint}>
+                    Optional — prizes, format, dress code, registration links.
+                  </Text>
+                )}
+              </>
+            ) : null}
 
             {!selectedGroupId && (
               <>
@@ -874,6 +977,13 @@ export default function CreateScreen() {
           setGroupSheetOpen(false);
         }}
       />
+
+      <TournamentDetailsEditorSheet
+        visible={tournamentDetailsSheetOpen}
+        onClose={() => setTournamentDetailsSheetOpen(false)}
+        value={tournamentDetails}
+        onChange={setTournamentDetails}
+      />
     </ScrollView>
   );
 }
@@ -949,6 +1059,12 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     marginTop: 6,
+  },
+  fieldHint: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: -4,
   },
   listRow: {
     backgroundColor: "#f9f7f3",

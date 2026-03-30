@@ -753,7 +753,7 @@ export default function MyRoundsScreen() {
                   })
                 }
                 primaryMeta={
-                  round.mode === "scheduled"
+                  round.mode === "scheduled" || round.mode === "tournament"
                     ? formatScheduledCardMeta(effectiveIso, round.teeTime)
                     : formatPlanningWindow(getTimeWindows(round))
                 }

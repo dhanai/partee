@@ -64,10 +64,15 @@ export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
     setSheetVisible(false);
   }, []);
 
+  const statsHint = isSelf
+    ? "Your games, rounds, and badges"
+    : "Their games, rounds, and badges";
+
   if (loading || !grouped) {
     return (
       <View style={styles.wrap}>
         <Text style={styles.sectionTitle}>Stats and achievements</Text>
+        <Text style={styles.sectionHint}>{statsHint}</Text>
         <View style={styles.loadingRow}>
           <ActivityIndicator color={colors.fairway} />
         </View>
@@ -128,6 +133,7 @@ export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.sectionTitle}>Stats and achievements</Text>
+      <Text style={styles.sectionHint}>{statsHint}</Text>
       <View style={styles.stack}>
         {CATEGORY_IDS.map((id, index) => (
           <Pressable
@@ -247,11 +253,12 @@ export function ProfileStatCategoryCards({ userId, grouped, loading }: Props) {
 }
 
 const styles = StyleSheet.create({
+  /** Matches `ProfileOpenRoundsSection`: full width of scroll content (no horizontal bleed). */
   wrap: {
+    alignSelf: "stretch",
     width: "100%",
-    marginTop: 22,
-    marginHorizontal: -16,
-    paddingTop: 18,
+    marginTop: 12,
+    paddingTop: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
@@ -259,11 +266,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     color: colors.text,
-    letterSpacing: -0.2,
-    marginBottom: 14,
-    paddingHorizontal: 16,
-    textAlign: "center",
-    width: "100%",
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  sectionHint: {
+    fontSize: 13,
+    color: colors.muted,
+    marginBottom: 12,
+    lineHeight: 18,
   },
   loadingRow: {
     paddingVertical: 28,

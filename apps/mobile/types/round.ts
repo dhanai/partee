@@ -1,7 +1,7 @@
 export type DiscoverRound = {
   id: string;
   inviteToken: string;
-  mode: "scheduled" | "planning";
+  mode: "scheduled" | "planning" | "tournament";
   preferredTimeWindow: string | null;
   preferredTimeWindows?: string[] | null;
   planningLocation: string | null;
@@ -27,7 +27,7 @@ export type DiscoverRound = {
 export type RoundDetails = {
   id: string;
   inviteToken: string;
-  mode: "scheduled" | "planning";
+  mode: "scheduled" | "planning" | "tournament";
   preferredTimeWindow: string | null;
   preferredTimeWindows?: string[] | null;
   planningLocation: string | null;
@@ -43,6 +43,10 @@ export type RoundDetails = {
   totalSpots: number;
   status: "forming" | "confirmed" | "completed";
   joinPolicy: "instant" | "approval";
+  /** Tournament-only display name; falls back to course name when null. */
+  tournamentTitle?: string | null;
+  /** Tournament-only markdown-like body (see `TournamentMarkdownBody`). */
+  tournamentDetails?: string | null;
   hostId: string;
   hostName: string;
   hostAvatar: string | null;
@@ -77,7 +81,7 @@ export type MineRound = {
   courseName: string | null;
   teeTime: string | null;
   targetDate: string;
-  mode: "scheduled" | "planning";
+  mode: "scheduled" | "planning" | "tournament";
   preferredTimeWindow: string | null;
   preferredTimeWindows?: string[] | null;
   planningLocation: string | null;

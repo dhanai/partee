@@ -26,7 +26,10 @@ const updateRoundSchema = z
     courseId: z.string().uuid().optional().nullable(),
     teeTime: z.string().datetime().optional().nullable(),
     targetDate: z.string().datetime().optional().nullable(),
-    totalSpots: z.preprocess((v) => (typeof v === "string" ? Number(v) : v), z.number().int().min(1).max(4)),
+    totalSpots: z.preprocess(
+      (v) => (typeof v === "string" ? Number(v) : v),
+      z.number().int().min(2).max(200),
+    ),
     visibility: z.enum(["private", "public"]),
     joinPolicy: z.enum(["instant", "approval"]).default("instant"),
     customImageUrl: z
@@ -44,6 +47,8 @@ const updateRoundSchema = z
       )
       .optional()
       .nullable(),
+    tournamentTitle: z.string().trim().max(120).optional().nullable(),
+    tournamentDetails: z.string().max(8000).optional().nullable(),
   })
   .superRefine((payload, ctx) => {
     if (payload.planningMode) {
@@ -108,6 +113,8 @@ export async function GET(req: Request, { params }: RouteContext) {
       status: rounds.status,
       joinPolicy: rounds.joinPolicy,
       customImageUrl: rounds.customImageUrl,
+      tournamentTitle: rounds.tournamentTitle,
+      tournamentDetails: rounds.tournamentDetails,
       courseMetadata: courses.metadata,
       courseDbAddress: courses.address,
       courseDbLat: courses.lat,
@@ -243,6 +250,8 @@ export async function GET(req: Request, { params }: RouteContext) {
       status: round.status,
       joinPolicy: round.joinPolicy,
       customImageUrl: round.customImageUrl,
+      tournamentTitle: round.tournamentTitle,
+      tournamentDetails: round.tournamentDetails,
       hostId: round.hostId,
       hostName: round.hostName,
       hostAvatar: round.hostAvatar,
@@ -274,6 +283,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       .select({
         id: rounds.id,
         hostId: rounds.hostId,
+        mode: rounds.mode,
       })
       .from(rounds)
       .where(eq(rounds.inviteToken, token));
@@ -285,6 +295,41 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       return NextResponse.json(
         { error: "Only the host can edit this round." },
         { status: 403 },
+      );
+    }
+
+    if (
+      parsed.tournamentTitle !== undefined ||
+      parsed.tournamentDetails !== undefined
+    ) {
+      if (existingRound.mode !== "tournament") {
+        return NextResponse.json(
+          {
+            error:
+              "Tournament title and details can only be set on tournament rounds.",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    const isTournament = existingRound.mode === "tournament";
+    if (isTournament && (parsed.totalSpots < 2 || parsed.totalSpots > 200)) {
+      return NextResponse.json(
+        { error: "Tournament max participants must be between 2 and 200." },
+        { status: 400 },
+      );
+    }
+    if (!isTournament && !parsed.planningMode && parsed.totalSpots > 4) {
+      return NextResponse.json(
+        { error: "Scheduled rounds support at most 4 total spots." },
+        { status: 400 },
+      );
+    }
+    if (parsed.planningMode && parsed.totalSpots > 4) {
+      return NextResponse.json(
+        { error: "Planning rounds support at most 4 total spots." },
+        { status: 400 },
       );
     }
 
@@ -333,10 +378,37 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       targetDate = teeTime;
     }
 
+    const nextMode: "planning" | "scheduled" | "tournament" = parsed.planningMode
+      ? "planning"
+      : isTournament
+        ? "tournament"
+        : "scheduled";
+
+    const tournamentPatch =
+      isTournament &&
+      (parsed.tournamentTitle !== undefined || parsed.tournamentDetails !== undefined)
+        ? {
+            ...(parsed.tournamentTitle !== undefined
+              ? {
+                  tournamentTitle: parsed.tournamentTitle?.trim()
+                    ? parsed.tournamentTitle.trim()
+                    : null,
+                }
+              : {}),
+            ...(parsed.tournamentDetails !== undefined
+              ? {
+                  tournamentDetails: parsed.tournamentDetails?.trim()
+                    ? parsed.tournamentDetails.trim()
+                    : null,
+                }
+              : {}),
+          }
+        : {};
+
     await db
       .update(rounds)
       .set({
-        mode: parsed.planningMode ? "planning" : "scheduled",
+        mode: nextMode,
         preferredTimeWindow: parsed.planningMode
           ? textArraySql(parsed.preferredTimeWindow?.length ? parsed.preferredTimeWindow : null)
           : null,
@@ -354,6 +426,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
           parsed.customImageUrl && parsed.customImageUrl.trim().length > 0
             ? parsed.customImageUrl.trim()
             : null,
+        ...tournamentPatch,
       })
       .where(eq(rounds.id, existingRound.id));
 

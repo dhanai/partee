@@ -21,7 +21,7 @@ export async function recordHostRoundRsvpAndMaybePush(input: {
   inviteToken: string;
   courseName: string | null;
   planningLocation: string | null;
-  mode: "planning" | "scheduled";
+  mode: "planning" | "scheduled" | "tournament";
   teeTime: Date | null;
   targetDate: Date;
   spotStatus: "confirmed" | "requested" | "declined";

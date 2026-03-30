@@ -77,13 +77,20 @@ export function simplifyVenueNameForPush(name: string): string {
   return s.length > 0 ? s : original;
 }
 
+/** Modes that use a concrete tee time (not planning-only). */
+export type RoundModePush = "planning" | "scheduled" | "tournament";
+
+function isScheduledLikeMode(mode: RoundModePush): boolean {
+  return mode === "scheduled" || mode === "tournament";
+}
+
 /** e.g. "Mar 22"; adds year when not the current calendar year. */
 export function formatChatPushDateShort(
   teeTime: Date | null,
   targetDate: Date,
-  mode: "planning" | "scheduled",
+  mode: RoundModePush,
 ): string {
-  const d = mode === "scheduled" && teeTime != null ? teeTime : targetDate;
+  const d = isScheduledLikeMode(mode) && teeTime != null ? teeTime : targetDate;
   const date = d instanceof Date ? d : new Date(d);
   const now = new Date();
   const sameYear = date.getFullYear() === now.getFullYear();
@@ -96,7 +103,7 @@ export function formatChatPushDateShort(
 export function formatChatPushTitleLine(input: {
   courseName: string | null;
   planningLocation: string | null;
-  mode: "planning" | "scheduled";
+  mode: RoundModePush;
   teeTime: Date | null;
   targetDate: Date;
 }): string {
@@ -119,9 +126,9 @@ export function formatChatPushTitleLine(input: {
 export function formatRoundInviteDateForPush(
   teeTime: Date | null,
   targetDate: Date,
-  mode: "planning" | "scheduled",
+  mode: RoundModePush,
 ): string {
-  const d = mode === "scheduled" && teeTime != null ? teeTime : targetDate;
+  const d = isScheduledLikeMode(mode) && teeTime != null ? teeTime : targetDate;
   const date = d instanceof Date ? d : new Date(d);
   const now = new Date();
   const sameYear = date.getFullYear() === now.getFullYear();
@@ -134,7 +141,7 @@ export function formatRoundInviteDateForPush(
 }
 
 function formatWhenClauseForPush(input: {
-  mode: "planning" | "scheduled";
+  mode: RoundModePush;
   teeTime: Date | null;
   targetDate: Date;
 }): string {
@@ -146,7 +153,7 @@ export function buildRoundInvitePushBody(input: {
   inviterDisplayName: string;
   teeTime: Date | null;
   targetDate: Date;
-  mode: "planning" | "scheduled";
+  mode: RoundModePush;
   courseName: string | null;
   planningLocation: string | null;
 }): string {
@@ -168,7 +175,7 @@ export function buildHostRsvpNotificationCopy(input: {
   guestName: string;
   courseName: string | null;
   planningLocation: string | null;
-  mode: "planning" | "scheduled";
+  mode: RoundModePush;
   teeTime: Date | null;
   targetDate: Date;
   spotStatus: "confirmed" | "requested" | "declined";

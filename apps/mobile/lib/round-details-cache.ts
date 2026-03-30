@@ -8,7 +8,7 @@ type RoundResponse = { round: RoundDetails };
 export type RoundListHint = {
   id: string;
   inviteToken: string;
-  mode: "scheduled" | "planning";
+  mode: "scheduled" | "planning" | "tournament";
   courseName: string;
   imageUrl: string;
   teeTime: string | null;
@@ -125,6 +125,8 @@ function hintToRoundDetails(h: RoundListHint): RoundDetails {
     totalSpots,
     status: "forming",
     joinPolicy: h.joinPolicy,
+    tournamentTitle: null,
+    tournamentDetails: null,
     hostId: h.hostId ?? "",
     hostName: h.hostName ?? "",
     hostAvatar: h.hostAvatar ?? null,

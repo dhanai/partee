@@ -42,6 +42,7 @@ import {
 import { presentAddRoundToCalendar } from "../../lib/present-add-round-to-calendar";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-last-initial";
+import { TournamentMarkdownBody } from "../../lib/tournament-markdown";
 import { useSnackbar } from "../../lib/snackbar-context";
 import { colors } from "../../lib/theme";
 import { InitialAvatar } from "../../components/initial-avatar";
@@ -616,6 +617,8 @@ export default function RoundDetailsScreen() {
 
   /** Stack header + extra slack so KAV padding clears the keyboard under the composer. */
   const kavOffset = headerHeight + 32;
+  const isScheduledOrTournament =
+    round.mode === "scheduled" || round.mode === "tournament";
 
   return (
     <View style={styles.screenRoot}>
@@ -642,7 +645,7 @@ export default function RoundDetailsScreen() {
             />
           }
         >
-      {round.mode === "scheduled" ? (
+      {isScheduledOrTournament ? (
         <>
           <View style={styles.heroCard}>
             <View style={styles.heroImageWrap}>
@@ -665,6 +668,12 @@ export default function RoundDetailsScreen() {
               </Pressable>
             </View>
           </View>
+          {round.mode === "tournament" ? (
+            <View style={styles.modeBadgeRow}>
+              <Ionicons name="trophy-outline" size={16} color={colors.mustard} />
+              <Text style={styles.modeBadgeText}>Tournament</Text>
+            </View>
+          ) : null}
           <Text style={[styles.title, styles.titleBelowHero]} numberOfLines={3}>
             {round.courseName}
           </Text>
@@ -690,7 +699,7 @@ export default function RoundDetailsScreen() {
           </View>
         </>
       )}
-      {round.mode === "scheduled" ? (
+      {isScheduledOrTournament ? (
         <View style={styles.whenBlock}>
           <Text style={styles.whenDate}>
             {new Date(round.teeTime as string).toLocaleDateString("en-US", {
@@ -705,6 +714,15 @@ export default function RoundDetailsScreen() {
               minute: "2-digit",
             })}
           </Text>
+        </View>
+      ) : null}
+      {round.mode === "tournament" && round.tournamentDetails?.trim() ? (
+        <View style={styles.tournamentDetailsSection}>
+          <Text style={styles.tournamentDetailsHeading}>About this tournament</Text>
+          <TournamentMarkdownBody
+            source={round.tournamentDetails!.trim()}
+            baseStyle={styles.tournamentDetailsBody}
+          />
         </View>
       ) : null}
       <View style={styles.claimedRow}>
@@ -947,7 +965,7 @@ export default function RoundDetailsScreen() {
               .map((p) => p.avatar)
               .filter((a): a is string => Boolean(a));
             const headerAvatars =
-              round.mode === "scheduled" && round.imageUrl
+              (round.mode === "scheduled" || round.mode === "tournament") && round.imageUrl
                 ? [round.imageUrl, ...playerAvatars]
                 : playerAvatars;
             const datePart = (round.teeTime ?? round.targetDate)
@@ -957,7 +975,7 @@ export default function RoundDetailsScreen() {
                 )
               : "";
             const chatTitle =
-              round.mode === "scheduled" && round.courseName
+              (round.mode === "scheduled" || round.mode === "tournament") && round.courseName
                 ? `${round.courseName} · ${datePart}`
                 : datePart || "Group chat";
             router.push({
@@ -1284,6 +1302,46 @@ const styles = StyleSheet.create({
   },
   titleBelowHero: {
     marginTop: 8,
+  },
+  modeBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#f5f0d8",
+    borderWidth: 1,
+    borderColor: "rgba(201, 162, 39, 0.35)",
+  },
+  modeBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  tournamentCourseSubtitle: {
+    marginTop: 4,
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  tournamentDetailsSection: {
+    marginTop: 14,
+    gap: 8,
+  },
+  tournamentDetailsHeading: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.muted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  tournamentDetailsBody: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
   },
   whenBlock: { gap: 2, marginTop: 2 },
   whenDate: { color: colors.text, fontWeight: "700", fontSize: 18 },

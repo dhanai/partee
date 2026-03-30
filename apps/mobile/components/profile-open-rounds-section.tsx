@@ -19,7 +19,7 @@ type ProfileOpenRoundApi = {
   id: string;
   inviteToken: string;
   courseName: string | null;
-  mode: "scheduled" | "planning";
+  mode: "scheduled" | "planning" | "tournament";
   teeTime: string | null;
   targetDate: string;
   imageUrl: string;
@@ -90,7 +90,7 @@ export function ProfileOpenRoundsSection({ userId, viewerIsSelf = false }: Props
 
   if (loading && rounds === null) {
     return (
-      <View style={styles.loadingWrap}>
+      <View style={[styles.section, styles.loadingSection]}>
         <ActivityIndicator color={colors.fairway} />
       </View>
     );
@@ -132,7 +132,7 @@ export function ProfileOpenRoundsSection({ userId, viewerIsSelf = false }: Props
                 })
               }
               primaryMeta={
-                round.mode === "scheduled"
+                round.mode === "scheduled" || round.mode === "tournament"
                   ? formatScheduledCardMeta(effectiveIso, round.teeTime)
                   : formatPlanningWindow(getTimeWindows(round))
               }
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   section: {
     alignSelf: "stretch",
     width: "100%",
-    marginTop: 8,
+    marginTop: 28,
     marginBottom: 4,
   },
   sectionTitle: {
@@ -183,8 +183,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     lineHeight: 18,
   },
-  loadingWrap: {
-    width: "100%",
+  loadingSection: {
+    marginBottom: 0,
     paddingVertical: 20,
     alignItems: "center",
     justifyContent: "center",

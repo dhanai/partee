@@ -632,7 +632,7 @@ export default function DiscoverScreen() {
                 })
               }
               primaryMeta={
-                item.round.mode === "scheduled"
+                item.round.mode === "scheduled" || item.round.mode === "tournament"
                   ? formatScheduledCardMeta(item.round.effectiveDate, item.round.teeTime)
                   : formatPlanningWindow(getTimeWindows(item.round))
               }

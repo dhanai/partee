@@ -30,7 +30,7 @@ export const spotStatusEnum = pgEnum("spot_status", [
   "requested",
 ]);
 export const joinPolicyEnum = pgEnum("join_policy", ["instant", "approval"]);
-export const roundModeEnum = pgEnum("round_mode", ["scheduled", "planning"]);
+export const roundModeEnum = pgEnum("round_mode", ["scheduled", "planning", "tournament"]);
 export const planningTimeWindowEnum = pgEnum("planning_time_window", [
   "morning",
   "afternoon",
@@ -168,7 +168,7 @@ export const inAppNotifications = pgTable(
         postId?: string;
         actorUserId: string;
         /** For round RSVP: lets the client format date/time in the viewer's timezone */
-        mode?: "planning" | "scheduled";
+        mode?: "planning" | "scheduled" | "tournament";
         teeTimeIso?: string | null;
         targetDateIso?: string;
         venueLabel?: string;
@@ -230,6 +230,10 @@ export const rounds = pgTable(
     customImageUrl: text("custom_image_url"),
     groupId: uuid("group_id"),
     inviteToken: text("invite_token").notNull(),
+    /** Shown for `tournament` mode; optional display title separate from course name. */
+    tournamentTitle: text("tournament_title"),
+    /** Markdown-style text: **bold**, *italic*, ++underline++, [label](url) */
+    tournamentDetails: text("tournament_details"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -243,7 +247,10 @@ export const rounds = pgTable(
     groupIdx: index("rounds_group_id_idx").on(table.groupId),
     totalSpotsCheck: check(
       "rounds_total_spots_check",
-      sql`${table.totalSpots} >= 2 AND ${table.totalSpots} <= 4`,
+      sql`(
+        (${table.mode} = 'tournament'::round_mode AND ${table.totalSpots} >= 2 AND ${table.totalSpots} <= 200)
+        OR (${table.mode} IN ('scheduled'::round_mode, 'planning'::round_mode) AND ${table.totalSpots} >= 2 AND ${table.totalSpots} <= 4)
+      )`,
     ),
   }),
 );

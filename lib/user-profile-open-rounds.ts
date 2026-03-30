@@ -12,7 +12,7 @@ type RowWithCourse = {
   courseName: string | null;
   teeTime: Date | string | null;
   targetDate: Date | string;
-  mode: "scheduled" | "planning";
+  mode: "scheduled" | "planning" | "tournament";
   preferredTimeWindow: string[] | null;
   planningLocation: string | null;
   status: "forming" | "confirmed" | "completed";
@@ -55,7 +55,7 @@ export type ProfileOpenRoundJson = {
   id: string;
   inviteToken: string;
   courseName: string | null;
-  mode: "scheduled" | "planning";
+  mode: "scheduled" | "planning" | "tournament";
   teeTime: string | null;
   targetDate: string;
   imageUrl: string;

@@ -8,7 +8,7 @@ export type RoundListsRefreshPayload = {
 export type OptimisticRoundListPatch = {
   roundId: string;
   inviteToken: string;
-  mode: "planning" | "scheduled";
+  mode: "planning" | "scheduled" | "tournament";
   preferredTimeWindow: string | null;
   preferredTimeWindows?: string[] | null;
   planningLocation: string | null;
@@ -59,7 +59,10 @@ export function applyOptimisticToDiscoverRound(
     preferredTimeWindow: p.preferredTimeWindow,
     preferredTimeWindows: p.preferredTimeWindows,
     planningLocation: p.planningLocation,
-    courseName: p.mode === "scheduled" ? p.courseName || row.courseName : row.courseName,
+    courseName:
+      p.mode === "scheduled" || p.mode === "tournament"
+        ? p.courseName || row.courseName
+        : row.courseName,
     teeTime: p.teeTime,
     targetDate: p.targetDate,
     effectiveDate: p.effectiveDate,
@@ -78,7 +81,9 @@ export function applyOptimisticToMineRound(row: MineRound, p: OptimisticRoundLis
     preferredTimeWindows: p.preferredTimeWindows,
     planningLocation: p.planningLocation,
     courseName:
-      p.mode === "scheduled" ? (p.courseName || row.courseName) : (row.courseName ?? null),
+      p.mode === "scheduled" || p.mode === "tournament"
+        ? p.courseName || row.courseName
+        : (row.courseName ?? null),
     teeTime: p.teeTime,
     targetDate: p.targetDate,
     totalSpots: p.totalSpots,
@@ -97,7 +102,10 @@ export function applyOptimisticToRoundDetails(
     preferredTimeWindow: p.preferredTimeWindow,
     preferredTimeWindows: p.preferredTimeWindows,
     planningLocation: p.planningLocation,
-    courseName: p.mode === "scheduled" ? p.courseName || row.courseName : row.courseName,
+    courseName:
+      p.mode === "scheduled" || p.mode === "tournament"
+        ? p.courseName || row.courseName
+        : row.courseName,
     courseId: p.courseId ?? row.courseId,
     teeTime: p.teeTime,
     targetDate: p.targetDate,
