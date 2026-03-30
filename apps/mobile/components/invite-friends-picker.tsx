@@ -85,7 +85,7 @@ export function InviteFriendsPicker({
               <Image source={{ uri: toAbsoluteUrl(user.avatar) }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
-                <Text style={styles.avatarInitial}>{user.name.trim().charAt(0).toUpperCase() || "?"}</Text>
+                <Text style={styles.avatarInitial}>{(user.name ?? "?").trim().charAt(0).toUpperCase() || "?"}</Text>
               </View>
             )}
             <Text style={styles.listTitle}>{user.name}</Text>
@@ -109,7 +109,7 @@ export function InviteFriendsPicker({
                   ) : (
                     <View style={[styles.selectedAvatar, styles.avatarFallback]}>
                       <Text style={styles.avatarInitial}>
-                        {resolved.name.trim().charAt(0).toUpperCase() || "?"}
+                        {(resolved.name ?? "?").trim().charAt(0).toUpperCase() || "?"}
                       </Text>
                     </View>
                   )}

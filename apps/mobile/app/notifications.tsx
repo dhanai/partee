@@ -83,7 +83,7 @@ export default function NotificationsScreen() {
     if (mineRes.status === "fulfilled") {
       const roundData = mineRes.value;
       setInviteNotifications(
-        roundData.rounds.filter(
+        (roundData.rounds ?? []).filter(
           (round) => round.spotStatus === "invited" || round.spotStatus === "requested",
         ),
       );
@@ -293,7 +293,7 @@ export default function NotificationsScreen() {
               ) : (
                 <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
                   <Text style={styles.notificationAvatarInitial}>
-                    {item.actorName.trim().charAt(0).toUpperCase() || "?"}
+                    {(item.actorName ?? "?").trim().charAt(0).toUpperCase() || "?"}
                   </Text>
                 </View>
               )}
@@ -439,7 +439,7 @@ export default function NotificationsScreen() {
               ) : (
                 <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
                   <Text style={styles.notificationAvatarInitial}>
-                    {request.name.trim().charAt(0).toUpperCase() || "?"}
+                    {(request.name ?? "?").trim().charAt(0).toUpperCase() || "?"}
                   </Text>
                 </View>
               )}

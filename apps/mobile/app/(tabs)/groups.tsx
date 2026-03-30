@@ -108,8 +108,8 @@ export default function GroupsScreen() {
     try {
       const token = await getTokenRef.current();
       const data = await apiGet<GroupsResponse>("/api/groups", token);
-      setMyGroups(data.myGroups);
-      setDiscoverGroups(data.discoverGroups);
+      setMyGroups(data.myGroups ?? []);
+      setDiscoverGroups(data.discoverGroups ?? []);
     } catch {
       if (myGroups.length === 0 && discoverGroups.length === 0) {
         setError("Unable to load groups. Pull to retry.");

@@ -259,7 +259,7 @@ export default function InviteFriendsScreen() {
               <Image source={{ uri: toAbsoluteUrl(user.avatar) }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
-                <Text style={styles.avatarInitial}>{user.name.trim().charAt(0).toUpperCase() || "?"}</Text>
+                <Text style={styles.avatarInitial}>{(user.name ?? "?").trim().charAt(0).toUpperCase() || "?"}</Text>
               </View>
             )}
             <Text style={styles.listTitle}>{user.name}</Text>

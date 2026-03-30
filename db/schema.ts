@@ -167,6 +167,12 @@ export const inAppNotifications = pgTable(
         groupId?: string;
         postId?: string;
         actorUserId: string;
+        /** For round RSVP: lets the client format date/time in the viewer's timezone */
+        mode?: "planning" | "scheduled";
+        teeTimeIso?: string | null;
+        targetDateIso?: string;
+        venueLabel?: string;
+        spotStatus?: "confirmed" | "requested" | "declined";
       }>()
       .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

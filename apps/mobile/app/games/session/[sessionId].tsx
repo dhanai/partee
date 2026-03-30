@@ -168,9 +168,9 @@ export default function GameSessionScreen() {
     try {
       const token = await getToken();
       const data = await getGameSession(token, sessionId);
-      setSession(data.session);
-      setPlayers(data.players);
-      setHoles(data.holes);
+      setSession(data.session ?? null);
+      setPlayers(data.players ?? []);
+      setHoles(data.holes ?? []);
       setError(null);
     } catch (e) {
       if (!suppressLoadErrorsRef.current) {

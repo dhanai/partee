@@ -1,6 +1,7 @@
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useAuth } from "@clerk/clerk-expo";
+import { useEffect, useRef } from "react";
 
 function openNotificationData(
   router: ReturnType<typeof useRouter>,
@@ -60,13 +61,21 @@ function openNotificationData(
   }
 }
 
+const COLD_START_DELAY_MS = 600;
+
 /**
  * Handles notification taps: chat pushes open fullscreen group chat; invite/RSVP open round detail;
  * follow requests open Notifications.
- * Renders nothing; mount once inside the root layout (inside Expo Router).
+ *
+ * Cold-start taps (getLastNotificationResponseAsync) are delayed until Clerk has
+ * loaded and the initial route redirect (IndexGate) has settled, preventing
+ * navigation into an unresolved Stack.
  */
 export function NotificationDeepLinkEffects() {
   const router = useRouter();
+  const { isLoaded, isSignedIn } = useAuth();
+  const pendingColdStart = useRef<Record<string, unknown> | null>(null);
+  const coldStartHandled = useRef(false);
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -77,15 +86,22 @@ export function NotificationDeepLinkEffects() {
     });
 
     void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (!response) return;
-      openNotificationData(
-        router,
-        (response.notification.request.content.data as Record<string, unknown>) ?? {},
-      );
+      if (!response || coldStartHandled.current) return;
+      pendingColdStart.current =
+        (response.notification.request.content.data as Record<string, unknown>) ?? {};
     });
 
     return () => sub.remove();
   }, [router]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !pendingColdStart.current || coldStartHandled.current) return;
+    coldStartHandled.current = true;
+    const data = pendingColdStart.current;
+    pendingColdStart.current = null;
+    const timer = setTimeout(() => openNotificationData(router, data), COLD_START_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [isLoaded, isSignedIn, router]);
 
   return null;
 }

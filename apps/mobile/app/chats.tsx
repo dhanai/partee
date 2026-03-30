@@ -268,7 +268,7 @@ export default function ChatsScreen() {
       setError(null);
       const authToken = await getTokenRef.current();
       const result = await apiGet<ConversationsResponse>("/api/conversations", authToken);
-      const convos = result.conversations;
+      const convos = result.conversations ?? [];
       reportConversations(convos.map((c) => ({ id: c.id, isUnread: c.isUnread, muted: c.muted })));
       setRows(convos);
     } catch (e) {
@@ -320,9 +320,9 @@ export default function ChatsScreen() {
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => {
-            let headerAvatars = item.participantAvatars;
+            let headerAvatars = item.participantAvatars ?? [];
             if (item.roundMode === "scheduled" && item.imageUrl) {
-              headerAvatars = [item.imageUrl, ...item.participantAvatars];
+              headerAvatars = [item.imageUrl, ...(item.participantAvatars ?? [])];
             } else if (item.type === "group" && item.imageUrl) {
               headerAvatars = [item.imageUrl];
             }

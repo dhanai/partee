@@ -4,6 +4,7 @@ import { conversationParticipants, groupMembers, inAppNotifications, users } fro
 import {
   buildHostRsvpNotificationCopy,
   formatInviterFirstLastInitial,
+  formatVenueLabel,
 } from "@/lib/round-invite-push-message";
 import { publishNotificationBadgeNudge } from "@/lib/parfade-ably-publish";
 import { sendExpoPushMessages } from "@/lib/push-expo";
@@ -39,6 +40,11 @@ export async function recordHostRoundRsvpAndMaybePush(input: {
     spotStatus: input.spotStatus,
   });
 
+  const venueLabel = formatVenueLabel({
+    courseName: input.courseName,
+    planningLocation: input.planningLocation,
+  });
+
   await db.insert(inAppNotifications).values({
     recipientUserId: input.hostId,
     type,
@@ -48,6 +54,11 @@ export async function recordHostRoundRsvpAndMaybePush(input: {
       roundId: input.roundId,
       inviteToken: input.inviteToken,
       actorUserId: input.guestId,
+      mode: input.mode,
+      teeTimeIso: input.teeTime?.toISOString() ?? null,
+      targetDateIso: input.targetDate.toISOString(),
+      venueLabel,
+      spotStatus: input.spotStatus,
     },
   });
 

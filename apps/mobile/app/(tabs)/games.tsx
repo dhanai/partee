@@ -16,7 +16,8 @@ import { useAbly } from "ably/react";
 import { Ionicons } from "@expo/vector-icons";
 import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
 import { deleteGameSession, listMyGameSessions, type GameSessionSummary } from "../../lib/games-api";
-import { getGameDefinitions, getGameDefinition } from "../../lib/games-registry";
+import { getGameDefinitions, getGameDefinition, type GameDefinition } from "../../lib/games-registry";
+import { refreshGameTypes } from "../../lib/game-types-cache";
 import { subscribeGamesListRefresh } from "../../lib/games-list-refresh";
 import { parfadeGameSessionChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
@@ -50,6 +51,7 @@ export default function GamesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listScrollLockedForRowSwipe, setListScrollLockedForRowSwipe] = useState(false);
+  const [gameDefs, setGameDefs] = useState<GameDefinition[]>(() => getGameDefinitions());
 
   const onGameRowSwipeActiveChange = useCallback((active: boolean) => {
     setListScrollLockedForRowSwipe(active);
@@ -93,7 +95,7 @@ export default function GamesScreen() {
     try {
       const token = await getToken();
       const data = await listMyGameSessions(token);
-      setSessions(data.sessions);
+      setSessions(data.sessions ?? []);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load games");
@@ -106,6 +108,7 @@ export default function GamesScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      void refreshGameTypes().then(() => setGameDefs(getGameDefinitions()));
     }, [load]),
   );
 
@@ -171,7 +174,7 @@ export default function GamesScreen() {
 
       <Text style={styles.sectionLabel}>Start a game</Text>
       <View style={styles.gameGrid}>
-        {getGameDefinitions().filter((g) => g.implemented).map((g) => (
+        {gameDefs.filter((g) => g.implemented).map((g) => (
           <Pressable
             key={g.id}
             style={({ pressed }) => [styles.gameCard, pressed && styles.gameCardPressed]}

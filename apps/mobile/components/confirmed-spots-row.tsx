@@ -63,7 +63,7 @@ export function ConfirmedSpotsRow({
                   initialTone === "fairway" ? styles.initialFairway : styles.initialMuted,
                 ]}
               >
-                {player.name.trim().charAt(0).toUpperCase() || "?"}
+                {(player.name ?? "?").trim().charAt(0).toUpperCase() || "?"}
               </Text>
             </View>
           );

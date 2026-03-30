@@ -3,12 +3,17 @@ import { z } from "zod";
 import { searchGolfCourses } from "@/lib/places";
 import { db } from "@/db";
 import { courses } from "@/db/schema";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   query: z.string().min(2).max(120),
 });
 
 export async function POST(req: Request) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const { success } = rateLimit(ip, "course-search", 30, 60_000);
+  if (!success) return rateLimitResponse();
+
   try {
     const body = bodySchema.parse(await req.json());
     const places = await searchGolfCourses(body.query);

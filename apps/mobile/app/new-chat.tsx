@@ -50,7 +50,7 @@ export default function NewChatScreen() {
       try {
         const authToken = await getTokenRef.current();
         const data = await apiGet<FriendsResponse>("/api/users/me/friends", authToken);
-        setFriends(data.friends);
+        setFriends(data.friends ?? []);
       } catch {
         /* ignore */
       } finally {
@@ -108,7 +108,7 @@ export default function NewChatScreen() {
         ) : (
           <View style={[styles.avatar, styles.avatarPlaceholder]}>
             <Text style={styles.avatarInitial}>
-              {item.name.charAt(0).toUpperCase()}
+              {(item.name ?? "?").charAt(0).toUpperCase()}
             </Text>
           </View>
         )}

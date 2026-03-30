@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,8 +42,6 @@ export default function CreateGameScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
-  const hasSettings = (def?.settingsSchema ?? []).length > 0;
-
   useLayoutEffect(() => {
     navigation.setOptions({
       title: def?.title ?? "New Game",
@@ -73,6 +72,9 @@ export default function CreateGameScreen() {
   );
 
   const rosterCap = def?.maxPlayers ?? 8;
+  const [playerSearch, setPlayerSearch] = useState("");
+  const [showAllPlayers, setShowAllPlayers] = useState(false);
+  const INITIAL_VISIBLE = 4;
 
   const toggle = useCallback(
     (id: string) => {
@@ -205,6 +207,23 @@ export default function CreateGameScreen() {
     return [...roundOnly, ...friends];
   }, [friends, roundLockedIds, roundDetails]);
 
+  const isSearching = playerSearch.trim().length > 0;
+  const visiblePlayers = useMemo(() => {
+    let list = allPlayers;
+    if (isSearching) {
+      const q = playerSearch.trim().toLowerCase();
+      list = allPlayers.filter((f) => (f.name ?? "").toLowerCase().includes(q));
+    }
+    if (!isSearching && !showAllPlayers && list.length > INITIAL_VISIBLE) {
+      const selectedVisible = list.filter((f) => selected.has(f.id));
+      const unselected = list.filter((f) => !selected.has(f.id));
+      const slots = Math.max(0, INITIAL_VISIBLE - selectedVisible.length);
+      return [...selectedVisible, ...unselected.slice(0, slots)];
+    }
+    return list;
+  }, [allPlayers, playerSearch, isSearching, showAllPlayers, selected]);
+  const hiddenCount = isSearching ? 0 : Math.max(0, allPlayers.length - INITIAL_VISIBLE);
+
   async function submit() {
     if (!def?.implemented || !gameType) return;
     setError(null);
@@ -266,7 +285,13 @@ export default function CreateGameScreen() {
 
   return (
     <>
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+    >
       <Text style={styles.head}>{def.title}</Text>
       <Text style={styles.sub}>{def.subtitle}</Text>
 
@@ -292,38 +317,68 @@ export default function CreateGameScreen() {
               Follow golfers in Parfade to invite them to side games here.
             </Text>
           ) : (
-            allPlayers.map((f) => {
-              const on = selected.has(f.id);
-              const parfadeFull = !on && selected.size >= rosterCap;
-              return (
-                <Pressable
-                  key={f.id}
-                  style={[
-                    styles.friendRow,
-                    on && styles.friendRowOn,
-                    parfadeFull && styles.friendRowDisabled,
-                  ]}
-                  onPress={() => toggle(f.id)}
-                  disabled={parfadeFull}
-                >
-                  {f.avatar ? (
-                    <Image source={{ uri: toAbsoluteUrl(f.avatar) }} style={styles.avatar} />
-                  ) : (
-                    <View style={[styles.avatar, styles.avatarFallback]}>
-                      <Text style={styles.avatarInitial}>
-                        {f.name.trim().charAt(0).toUpperCase() || "?"}
-                      </Text>
-                    </View>
-                  )}
-                  <Text style={styles.friendName}>{f.name}</Text>
-                  <Ionicons
-                    name={on ? "checkbox" : "square-outline"}
-                    size={22}
-                    color={on ? colors.fairway : colors.muted}
-                  />
+            <>
+              <View style={styles.searchRow}>
+                <TextInput
+                  style={[styles.searchInput, styles.searchInputWithAccessory]}
+                  placeholder="Search players..."
+                  placeholderTextColor={colors.muted}
+                  value={playerSearch}
+                  onChangeText={(t) => { setPlayerSearch(t); setShowAllPlayers(true); }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {playerSearch.length > 0 ? (
+                  <Pressable
+                    style={styles.searchAccessory}
+                    onPress={() => { setPlayerSearch(""); setShowAllPlayers(false); }}
+                    accessibilityLabel="Clear search"
+                  >
+                    <Ionicons name="close" size={15} color={colors.muted} />
+                  </Pressable>
+                ) : null}
+              </View>
+              {visiblePlayers.map((f) => {
+                const on = selected.has(f.id);
+                const parfadeFull = !on && selected.size >= rosterCap;
+                return (
+                  <Pressable
+                    key={f.id}
+                    style={[
+                      styles.friendRow,
+                      on && styles.friendRowOn,
+                      parfadeFull && styles.friendRowDisabled,
+                    ]}
+                    onPress={() => toggle(f.id)}
+                    disabled={parfadeFull}
+                  >
+                    {f.avatar ? (
+                      <Image source={{ uri: toAbsoluteUrl(f.avatar) }} style={styles.avatar} />
+                    ) : (
+                      <View style={[styles.avatar, styles.avatarFallback]}>
+                        <Text style={styles.avatarInitial}>
+                          {(f.name ?? "?").trim().charAt(0).toUpperCase() || "?"}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={styles.friendName}>{f.name}</Text>
+                    <Ionicons
+                      name={on ? "checkbox" : "square-outline"}
+                      size={22}
+                      color={on ? colors.fairway : colors.muted}
+                    />
+                  </Pressable>
+                );
+              })}
+              {!isSearching && !showAllPlayers && hiddenCount > 0 ? (
+                <Pressable style={styles.showAllBtn} onPress={() => setShowAllPlayers(true)}>
+                  <Text style={styles.showAllText}>Show all ({allPlayers.length})</Text>
                 </Pressable>
-              );
-            })
+              ) : null}
+              {isSearching && visiblePlayers.length === 0 ? (
+                <Text style={styles.muted}>No matches for "{playerSearch.trim()}"</Text>
+              ) : null}
+            </>
           )}
           {roundOverCap ? (
             <Text style={styles.error}>
@@ -393,16 +448,12 @@ export default function CreateGameScreen() {
       visible={menuOpen}
       onClose={() => setMenuOpen(false)}
       items={[
-        ...(hasSettings
-          ? [
-              {
-                key: "settings",
-                label: "Game settings",
-                icon: "settings-outline" as keyof typeof Ionicons.glyphMap,
-                onPress: () => setSettingsSheetOpen(true),
-              },
-            ]
-          : []),
+        {
+          key: "settings",
+          label: "Game settings",
+          icon: "settings-outline" as keyof typeof Ionicons.glyphMap,
+          onPress: () => setSettingsSheetOpen(true),
+        },
         {
           key: "how-to-play",
           label: "How to play",
@@ -478,6 +529,32 @@ const styles = StyleSheet.create({
   avatarInitial: { fontSize: 16, fontWeight: "700", color: colors.fairway },
   friendName: { flex: 1, fontSize: 16, fontWeight: "600", color: colors.text },
   mutedSmall: { fontSize: 12, color: colors.muted, lineHeight: 17, marginBottom: 10 },
+  searchRow: { position: "relative", marginBottom: 8 },
+  searchInput: {
+    backgroundColor: "#f1efea",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 15,
+    color: colors.text,
+  },
+  searchInputWithAccessory: { paddingRight: 38 },
+  searchAccessory: {
+    position: "absolute",
+    right: 10,
+    top: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ece8e1",
+  },
+  showAllBtn: {
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  showAllText: { color: colors.fairway, fontWeight: "600", fontSize: 14 },
   guestSection: { marginTop: 8, marginBottom: 4 },
   guestRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
   guestInput: {

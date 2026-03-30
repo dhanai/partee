@@ -237,7 +237,7 @@ export default function CreateScreen() {
       try {
         const token = await getTokenRef.current();
         const data = await apiGet<{ myGroups: MyGroupOption[] }>("/api/groups", token);
-        if (active) setMyGroups(data.myGroups);
+        if (active) setMyGroups(data.myGroups ?? []);
       } catch {
         // ignore
       }
@@ -714,7 +714,7 @@ export default function CreateScreen() {
                       ) : (
                         <View style={[styles.selectedAvatar, styles.selectedAvatarFallback]}>
                           <Text style={styles.selectedAvatarInitial}>
-                            {friend.name.trim().charAt(0).toUpperCase() || "?"}
+                            {(friend.name ?? "?").trim().charAt(0).toUpperCase() || "?"}
                           </Text>
                         </View>
                       )}

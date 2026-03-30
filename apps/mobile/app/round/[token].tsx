@@ -114,7 +114,7 @@ export default function RoundDetailsScreen() {
   const [busy, setBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  
   const [finalizeQuery, setFinalizeQuery] = useState("");
   const [finalizeResults, setFinalizeResults] = useState<CourseResult[]>([]);
   const [finalizeCourse, setFinalizeCourse] = useState<CourseResult | null>(null);
@@ -373,7 +373,7 @@ export default function RoundDetailsScreen() {
       );
       const refreshed = await fetchRoundDetailsAndCache(token, authToken);
       setRound(refreshed);
-      setMessage("Round finalized.");
+      showSnackbar("Round finalized");
     } catch (finalizeSubmitError) {
       setFinalizeError(
         finalizeSubmitError instanceof Error
@@ -391,7 +391,7 @@ export default function RoundDetailsScreen() {
     const wasConfirmed = round.currentUserSpotStatus === "confirmed";
     setBusy(true);
     setError(null);
-    setMessage(null);
+    
 
     const me = getCachedMeProfile();
     const mePlayer = me ? { id: me.id, name: me.name, avatar: me.avatar } : null;
@@ -431,11 +431,11 @@ export default function RoundDetailsScreen() {
       hapticSuccess();
       if (result.status === "requested") {
         setRound({ ...prevRound, currentUserSpotStatus: "requested" });
-        setMessage("Join request submitted.");
+        showSnackbar("Join request submitted");
       } else if (result.status === "declined" || action === "decline") {
-        setMessage(wasConfirmed ? "Spot released." : "Declined.");
+        showSnackbar(wasConfirmed ? "Spot released" : "Declined");
       } else {
-        setMessage("Spot claimed.");
+        showSnackbar("Spot claimed");
       }
 
       setRound((current) => {
@@ -472,7 +472,7 @@ export default function RoundDetailsScreen() {
     if (!token || !round?.isHost || deleteBusy) return;
     setDeleteBusy(true);
     setError(null);
-    setMessage(null);
+    
     try {
       const authToken = await getToken();
       await apiDelete<{ ok: boolean }>(`/api/rounds/${token}`, authToken);
@@ -515,7 +515,7 @@ export default function RoundDetailsScreen() {
     if (!token || users.length === 0) return;
     setInviteBusy(true);
     setError(null);
-    setMessage(null);
+    
     try {
       const authToken = await getTokenRef.current();
       const response = await apiPost<{ invitedCount: number; skippedCount: number }>(
@@ -523,10 +523,10 @@ export default function RoundDetailsScreen() {
         { inviteeUserIds: users.map((u) => u.id) },
         authToken,
       );
-      setMessage(
+      showSnackbar(
         response.invitedCount > 0
-          ? `Invite blast sent to ${response.invitedCount} golfer${response.invitedCount === 1 ? "" : "s"}.`
-          : "No new invites were sent.",
+          ? `Invite blast sent to ${response.invitedCount} golfer${response.invitedCount === 1 ? "" : "s"}`
+          : "No new invites sent",
       );
     } catch (inviteError) {
       setError(inviteError instanceof Error ? inviteError.message : "Unable to send invites.");
@@ -728,7 +728,7 @@ export default function RoundDetailsScreen() {
       ) : null}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      {message ? <Text style={styles.successText}>{message}</Text> : null}
+      
 
       {apiResolved && round.isHost && round.mode === "planning" ? (
         <RoundDetailSection
@@ -1171,13 +1171,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 8,
   },
-  successText: {
-    color: colors.fairway,
-    backgroundColor: colors.fairwaySoft,
-    padding: 10,
-    borderRadius: 12,
-    marginTop: 8,
-  },
+  
   sectionLabel: {
     color: colors.muted,
     fontSize: 12,

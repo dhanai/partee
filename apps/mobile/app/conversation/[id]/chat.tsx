@@ -136,14 +136,15 @@ function ConversationChatContent() {
           `/api/conversations/${conversationId}`,
           authToken,
         );
-        let avatars = data.participantAvatars.filter((a): a is string => Boolean(a));
+        const rawAvatars = data.participantAvatars ?? [];
+        let avatars = rawAvatars.filter((a): a is string => Boolean(a));
         const allParticipants = data.participants ?? [];
         const avatarToUserId = new Map(
           allParticipants
             .filter((p) => p.avatar)
             .map((p) => [p.avatar!, p.id]),
         );
-        let userIds: (string | null)[] = data.participantAvatars.map((a, i) => {
+        let userIds: (string | null)[] = rawAvatars.map((a, i) => {
           if (!a) return null;
           return allParticipants[i]?.id ?? avatarToUserId.get(a) ?? null;
         });
@@ -152,7 +153,7 @@ function ConversationChatContent() {
           avatars = [data.imageUrl];
           userIds = [null];
         } else if (data.roundMode === "scheduled" && data.imageUrl) {
-          const userSlotIds = data.participantAvatars.flatMap((a, i) => {
+          const userSlotIds = rawAvatars.flatMap((a, i) => {
             if (!a) return [];
             return [allParticipants[i]?.id ?? null];
           });
@@ -225,7 +226,7 @@ function ConversationChatContent() {
       setViewerId(data.viewerId || getCachedMeProfile()?.id || null);
       setHasMore(data.hasMore);
       setMsgs((prev) => {
-        const merged = mergeMessages(prev, data.messages);
+        const merged = mergeMessages(prev, data.messages ?? []);
         void setCachedMessages(conversationId, merged);
         return merged;
       });
@@ -252,7 +253,7 @@ function ConversationChatContent() {
       );
       setHasMore(data.hasMore);
       setMsgs((prev) => {
-        const merged = mergeMessages(prev, data.messages);
+        const merged = mergeMessages(prev, data.messages ?? []);
         void setCachedMessages(conversationId, merged);
         return merged;
       });

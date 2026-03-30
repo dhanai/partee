@@ -7,12 +7,12 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import {
   AnimatedBottomSheetFrame,
   BottomSheetScrollView,
+  BottomSheetTextInput,
 } from "./animated-bottom-sheet-frame";
 import { apiGet, toAbsoluteUrl } from "../lib/api";
 import type { InviteSelectionUser } from "../lib/invite-selection-store";
@@ -34,7 +34,7 @@ function useDebounce(value: string, delayMs: number) {
   return debounced;
 }
 
-const SNAP_POINTS = ["75%"] as const;
+const SNAP_POINTS = ["55%"] as const;
 
 type InviteFriendsSheetProps = {
   visible: boolean;
@@ -184,19 +184,27 @@ export function InviteFriendsSheet({
     onConfirm(selected);
   }, [onConfirm, selected]);
 
+  const handleClose = useCallback(() => {
+    if (selected.length > 0) {
+      onConfirm(selected);
+    }
+    onClose();
+  }, [selected, onConfirm, onClose]);
+
   return (
     <AnimatedBottomSheetFrame
       visible={visible}
-      onClose={onClose}
+      onClose={handleClose}
       snapPoints={SNAP_POINTS}
       sheetStyle={styles.sheet}
       enableContentPanningGesture={false}
+      keyboardBlurBehavior="restore"
       dragHandle
     >
       <Text style={styles.title}>Invite Friends</Text>
 
       <View style={styles.inputRow}>
-        <TextInput
+        <BottomSheetTextInput
           value={query}
           onChangeText={setQuery}
           placeholder="Search by name..."
@@ -261,7 +269,7 @@ export function InviteFriendsSheet({
               ) : (
                 <View style={[styles.avatar, styles.avatarFallback]}>
                   <Text style={styles.avatarInitial}>
-                    {user.name.trim().charAt(0).toUpperCase() || "?"}
+                    {(user.name ?? "?").trim().charAt(0).toUpperCase() || "?"}
                   </Text>
                 </View>
               )}

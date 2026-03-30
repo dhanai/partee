@@ -491,7 +491,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   ) : (
     <View style={[legacyStyles.avatar, legacyStyles.avatarFallback]}>
       <Text style={legacyStyles.avatarInitial}>
-        {m.user.name.trim().charAt(0).toUpperCase() || "?"}
+        {(m.user.name ?? "?").trim().charAt(0).toUpperCase() || "?"}
       </Text>
     </View>
   );
