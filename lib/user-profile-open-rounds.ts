@@ -38,14 +38,14 @@ async function enrichWithImageUrl(rows: RowWithCourse[]) {
     }
   }
   return rows.map((r) => {
-    const { courseId, customImageUrl, preferredTimeWindow: _prefArr, ...rest } = r;
+    const { courseId, customImageUrl, preferredTimeWindow, ...rest } = r;
     const imageUrl = resolveRoundImageUrl({
       customImageUrl: customImageUrl ?? undefined,
       courseMetadata: courseId ? metaById.get(courseId) : null,
     });
     return {
       ...rest,
-      ...timeWindowResponseFields(r.preferredTimeWindow),
+      ...timeWindowResponseFields(preferredTimeWindow),
       imageUrl,
     };
   });
