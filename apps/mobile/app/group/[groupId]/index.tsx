@@ -31,12 +31,19 @@ import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput }
 import { InitialAvatar } from "../../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../../components/report-sheet";
+import { RoundListCard } from "../../../components/round-list-card";
 import { useAbly } from "ably/react";
 import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../../lib/api";
 import { hapticLight } from "../../../lib/haptics";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
 import { parfadeGroupChannel, parfadePostChannel } from "../../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../../lib/parfade-ably-messages";
+import {
+  formatPlanningHeaderDate,
+  formatPlanningWindow,
+  formatScheduledCardMeta,
+  getTimeWindows,
+} from "../../../lib/round-card-meta";
 import { uploadImage, AVATAR_MAX_BYTES, COVER_MAX_BYTES } from "../../../lib/upload-image";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { useSnackbar } from "../../../lib/snackbar-context";
@@ -68,8 +75,15 @@ type ActivityItem = {
   joinedAt?: string;
   roundId?: string;
   roundToken?: string;
+  mode?: "scheduled" | "planning" | "tournament";
   courseName?: string | null;
   targetDate?: string;
+  teeTime?: string | null;
+  planningLocation?: string | null;
+  preferredTimeWindows?: string[] | null;
+  joinPolicy?: "instant" | "approval";
+  totalSpots?: number;
+  confirmedPlayers?: Array<{ id: string; name: string; avatar: string | null }>;
   user: { id: string; name: string; avatar: string | null };
 };
 
@@ -905,39 +919,46 @@ export default function GroupLandingScreen() {
           }
 
           if (item.type === "round_created") {
-            const actAvatar = item.user.avatar;
+            const token = item.roundToken?.trim();
+            const mode =
+              item.mode === "planning"
+                ? "planning"
+                : item.mode === "tournament"
+                  ? "tournament"
+                  : "scheduled";
+            const effectiveIso = item.teeTime ?? item.targetDate ?? item.createdAt;
             return (
-              <Pressable
-                style={styles.activityRow}
-                onPress={() => {
-                  const token = item.roundToken?.trim();
-                  if (token) {
-                    router.push(`/round/${token}`);
+              <View style={styles.roundActivityCardWrap}>
+                <Text style={styles.roundActivityByline}>
+                  <Text style={styles.bold} onPress={() => goToProfile(item.user)}>
+                    {item.user.name}
+                  </Text>{" "}
+                  posted a round
+                </Text>
+                <Text style={styles.roundActivityTime}>{formatRelative(item.createdAt)}</Text>
+                <RoundListCard
+                  roundId={item.roundId ?? item.id}
+                  mode={mode}
+                  courseName={item.courseName ?? null}
+                  inviteToken={token}
+                  imageUrl={item.imageUrl ?? ""}
+                  joinPolicy={item.joinPolicy ?? "instant"}
+                  totalSpots={item.totalSpots ?? 4}
+                  confirmedPlayers={item.confirmedPlayers ?? []}
+                  primaryMeta={
+                    mode === "planning"
+                      ? formatPlanningWindow(getTimeWindows(item))
+                      : formatScheduledCardMeta(effectiveIso, item.teeTime ?? null)
                   }
-                }}
-              >
-                <Pressable onPress={() => goToProfile(item.user)}>
-                  {actAvatar ? (
-                    <Image
-                      source={toAbsoluteUrl(actAvatar)}
-                      style={styles.activityAvatar}
-                      transition={0}
-                    />
-                  ) : (
-                    <InitialAvatar name={item.user.name} size={36} maxInitials={2} />
-                  )}
-                </Pressable>
-                <View style={styles.activityInfo}>
-                  <Text style={styles.activityText}>
-                    <Text style={styles.bold} onPress={() => goToProfile(item.user)}>{item.user.name}</Text> created a round
-                    {item.courseName ? ` at ${item.courseName}` : ""}
-                  </Text>
-                  <Text style={styles.activityTime}>
-                    {formatRelative(item.createdAt)}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={14} color={colors.muted} />
-              </Pressable>
+                  planningLocation={item.planningLocation}
+                  planningHeaderDate={formatPlanningHeaderDate(effectiveIso)}
+                  preferredTimeWindow={getTimeWindows(item)}
+                  onPress={() => {
+                    if (token) router.push(`/round/${token}`);
+                  }}
+                  onPlayerPress={(player) => goToProfile(player)}
+                />
+              </View>
             );
           }
 
@@ -1701,6 +1722,19 @@ const styles = StyleSheet.create({
   activityInfo: { flex: 1, gap: 2 },
   activityText: { color: colors.text, fontSize: 14 },
   activityTime: { color: colors.muted, fontSize: 12 },
+  roundActivityCardWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  roundActivityByline: {
+    color: colors.text,
+    fontSize: 14,
+  },
+  roundActivityTime: {
+    color: colors.muted,
+    fontSize: 12,
+  },
   bold: { fontWeight: "600" },
   loadingMoreWrap: {
     paddingVertical: 20,

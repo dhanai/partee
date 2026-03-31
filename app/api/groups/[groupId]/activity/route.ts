@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
 import {
   postComments,
@@ -7,16 +7,36 @@ import {
   posts,
   groupMembers,
   rounds,
+  spots,
+  courses,
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { getViewerFollowedIds, scorePost } from "@/lib/feed-scoring";
+import { resolveRoundImageUrl } from "@/lib/round-images";
 
 type Ctx = { params: { groupId: string } };
 
 type ActivityItem =
   | { type: "post"; id: string; body: string; imageUrl: string | null; isPinned: boolean; createdAt: string; likeCount: number; commentCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
-  | { type: "round_created"; id: string; roundId: string; roundToken: string; courseName: string | null; targetDate: string; createdAt: string; user: { id: string; name: string; avatar: string | null } }
+  | {
+      type: "round_created";
+      id: string;
+      roundId: string;
+      roundToken: string;
+      mode: "scheduled" | "planning" | "tournament";
+      courseName: string | null;
+      targetDate: string;
+      teeTime: string | null;
+      planningLocation: string | null;
+      preferredTimeWindows: string[] | null;
+      joinPolicy: "instant" | "approval";
+      totalSpots: number;
+      confirmedPlayers: Array<{ id: string; name: string; avatar: string | null }>;
+      imageUrl: string;
+      createdAt: string;
+      user: { id: string; name: string; avatar: string | null };
+    }
   | { type: "member_joined"; id: string; joinedAt: string; user: { id: string; name: string; avatar: string | null } };
 
 export async function GET(req: Request, { params }: Ctx) {
@@ -125,8 +145,16 @@ export async function GET(req: Request, { params }: Ctx) {
     const roundRows = await db
       .select({
         id: rounds.id,
+        mode: rounds.mode,
         courseName: rounds.courseName,
+        teeTime: rounds.teeTime,
         targetDate: rounds.targetDate,
+        planningLocation: rounds.planningLocation,
+        preferredTimeWindow: rounds.preferredTimeWindow,
+        totalSpots: rounds.totalSpots,
+        joinPolicy: rounds.joinPolicy,
+        customImageUrl: rounds.customImageUrl,
+        courseMetadata: courses.metadata,
         createdAt: rounds.createdAt,
         hostId: rounds.hostId,
         inviteToken: rounds.inviteToken,
@@ -134,10 +162,32 @@ export async function GET(req: Request, { params }: Ctx) {
         hostAvatar: users.avatar,
       })
       .from(rounds)
+      .leftJoin(courses, eq(courses.id, rounds.courseId))
       .innerJoin(users, eq(users.id, rounds.hostId))
       .where(roundWhere)
       .orderBy(desc(rounds.createdAt))
       .limit(pageSize);
+
+    const roundIds = roundRows.map((r) => r.id);
+    const confirmedByRound = new Map<string, Array<{ id: string; name: string; avatar: string | null }>>();
+    if (roundIds.length > 0) {
+      const confirmedRows = await db
+        .select({
+          roundId: spots.roundId,
+          id: users.id,
+          name: users.name,
+          avatar: users.avatar,
+        })
+        .from(spots)
+        .innerJoin(users, eq(users.id, spots.userId))
+        .where(and(inArray(spots.roundId, roundIds), eq(spots.status, "confirmed")))
+        .orderBy(asc(spots.createdAt));
+      for (const row of confirmedRows) {
+        const list = confirmedByRound.get(row.roundId) ?? [];
+        list.push({ id: row.id, name: row.name, avatar: row.avatar });
+        confirmedByRound.set(row.roundId, list);
+      }
+    }
 
     for (const r of roundRows) {
       items.push({
@@ -145,8 +195,22 @@ export async function GET(req: Request, { params }: Ctx) {
         id: `round-${r.id}`,
         roundId: r.id,
         roundToken: r.inviteToken,
+        mode: r.mode,
         courseName: r.courseName,
+        teeTime: r.teeTime?.toISOString() ?? null,
         targetDate: r.targetDate.toISOString(),
+        planningLocation: r.planningLocation,
+        preferredTimeWindows:
+          Array.isArray(r.preferredTimeWindow) && r.preferredTimeWindow.length > 0
+            ? r.preferredTimeWindow
+            : null,
+        joinPolicy: r.joinPolicy,
+        totalSpots: r.totalSpots,
+        confirmedPlayers: confirmedByRound.get(r.id) ?? [],
+        imageUrl: resolveRoundImageUrl({
+          customImageUrl: r.customImageUrl,
+          courseMetadata: r.courseMetadata,
+        }),
         createdAt: r.createdAt.toISOString(),
         user: { id: r.hostId, name: r.hostName, avatar: r.hostAvatar },
       });
