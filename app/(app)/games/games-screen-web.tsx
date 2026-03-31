@@ -6,10 +6,10 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ParfadeSpinner } from "@/components/parfade-spinner";
 import {
-  GAME_DEFINITIONS,
-  type GameDefinition,
-  getGameDefinition,
-} from "@/lib/games-registry";
+  fetchGameTypesPublic,
+  findGameTypeBySlug,
+  type GameTypePublicRow,
+} from "@/lib/game-types-web-client";
 import { serializeGameSessionForApi } from "@/lib/games/serialize";
 
 function statusLabel(s: string) {
@@ -29,9 +29,16 @@ function formatSessionListDate(iso: string): string {
   return d.toLocaleDateString("en-US", opts);
 }
 
-function GameStartCard({ g, roundInviteToken }: { g: GameDefinition; roundInviteToken: string }) {
+function GameStartCard({
+  g,
+  roundInviteToken,
+}: {
+  g: GameTypePublicRow;
+  roundInviteToken: string;
+}) {
+  const implemented = g.enabled;
   const createHref =
-    `/games/create?gameType=${encodeURIComponent(g.id)}` +
+    `/games/create?gameType=${encodeURIComponent(g.slug)}` +
     (roundInviteToken
       ? `&roundInviteToken=${encodeURIComponent(roundInviteToken)}`
       : "");
@@ -42,7 +49,7 @@ function GameStartCard({ g, roundInviteToken }: { g: GameDefinition; roundInvite
         className="flex h-[22px] w-[22px] items-center justify-center text-[#1a3c2a]"
         aria-hidden
       >
-        {g.implemented ? (
+        {implemented ? (
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
             <circle cx="9" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.75" />
             <path
@@ -65,7 +72,7 @@ function GameStartCard({ g, roundInviteToken }: { g: GameDefinition; roundInvite
       </span>
       <span className="text-[17px] font-bold text-[#1c1c1e]">{g.title}</span>
       <span className="text-xs leading-4 text-[#6e6e6e]">{g.subtitle}</span>
-      {!g.implemented ? (
+      {!implemented ? (
         <span className="mt-1 text-[11px] font-semibold text-[#6e6e6e]">Coming soon</span>
       ) : null}
     </>
@@ -74,7 +81,7 @@ function GameStartCard({ g, roundInviteToken }: { g: GameDefinition; roundInvite
   const cardClass =
     "flex min-w-[150px] flex-1 basis-[calc(50%-5px)] flex-col gap-1.5 rounded-[14px] border border-[#ece8e1] bg-white p-3 text-left transition hover:opacity-95 active:scale-[0.99]";
 
-  if (!g.implemented) {
+  if (!implemented) {
     return <div className={`${cardClass} opacity-80`}>{body}</div>;
   }
 
@@ -91,6 +98,8 @@ export function GamesScreenWeb() {
   const searchParams = useSearchParams();
   const roundInviteToken = searchParams.get("roundInviteToken")?.trim() ?? "";
 
+  const [gameTypes, setGameTypes] = useState<GameTypePublicRow[] | null>(null);
+  const [gameTypesError, setGameTypesError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +126,23 @@ export function GamesScreenWeb() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await fetchGameTypesPublic();
+        if (!cancelled) setGameTypes(rows);
+      } catch (e) {
+        if (!cancelled) {
+          setGameTypesError(e instanceof Error ? e.message : "Could not load game types.");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <section className="space-y-6 pb-2">
       <div>
@@ -135,9 +161,19 @@ export function GamesScreenWeb() {
       <div>
         <p className="parfade-label">Start a game</p>
         <div className="flex flex-wrap gap-2.5">
-          {GAME_DEFINITIONS.map((g) => (
-            <GameStartCard key={g.id} g={g} roundInviteToken={roundInviteToken} />
-          ))}
+          {gameTypesError ? (
+            <p className="text-sm text-amber-900">{gameTypesError}</p>
+          ) : gameTypes == null ? (
+            <div className="flex justify-center py-4">
+              <ParfadeSpinner size="sm" />
+            </div>
+          ) : (
+            [...gameTypes]
+              .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title))
+              .map((g) => (
+                <GameStartCard key={g.slug} g={g} roundInviteToken={roundInviteToken} />
+              ))
+          )}
         </div>
         <p className="mt-3 text-xs leading-snug text-[#6e6e6e]">
           {roundInviteToken
@@ -163,7 +199,7 @@ export function GamesScreenWeb() {
         ) : (
           <ul className="space-y-2">
             {sessions.map((s) => {
-              const def = getGameDefinition(s.gameType);
+              const def = gameTypes ? findGameTypeBySlug(gameTypes, s.gameType) : undefined;
               const meta = `${formatSessionListDate(s.startedAt || s.createdAt)} · ${s.holesCount} holes · ${statusLabel(s.status)}`;
               return (
                 <li key={s.id}>

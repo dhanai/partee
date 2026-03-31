@@ -20,6 +20,7 @@ import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { createGameSession } from "../../lib/games-api";
 import { getGameDefinition, useGameTypesVersion } from "../../lib/games-registry";
+import { refreshGameTypes } from "../../lib/game-types-cache";
 
 import type { RoundDetails } from "../../types/round";
 import { colors } from "../../lib/theme";
@@ -43,6 +44,10 @@ export default function CreateGameScreen() {
     () => (gameType ? getGameDefinition(gameType) : undefined),
     [gameType, gameTypesVersion],
   );
+
+  useEffect(() => {
+    void refreshGameTypes();
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);

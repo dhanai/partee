@@ -8,7 +8,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useAppAlert } from "@/components/app-alert-dialog";
 import { OpenInParfadeGameSessionBar } from "@/components/open-in-parfade-game-session";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
-import { getGameDefinition } from "@/lib/games-registry";
+import {
+  fetchGameTypesPublic,
+  findGameTypeBySlug,
+  type GameTypePublicRow,
+} from "@/lib/game-types-web-client";
 
 type SessionRow = {
   id: string;
@@ -55,9 +59,25 @@ export function GameSessionScreenWeb() {
   const [holes, setHoles] = useState<GameHoleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [gameTypes, setGameTypes] = useState<GameTypePublicRow[] | null>(null);
 
   useEffect(() => {
     setBrowserUrl(typeof window !== "undefined" ? window.location.href : "");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await fetchGameTypesPublic();
+        if (!cancelled) setGameTypes(rows);
+      } catch {
+        if (!cancelled) setGameTypes([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const load = useCallback(async () => {
@@ -159,7 +179,8 @@ export function GameSessionScreenWeb() {
     );
   }
 
-  const def = getGameDefinition(session.gameType);
+  const def =
+    gameTypes && session ? findGameTypeBySlug(gameTypes, session.gameType) : undefined;
   const title = def?.title ?? session.gameType;
   const holesWithData = holes.length;
   const sortedPlayers = [...players].sort((a, b) => a.sortOrder - b.sortOrder);

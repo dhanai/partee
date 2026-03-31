@@ -20,7 +20,7 @@ import { setApiAuthGetToken } from "../lib/api-auth-token";
 import { setApiSessionInvalidHandler } from "../lib/api-session-invalid";
 import { clearAllCaches } from "../lib/clear-all-caches";
 import { initializeParfadeMobileAds } from "../lib/parfade-admob";
-import { loadGameTypesFromStorage, refreshGameTypes } from "../lib/game-types-cache";
+import { refreshGameTypes } from "../lib/game-types-cache";
 import { colors } from "../lib/theme";
 
 const CLERK_PUBLISHABLE_ENV = "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY";
@@ -54,7 +54,7 @@ function ParfadeMobileAdsBootstrap() {
 
 function GameTypesBootstrap() {
   useEffect(() => {
-    void loadGameTypesFromStorage().then(() => refreshGameTypes());
+    void refreshGameTypes();
   }, []);
   return null;
 }

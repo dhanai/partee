@@ -21,7 +21,7 @@ import {
   getGameDefinition,
   useGameTypesVersion,
 } from "../../lib/games-registry";
-import { loadGameTypesFromStorage, refreshGameTypes } from "../../lib/game-types-cache";
+import { refreshGameTypes } from "../../lib/game-types-cache";
 import { subscribeGamesListRefresh } from "../../lib/games-list-refresh";
 import { parfadeGameSessionChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
@@ -55,7 +55,6 @@ export default function GamesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listScrollLockedForRowSwipe, setListScrollLockedForRowSwipe] = useState(false);
-  const [gameGridReady, setGameGridReady] = useState(false);
   const gameTypesVersion = useGameTypesVersion();
   const gameDefs = useMemo(() => getGameDefinitions(), [gameTypesVersion]);
 
@@ -114,16 +113,8 @@ export default function GamesScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-      let cancelled = false;
-      void (async () => {
-        await loadGameTypesFromStorage();
-        if (cancelled) return;
-        setGameGridReady(true);
-        await refreshGameTypes();
-      })();
-      return () => {
-        cancelled = true;
-      };
+      void refreshGameTypes();
+      return undefined;
     }, [load]),
   );
 
@@ -171,7 +162,6 @@ export default function GamesScreen() {
             void (async () => {
               try {
                 await load();
-                await loadGameTypesFromStorage();
                 await refreshGameTypes();
               } finally {
                 setRefreshing(false);
@@ -196,35 +186,31 @@ export default function GamesScreen() {
       ) : null}
 
       <Text style={styles.sectionLabel}>Start a game</Text>
-      {!gameGridReady ? (
-        <ActivityIndicator color={colors.fairway} style={styles.gridLoader} />
-      ) : (
-        <View style={styles.gameGrid}>
-          {gameDefs.filter((g) => g.implemented).map((g) => (
-            <Pressable
-              key={g.id}
-              style={({ pressed }) => [styles.gameCard, pressed && styles.gameCardPressed]}
-              onPress={() => {
-                router.push({
-                  pathname: "/games/create",
-                  params: {
-                    gameType: g.id,
-                    ...(roundInviteToken
-                      ? { roundInviteToken: String(roundInviteToken) }
-                      : {}),
-                  },
-                });
-              }}
-            >
-              <Ionicons name="golf-outline" size={22} color={colors.fairway} />
-              <Text style={styles.gameTitle}>{g.title}</Text>
-              <Text style={styles.gameSub} numberOfLines={2}>
-                {g.subtitle}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
+      <View style={styles.gameGrid}>
+        {gameDefs.filter((g) => g.implemented).map((g) => (
+          <Pressable
+            key={g.id}
+            style={({ pressed }) => [styles.gameCard, pressed && styles.gameCardPressed]}
+            onPress={() => {
+              router.push({
+                pathname: "/games/create",
+                params: {
+                  gameType: g.id,
+                  ...(roundInviteToken
+                    ? { roundInviteToken: String(roundInviteToken) }
+                    : {}),
+                },
+              });
+            }}
+          >
+            <Ionicons name="golf-outline" size={22} color={colors.fairway} />
+            <Text style={styles.gameTitle}>{g.title}</Text>
+            <Text style={styles.gameSub} numberOfLines={2}>
+              {g.subtitle}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
       <Text style={styles.sectionLabel}>Your sessions</Text>
       {loading ? (
@@ -312,7 +298,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: 10,
   },
-  gridLoader: { minHeight: 120, marginBottom: 28 },
   gameGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 28 },
   gameCard: {
     width: "47%",

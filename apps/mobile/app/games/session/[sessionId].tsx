@@ -66,6 +66,7 @@ import {
 } from "../../../lib/games-api";
 import { holeCompletionAvatarUserIds } from "../../../lib/game-hole-display";
 import { getGameDefinition, useGameTypesVersion } from "../../../lib/games-registry";
+import { refreshGameTypes } from "../../../lib/game-types-cache";
 import { letterLabelForUser } from "../../../lib/wolf-rotation";
 import type { WolfTeeOff } from "../../../lib/wolf-rotation";
 import { computeSkinsTotals, type SkinsTieHandling } from "../../../lib/skins-scoring";
@@ -122,6 +123,11 @@ export default function GameSessionScreen() {
     () => (gameTypeSlug ? getGameDefinition(gameTypeSlug) : undefined),
     [gameTypeSlug, gameTypesVersion],
   );
+
+  useEffect(() => {
+    void refreshGameTypes();
+  }, []);
+
   const [players, setPlayers] = useState<GamePlayerRow[]>([]);
   const [holes, setHoles] = useState<GameHoleRow[]>([]);
   const [loading, setLoading] = useState(true);

@@ -6,7 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { OpenInParfadeGamesCreateLink } from "@/components/open-in-parfade-games-create";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
-import { getGameDefinition } from "@/lib/games-registry";
+import {
+  fetchGameTypesPublic,
+  findGameTypeBySlug,
+  type GameTypePublicRow,
+} from "@/lib/game-types-web-client";
 
 type RoundForGame = {
   hostId: string;
@@ -22,7 +26,28 @@ export function GamesCreateWeb() {
 
   const { getToken, isLoaded } = useAuth();
 
-  const def = gameTypeRaw ? getGameDefinition(gameTypeRaw) : undefined;
+  const [gameTypes, setGameTypes] = useState<GameTypePublicRow[] | null>(null);
+  const [gameTypesLoadError, setGameTypesLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await fetchGameTypesPublic();
+        if (!cancelled) setGameTypes(rows);
+      } catch (e) {
+        if (!cancelled) {
+          setGameTypesLoadError(e instanceof Error ? e.message : "Could not load game types.");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const def =
+    gameTypeRaw && gameTypes ? findGameTypeBySlug(gameTypes, gameTypeRaw) : undefined;
   const [round, setRound] = useState<RoundForGame | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingRound, setLoadingRound] = useState(Boolean(roundInviteToken));
@@ -61,7 +86,7 @@ export function GamesCreateWeb() {
   }, [isLoaded, roundInviteToken, loadRound]);
 
   async function startGame() {
-    if (!def?.implemented || !gameTypeRaw) return;
+    if (!def?.enabled || !gameTypeRaw) return;
     setSubmitError(null);
     setSubmitting(true);
     try {
@@ -114,7 +139,7 @@ export function GamesCreateWeb() {
     }
   }
 
-  if (!gameTypeRaw || !def) {
+  if (!gameTypeRaw) {
     return (
       <section className="space-y-4">
         <Link href="/games" className="text-sm font-semibold text-[#1a3c2a]">
@@ -125,7 +150,33 @@ export function GamesCreateWeb() {
     );
   }
 
-  if (!def.implemented) {
+  if (gameTypesLoadError) {
+    return (
+      <section className="space-y-4">
+        <Link href="/games" className="text-sm font-semibold text-[#1a3c2a]">
+          &larr; Games
+        </Link>
+        <p className="text-sm text-red-600">{gameTypesLoadError}</p>
+      </section>
+    );
+  }
+
+  if (gameTypes === null) {
+    return <ParfadeLoadingBlock className="py-12" message="Loading game…" size="md" />;
+  }
+
+  if (!def) {
+    return (
+      <section className="space-y-4">
+        <Link href="/games" className="text-sm font-semibold text-[#1a3c2a]">
+          &larr; Games
+        </Link>
+        <p className="text-sm text-[#6e6e6e]">Unknown game type.</p>
+      </section>
+    );
+  }
+
+  if (!def.enabled) {
     return (
       <section className="space-y-4">
         <Link href="/games" className="text-sm font-semibold text-[#1a3c2a]">

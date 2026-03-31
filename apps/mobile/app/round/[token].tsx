@@ -73,6 +73,7 @@ import {
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
 import { getGameDefinitions, useGameTypesVersion } from "../../lib/games-registry";
+import { refreshGameTypes } from "../../lib/game-types-cache";
 
 /** Caps sheet height so it does not extend under the status bar; list scrolls inside. */
 const SIDE_GAMES_SHEET_SNAP_POINTS = ["78%"] as const;
@@ -132,6 +133,11 @@ export default function RoundDetailsScreen() {
     () => getGameDefinitions().filter((g) => g.implemented),
     [gameTypesVersion],
   );
+
+  useEffect(() => {
+    void refreshGameTypes();
+  }, []);
+
   const [finalizeQuery, setFinalizeQuery] = useState("");
   const [finalizeResults, setFinalizeResults] = useState<CourseResult[]>([]);
   const [finalizeCourse, setFinalizeCourse] = useState<CourseResult | null>(null);
