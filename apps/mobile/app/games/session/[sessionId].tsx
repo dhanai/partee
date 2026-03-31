@@ -586,6 +586,7 @@ export default function GameSessionScreen() {
           {error ? <Text style={styles.banner}>{error}</Text> : null}
 
           {standingsMode === "wolf_points" && wolfTotals ? (
+            <View style={styles.standingsBlock}>
             <View style={styles.scoreCard}>
               <View style={styles.scoreCardHead}>
                 <Ionicons name="trophy-outline" size={20} color={colors.fairway} />
@@ -630,6 +631,7 @@ export default function GameSessionScreen() {
                   );
                 })}
             </View>
+            </View>
           ) : null}
 
           {recapOnly && standingsMode === "wolf_points" ? (
@@ -637,6 +639,7 @@ export default function GameSessionScreen() {
           ) : null}
 
           {standingsMode === "skins_count" && skinsTotals ? (
+            <View style={styles.standingsBlock}>
             <View style={styles.scoreCard}>
               <View style={styles.scoreCardHead}>
                 <Ionicons name="trophy-outline" size={20} color={colors.fairway} />
@@ -671,49 +674,70 @@ export default function GameSessionScreen() {
                   );
                 })}
             </View>
+            </View>
           ) : null}
 
           {standingsMode === "low_total" ? (
-            <GenericStandingsBlock title="Standings" entries={calcLowTotal(players, holeMap, holesCount)} />
+            <View style={styles.standingsBlock}>
+              <GenericStandingsBlock title="Standings" entries={calcLowTotal(players, holeMap, holesCount)} />
+            </View>
           ) : null}
 
           {standingsMode === "stableford_points" ? (
-            <GenericStandingsBlock
-              title="Points (Stableford)"
-              entries={calcStableford(players, holeMap, holesCount, Number(session.settings?.coursePar) || 4)}
-            />
+            <View style={styles.standingsBlock}>
+              <GenericStandingsBlock
+                title="Points (Stableford)"
+                entries={calcStableford(players, holeMap, holesCount, Number(session.settings?.coursePar) || 4)}
+              />
+            </View>
           ) : null}
 
           {standingsMode === "match_play" ? (
-            <GenericStandingsBlock title="Match Play" entries={calcMatchPlay(players, holeMap, holesCount)} />
+            <View style={styles.standingsBlock}>
+              <GenericStandingsBlock title="Match Play" entries={calcMatchPlay(players, holeMap, holesCount)} />
+            </View>
           ) : null}
 
           {standingsMode === "nassau_match" ? (() => {
             const nassau = calcNassauMatch(players, holeMap, holesCount);
-            return <NassauStandingsBlock front={nassau.front} back={nassau.back} overall={nassau.overall} />;
+            return (
+              <View style={styles.standingsBlock}>
+                <NassauStandingsBlock front={nassau.front} back={nassau.back} overall={nassau.overall} />
+              </View>
+            );
           })() : null}
 
           {standingsMode === "sixes_segments" ? (() => {
             const sixes = calcSixesSegments(players, holeMap);
-            return <SixesStandingsBlock segments={sixes.segments} playerWins={sixes.playerWins} players={players} />;
+            return (
+              <View style={styles.standingsBlock}>
+                <SixesStandingsBlock segments={sixes.segments} playerWins={sixes.playerWins} players={players} />
+              </View>
+            );
           })() : null}
 
           {standingsMode === "vegas_combined" ? (
-            <VegasStandingsBlock
-              teams={calcVegasCombined(
-                players, holeMap, holesCount,
-                session.settings?.vegasBirdieFlip !== false,
-                Number(session.settings?.coursePar) || 4,
-              )}
-            />
+            <View style={styles.standingsBlock}>
+              <VegasStandingsBlock
+                teams={calcVegasCombined(
+                  players, holeMap, holesCount,
+                  session.settings?.vegasBirdieFlip !== false,
+                  Number(session.settings?.coursePar) || 4,
+                )}
+              />
+            </View>
           ) : null}
 
           {standingsMode === "dots_total" ? (
-            <GenericStandingsBlock title="Dots" entries={calcDotsTotal(players, holeMap, holesCount)} />
+            <View style={styles.standingsBlock}>
+              <GenericStandingsBlock title="Dots" entries={calcDotsTotal(players, holeMap, holesCount)} />
+            </View>
           ) : null}
 
           {standingsMode === "targets_count" ? (
-            <GenericStandingsBlock title="Targets" entries={calcTargetsCount(players, holeMap, holesCount)} />
+            <View style={styles.standingsBlock}>
+              <GenericStandingsBlock title="Targets" entries={calcTargetsCount(players, holeMap, holesCount)} />
+            </View>
           ) : null}
 
           {recapOnly && session.gameType !== "wolf" ? (
@@ -1080,7 +1104,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 14,
-    marginBottom: 16,
     gap: 6,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -1132,7 +1155,8 @@ const styles = StyleSheet.create({
   scoreLetter: { fontWeight: "800", color: colors.muted },
   scoreName: { flex: 1, fontSize: 15, fontWeight: "600", color: colors.text },
   scorePts: { fontSize: 17, fontWeight: "800", color: colors.fairway, minWidth: 40, textAlign: "right" },
-  holesSection: { marginBottom: 8 },
+  standingsBlock: { marginBottom: 16 },
+  holesSection: { marginTop: 8, marginBottom: 8 },
   holesSectionHead: {
     flexDirection: "row",
     alignItems: "baseline",

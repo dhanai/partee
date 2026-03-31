@@ -66,7 +66,15 @@ function wolfHoleAvatarUserIds(
 function enterStrokesAvatarUserIds(payload: Record<string, unknown>): string[] {
   const scores = payload.scores;
   if (!scores || typeof scores !== "object") return [];
-  return Object.keys(scores as Record<string, number>);
+  const entries = Object.entries(scores as Record<string, unknown>)
+    .map(([uid, raw]) => {
+      const n = typeof raw === "number" ? raw : Number(raw);
+      return { uid, n };
+    })
+    .filter((x) => Number.isFinite(x.n));
+  if (entries.length === 0) return [];
+  const best = Math.min(...entries.map((x) => x.n));
+  return entries.filter((x) => x.n === best).map((x) => x.uid);
 }
 
 function dotsAvatarUserIds(payload: Record<string, unknown>): string[] {
