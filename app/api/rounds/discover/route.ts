@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, asc, eq, exists, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { courses, rounds, spots, users } from "@/db/schema";
+import { courses, groupMembers, rounds, spots, users } from "@/db/schema";
 import { ensureDbUser } from "@/lib/auth";
 import { getDiscoverFeedConfig } from "@/lib/discover-feed-config";
 import { getViewerFollowedIds, scoreDiscoverRound } from "@/lib/feed-scoring";
@@ -86,25 +86,40 @@ export async function GET(req: Request) {
     .leftJoin(spots, eq(spots.roundId, rounds.id))
     .where(
       and(
-        isNull(rounds.groupId),
         currentUser
           ? or(
-              eq(rounds.visibility, "public"),
-              eq(rounds.hostId, currentUser.id),
+              and(
+                isNull(rounds.groupId),
+                or(
+                  eq(rounds.visibility, "public"),
+                  eq(rounds.hostId, currentUser.id),
+                  exists(
+                    db
+                      .select()
+                      .from(spots)
+                      .where(
+                        and(
+                          eq(spots.roundId, rounds.id),
+                          eq(spots.userId, currentUser.id),
+                          inArray(spots.status, ["invited", "confirmed", "requested"]),
+                        ),
+                      ),
+                  ),
+                ),
+              ),
               exists(
                 db
                   .select()
-                  .from(spots)
+                  .from(groupMembers)
                   .where(
                     and(
-                      eq(spots.roundId, rounds.id),
-                      eq(spots.userId, currentUser.id),
-                      inArray(spots.status, ["invited", "confirmed", "requested"]),
+                      eq(groupMembers.groupId, rounds.groupId),
+                      eq(groupMembers.userId, currentUser.id),
                     ),
                   ),
               ),
             )
-          : eq(rounds.visibility, "public"),
+          : and(isNull(rounds.groupId), eq(rounds.visibility, "public")),
       ),
     )
     .groupBy(

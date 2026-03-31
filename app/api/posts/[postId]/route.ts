@@ -53,7 +53,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const updates: Record<string, unknown> = {};
     if (input.body !== undefined) updates.body = input.body;
     if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
-    if (input.isPinned !== undefined && isAdminOrOwner) updates.isPinned = input.isPinned;
+    const canPin = existing.groupId ? isAdminOrOwner : isAuthor;
+    if (input.isPinned !== undefined && canPin) updates.isPinned = input.isPinned;
 
     if (Object.keys(updates).length > 0) {
       await db

@@ -368,6 +368,25 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="profile/post"
+              options={{
+                title: "",
+                headerShown: false,
+                presentation: "formSheet",
+                sheetAllowedDetents: [0.55, 1.0],
+                sheetGrabberVisible: true,
+                sheetCornerRadius: 16,
+                sheetExpandsWhenScrolledToEdge: true,
+              }}
+            />
+            <Stack.Screen
+              name="score/post"
+              options={{
+                title: "Post Score",
+                headerBackTitle: "",
+              }}
+            />
+            <Stack.Screen
               name="tournament-details-editor"
               options={{
                 title: "",

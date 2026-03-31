@@ -132,15 +132,20 @@ export async function GET(req: Request, { params }: Ctx) {
     }
 
     // ── Rounds ───────────────────────────────────────────────────
-    // Only show rounds that were intentionally public to the group feed.
-    // Private/invite-only rounds should not appear as generic group activity.
+    const [viewerMembership] = await db
+      .select({ id: groupMembers.id })
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, viewer.id)))
+      .limit(1);
+    const viewerIsMember = Boolean(viewerMembership);
+
     const roundWhere = cursorDate
-      ? and(
-          eq(rounds.groupId, groupId),
-          eq(rounds.visibility, "public"),
-          lt(rounds.createdAt, cursorDate),
-        )
-      : and(eq(rounds.groupId, groupId), eq(rounds.visibility, "public"));
+      ? viewerIsMember
+        ? and(eq(rounds.groupId, groupId), lt(rounds.createdAt, cursorDate))
+        : and(eq(rounds.groupId, groupId), eq(rounds.visibility, "public"), lt(rounds.createdAt, cursorDate))
+      : viewerIsMember
+        ? eq(rounds.groupId, groupId)
+        : and(eq(rounds.groupId, groupId), eq(rounds.visibility, "public"));
 
     const roundRows = await db
       .select({

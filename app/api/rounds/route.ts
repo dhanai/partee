@@ -3,11 +3,15 @@ import { NextResponse } from "next/server";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { conversationParticipants, conversations, courses, rounds, spots, users } from "@/db/schema";
+import { conversationParticipants, conversations, courses, groupMembers, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { notifyRoundInvites } from "@/lib/notify-user";
-import { publishAfterRoundCreated, publishRoundInviteToast } from "@/lib/parfade-ably-publish";
+import {
+  publishAfterRoundCreated,
+  publishGroupActivityUpdated,
+  publishRoundInviteToast,
+} from "@/lib/parfade-ably-publish";
 import { buildRoundInvitePushBody, formatChatPushTitleLine } from "@/lib/round-invite-push-message";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 import {
@@ -235,8 +239,32 @@ export async function POST(req: Request) {
       targetDate = teeTime;
     }
 
-    const dedupedInviteeIds = [
+    const dedupedDirectInviteeIds = [
       ...new Set(parsed.inviteeUserIds.filter((id) => id !== user.id)),
+    ];
+    let groupMemberInviteeIds: string[] = [];
+
+    if (parsed.groupId) {
+      const groupMemberRows = await db
+        .select({ userId: groupMembers.userId })
+        .from(groupMembers)
+        .where(eq(groupMembers.groupId, parsed.groupId));
+
+      const viewerIsMember = groupMemberRows.some((row) => row.userId === user.id);
+      if (!viewerIsMember) {
+        return NextResponse.json(
+          { error: "You must be a group member to post a round to that group." },
+          { status: 403 },
+        );
+      }
+
+      groupMemberInviteeIds = groupMemberRows
+        .map((row) => row.userId)
+        .filter((id) => id !== user.id);
+    }
+
+    const dedupedInviteeIds = [
+      ...new Set([...dedupedDirectInviteeIds, ...groupMemberInviteeIds]),
     ];
 
     let invitedCount = 0;
@@ -370,6 +398,9 @@ export async function POST(req: Request) {
       hostId: user.id,
       inviteeUserIds,
     });
+    if (parsed.groupId) {
+      await publishGroupActivityUpdated(parsed.groupId, "round-created");
+    }
 
     return NextResponse.json({
       round: {

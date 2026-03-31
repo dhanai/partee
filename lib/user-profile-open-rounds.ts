@@ -1,4 +1,4 @@
-import { and, asc, eq, exists, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
@@ -9,6 +9,7 @@ import { effectiveRoundTimeMs, toIsoTimestamp } from "@/lib/utils";
 type RowWithCourse = {
   id: string;
   inviteToken: string;
+  createdAt: Date | string;
   courseName: string | null;
   tournamentTitle: string | null;
   teeTime: Date | string | null;
@@ -55,6 +56,7 @@ async function enrichWithImageUrl(rows: RowWithCourse[]) {
 export type ProfileOpenRoundJson = {
   id: string;
   inviteToken: string;
+  createdAt: string;
   courseName: string | null;
   tournamentTitle: string | null;
   mode: "scheduled" | "planning" | "tournament";
@@ -68,6 +70,11 @@ export type ProfileOpenRoundJson = {
   preferredTimeWindows: string[] | null;
   planningLocation: string | null;
   confirmedPlayers: Array<{ id: string; name: string; avatar: string | null }>;
+};
+
+export type ProfileOpenRoundsListsJson = {
+  hosting: ProfileOpenRoundJson[];
+  joined: ProfileOpenRoundJson[];
 };
 
 /**
@@ -111,6 +118,7 @@ export async function getHostedOpenRoundsForProfile(
     .select({
       id: rounds.id,
       inviteToken: rounds.inviteToken,
+      createdAt: rounds.createdAt,
       courseName: rounds.courseName,
       tournamentTitle: rounds.tournamentTitle,
       teeTime: rounds.teeTime,
@@ -184,6 +192,7 @@ export async function getHostedOpenRoundsForProfile(
     return {
       id: r.id,
       inviteToken: r.inviteToken,
+      createdAt: toIsoTimestamp(r.createdAt),
       courseName: r.courseName,
       tournamentTitle: r.tournamentTitle,
       mode: r.mode,
@@ -199,4 +208,140 @@ export async function getHostedOpenRoundsForProfile(
       confirmedPlayers: players,
     };
   });
+}
+
+export async function getOpenRoundsForProfile(
+  profileUserId: string,
+  viewerUserId: string,
+): Promise<ProfileOpenRoundsListsJson> {
+  const hosting = await getHostedOpenRoundsForProfile(profileUserId, viewerUserId);
+
+  const futureCond = sql`coalesce(${rounds.teeTime}, ${rounds.targetDate}) > NOW()`;
+  const joinedConditions = [
+    eq(spots.userId, profileUserId),
+    inArray(spots.status, ["confirmed", "requested"]),
+    ne(rounds.hostId, profileUserId),
+    isNull(rounds.groupId),
+    inArray(rounds.status, ["forming", "confirmed"]),
+    futureCond,
+  ];
+  if (viewerUserId !== profileUserId) {
+    joinedConditions.push(
+      or(
+        eq(rounds.visibility, "public"),
+        eq(rounds.hostId, viewerUserId),
+        exists(
+          db
+            .select()
+            .from(spots)
+            .where(
+              and(
+                eq(spots.roundId, rounds.id),
+                eq(spots.userId, viewerUserId),
+                inArray(spots.status, ["invited", "declined", "requested", "confirmed"]),
+              ),
+            ),
+        ),
+      )!,
+    );
+  }
+
+  const joinedRawRows = await db
+    .select({
+      id: rounds.id,
+      inviteToken: rounds.inviteToken,
+      createdAt: rounds.createdAt,
+      courseName: rounds.courseName,
+      tournamentTitle: rounds.tournamentTitle,
+      teeTime: rounds.teeTime,
+      targetDate: rounds.targetDate,
+      mode: rounds.mode,
+      preferredTimeWindow: rounds.preferredTimeWindow,
+      planningLocation: rounds.planningLocation,
+      status: rounds.status,
+      totalSpots: rounds.totalSpots,
+      joinPolicy: rounds.joinPolicy,
+      customImageUrl: rounds.customImageUrl,
+      courseId: rounds.courseId,
+      confirmedCount:
+        sql<number>`coalesce(sum(case when ${spots.status} = 'confirmed' then 1 else 0 end), 0)`.mapWith(
+          Number,
+        ),
+      hostId: rounds.hostId,
+    })
+    .from(spots)
+    .innerJoin(rounds, eq(rounds.id, spots.roundId))
+    .where(and(...joinedConditions))
+    .groupBy(rounds.id)
+    .orderBy(asc(rounds.targetDate));
+
+  const joinedRoundIds = joinedRawRows.map((r) => r.id);
+  if (joinedRoundIds.length === 0) {
+    return { hosting, joined: [] };
+  }
+
+  const confirmedRows = await db
+    .select({
+      roundId: spots.roundId,
+      userId: users.id,
+      name: users.name,
+      avatar: users.avatar,
+      claimedAt: spots.createdAt,
+    })
+    .from(spots)
+    .innerJoin(users, eq(users.id, spots.userId))
+    .where(and(inArray(spots.roundId, joinedRoundIds), eq(spots.status, "confirmed")))
+    .orderBy(asc(spots.roundId), asc(spots.createdAt));
+
+  const byRound = new Map<
+    string,
+    Array<{ userId: string; name: string; avatar: string | null; claimedAt: Date | string }>
+  >();
+  for (const row of confirmedRows) {
+    const list = byRound.get(row.roundId) ?? [];
+    list.push({
+      userId: row.userId,
+      name: row.name,
+      avatar: row.avatar,
+      claimedAt: row.claimedAt,
+    });
+    byRound.set(row.roundId, list);
+  }
+
+  const enrichedJoined = await enrichWithImageUrl(joinedRawRows);
+  const joined = enrichedJoined.map((r) => {
+    const hostId =
+      joinedRawRows.find((raw) => raw.id === r.id)?.hostId ?? profileUserId;
+    const players = orderConfirmedPlayersHostFirstByClaimOrder(
+      (byRound.get(r.id) ?? []).map((p) => ({
+        id: p.userId,
+        name: p.name,
+        avatar: p.avatar,
+        claimedAt: p.claimedAt,
+      })),
+      hostId,
+    );
+    const confirmed = players.length;
+    const spotsRemaining = Math.max(0, r.totalSpots - confirmed);
+    return {
+      id: r.id,
+      inviteToken: r.inviteToken,
+      createdAt: toIsoTimestamp(r.createdAt),
+      courseName: r.courseName,
+      tournamentTitle: r.tournamentTitle,
+      mode: r.mode,
+      teeTime: r.teeTime ? toIsoTimestamp(r.teeTime) : null,
+      targetDate: toIsoTimestamp(r.targetDate),
+      imageUrl: r.imageUrl,
+      totalSpots: r.totalSpots,
+      spotsRemaining,
+      joinPolicy: r.joinPolicy,
+      preferredTimeWindow: r.preferredTimeWindow,
+      preferredTimeWindows: r.preferredTimeWindows,
+      planningLocation: r.planningLocation,
+      confirmedPlayers: players,
+    };
+  });
+
+  return { hosting, joined };
 }

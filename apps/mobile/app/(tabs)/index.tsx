@@ -36,6 +36,7 @@ import {
 import { buildDiscoverFeedRows } from "../../lib/discover-feed-ad-rows";
 import { resolveDiscoverAdDisplay, shouldShowDiscoverHouseAd } from "../../lib/discover-house-ad";
 import { getHousePromosCached, type HousePromoSlotClient } from "../../lib/house-promo-api";
+import { getCachedMeProfile } from "../../lib/me-profile-cache";
 import { parfadeRoundDetailChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { colors } from "../../lib/theme";
@@ -55,6 +56,7 @@ type StoredLocationOverride = {
 };
 
 const DISCOVER_LOCATION_OVERRIDE_KEY = "discover.location.override.v1";
+const DISCOVER_RADIUS_KEY = "discover.radius.v1";
 
 export default function DiscoverScreen() {
   const navigation = useNavigation();
@@ -148,10 +150,19 @@ export default function DiscoverScreen() {
     let active = true;
     async function hydrateLocation() {
       try {
+        const storedRadiusRaw = await SecureStore.getItemAsync(DISCOVER_RADIUS_KEY);
+        const storedRadius = Number(storedRadiusRaw ?? "");
+        const hydratedRadius =
+          Number.isFinite(storedRadius) && storedRadius > 0 ? storedRadius : 25;
+
         const raw = await SecureStore.getItemAsync(DISCOVER_LOCATION_OVERRIDE_KEY);
         if (!active) return;
         if (raw) {
           const parsed = JSON.parse(raw) as StoredLocationOverride;
+          const parsedRadius =
+            Number.isFinite(parsed?.radiusMiles) && parsed.radiusMiles > 0
+              ? parsed.radiusMiles
+              : hydratedRadius;
           if (
             Number.isFinite(parsed?.lat) &&
             Number.isFinite(parsed?.lng) &&
@@ -160,13 +171,38 @@ export default function DiscoverScreen() {
             hasManualLocationRef.current = true;
             setCoords({ lat: parsed.lat, lng: parsed.lng });
             setLocationLabel(parsed.label);
-            setRadiusMiles(parsed.radiusMiles || 25);
+            setRadiusMiles(parsedRadius);
             setLocationStatus("ready");
             setLocationHydrated(true);
             return;
           }
         }
+        setRadiusMiles(hydratedRadius);
         hasManualLocationRef.current = false;
+
+        const cachedMe = getCachedMeProfile();
+        const profileLocation = (cachedMe?.location ?? cachedMe?.homeCourse ?? "").trim();
+        if (profileLocation.length >= 2) {
+          try {
+            const authToken = await getTokenRef.current();
+            const data = await apiPost<{ locations: LocationResult[] }>(
+              "/api/locations/search",
+              { query: profileLocation },
+              authToken,
+            );
+            const pick = data.locations?.[0];
+            if (pick && Number.isFinite(pick.lat) && Number.isFinite(pick.lng)) {
+              setCoords({ lat: pick.lat, lng: pick.lng });
+              setLocationLabel(pick.label);
+              setLocationStatus("ready");
+              setLocationHydrated(true);
+              return;
+            }
+          } catch {
+            // Fall through to GPS location.
+          }
+        }
+
         await resolveCurrentLocation();
         if (!active || hasManualLocationRef.current) {
           return;
@@ -183,6 +219,11 @@ export default function DiscoverScreen() {
       active = false;
     };
   }, [resolveCurrentLocation]);
+
+  useEffect(() => {
+    if (!locationHydrated) return;
+    void SecureStore.setItemAsync(DISCOVER_RADIUS_KEY, String(radiusMiles));
+  }, [radiusMiles, locationHydrated]);
 
   useLayoutEffect(() => {
     const openLocationModal = () => {

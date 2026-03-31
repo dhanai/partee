@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { posts, groupMembers, groups, users } from "@/db/schema";
+import { postComments, postLikes, posts, groupMembers, groups, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyGroupPost } from "@/lib/notify-user";
 import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
@@ -54,6 +54,41 @@ export async function GET(req: Request) {
       .orderBy(desc(posts.createdAt))
       .limit(limit);
 
+    const postIds = rows.map((r) => r.id);
+    let likeCountMap = new Map<string, number>();
+    let commentCountMap = new Map<string, number>();
+    let viewerLikeSet = new Set<string>();
+
+    if (postIds.length > 0) {
+      const [likeCounts, commentCounts, viewerLikes] = await Promise.all([
+        db
+          .select({
+            postId: postLikes.postId,
+            count: count(),
+          })
+          .from(postLikes)
+          .where(inArray(postLikes.postId, postIds))
+          .groupBy(postLikes.postId),
+        db
+          .select({
+            postId: postComments.postId,
+            count: count(),
+          })
+          .from(postComments)
+          .where(inArray(postComments.postId, postIds))
+          .groupBy(postComments.postId),
+        db
+          .select({ postId: postLikes.postId })
+          .from(postLikes)
+          .where(
+            and(inArray(postLikes.postId, postIds), eq(postLikes.userId, viewer.id)),
+          ),
+      ]);
+      likeCountMap = new Map(likeCounts.map((r) => [r.postId, Number(r.count)]));
+      commentCountMap = new Map(commentCounts.map((r) => [r.postId, Number(r.count)]));
+      viewerLikeSet = new Set(viewerLikes.map((r) => r.postId));
+    }
+
     return NextResponse.json({
       posts: rows.map((r) => ({
         id: r.id,
@@ -63,6 +98,9 @@ export async function GET(req: Request) {
         groupId: r.groupId,
         scope: r.scope,
         createdAt: r.createdAt.toISOString(),
+        likeCount: likeCountMap.get(r.id) ?? 0,
+        commentCount: commentCountMap.get(r.id) ?? 0,
+        viewerLiked: viewerLikeSet.has(r.id),
         user: { id: r.userId, name: r.userName, avatar: r.userAvatar },
       })),
     });

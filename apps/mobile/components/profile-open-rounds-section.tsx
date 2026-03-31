@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { RoundListCard } from "./round-list-card";
@@ -33,6 +33,11 @@ type ProfileOpenRoundApi = {
   planningLocation: string | null;
   confirmedPlayers: Array<{ id: string; name: string; avatar: string | null }>;
 };
+type ProfileOpenRoundsApiResponse = {
+  rounds?: ProfileOpenRoundApi[];
+  hosting?: ProfileOpenRoundApi[];
+  joined?: ProfileOpenRoundApi[];
+};
 
 function toMineRoundForHint(r: ProfileOpenRoundApi): MineRound {
   return {
@@ -59,13 +64,28 @@ type Props = {
   userId: string;
   /** True on the signed-in user’s own profile tab. */
   viewerIsSelf?: boolean;
+  /** Optional signal so parent screens can render combined empty states. */
+  onDataStateChange?: (state: { loading: boolean; hostingCount: number; joinedCount: number }) => void;
 };
 
-export function ProfileOpenRoundsSection({ userId, viewerIsSelf = false }: Props) {
+export function ProfileOpenRoundsSection({
+  userId,
+  viewerIsSelf = false,
+  onDataStateChange,
+}: Props) {
   const router = useRouter();
   const { getToken } = useAuth();
-  const [rounds, setRounds] = useState<ProfileOpenRoundApi[] | null>(null);
+  const [hostingRounds, setHostingRounds] = useState<ProfileOpenRoundApi[] | null>(null);
+  const [joinedRounds, setJoinedRounds] = useState<ProfileOpenRoundApi[] | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    onDataStateChange?.({
+      loading,
+      hostingCount: hostingRounds?.length ?? 0,
+      joinedCount: joinedRounds?.length ?? 0,
+    });
+  }, [loading, hostingRounds, joinedRounds, onDataStateChange]);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,13 +94,19 @@ export function ProfileOpenRoundsSection({ userId, viewerIsSelf = false }: Props
         setLoading(true);
         try {
           const token = await getToken();
-          const data = await apiGet<{ rounds: ProfileOpenRoundApi[] }>(
+          const data = await apiGet<ProfileOpenRoundsApiResponse>(
             `/api/users/${userId}/open-rounds`,
             token,
           );
-          if (!cancelled) setRounds(data.rounds);
+          if (cancelled) return;
+          const fallbackRounds = data.rounds ?? [];
+          setHostingRounds(data.hosting ?? fallbackRounds);
+          setJoinedRounds(data.joined ?? []);
         } catch {
-          if (!cancelled) setRounds([]);
+          if (!cancelled) {
+            setHostingRounds([]);
+            setJoinedRounds([]);
+          }
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -91,7 +117,7 @@ export function ProfileOpenRoundsSection({ userId, viewerIsSelf = false }: Props
     }, [userId, getToken]),
   );
 
-  if (loading && rounds === null) {
+  if (loading && hostingRounds === null && joinedRounds === null) {
     return (
       <View style={[styles.section, styles.loadingSection]}>
         <ActivityIndicator color={colors.fairway} />
@@ -99,77 +125,86 @@ export function ProfileOpenRoundsSection({ userId, viewerIsSelf = false }: Props
     );
   }
 
-  if (!rounds?.length) {
+  const hosted = hostingRounds ?? [];
+  const joined = joinedRounds ?? [];
+  if (hosted.length === 0 && joined.length === 0) {
     return null;
   }
 
+  const renderRoundCard = (round: ProfileOpenRoundApi) => {
+    const effectiveIso = round.teeTime ?? round.targetDate;
+    const mine = toMineRoundForHint(round);
+    return (
+      <View key={round.id} style={styles.cardWrap}>
+        <RoundListCard
+          roundId={round.id}
+          mode={
+            round.mode === "planning"
+              ? "planning"
+              : round.mode === "tournament"
+                ? "tournament"
+                : "scheduled"
+          }
+          courseName={round.courseName}
+          tournamentTitle={resolveTournamentTitle(round)}
+          inviteToken={round.inviteToken}
+          imageUrl={round.imageUrl}
+          joinPolicy={round.joinPolicy}
+          totalSpots={round.totalSpots}
+          confirmedPlayers={round.confirmedPlayers}
+          onCardPressIn={() =>
+            prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getToken())
+          }
+          onPress={() =>
+            router.push({
+              pathname: "/round/[token]",
+              params: {
+                token: round.inviteToken,
+                roundHint: buildRoundListHint(mine),
+              },
+            })
+          }
+          primaryMeta={
+            round.mode === "scheduled" || round.mode === "tournament"
+              ? formatScheduledCardMeta(effectiveIso, round.teeTime)
+              : formatPlanningWindow(getTimeWindows(round))
+          }
+          planningLocation={round.planningLocation}
+          planningHeaderDate={formatPlanningHeaderDate(round.targetDate)}
+          preferredTimeWindow={getTimeWindows(round)}
+          onPlayerPress={(player) =>
+            router.push({
+              pathname: "/profile/[userId]",
+              params: {
+                userId: player.id,
+                userName: player.name,
+                userAvatar: player.avatar ?? "",
+              },
+            })
+          }
+          onPlayerPressIn={(player) => prefetchPublicProfile(player.id, () => getToken())}
+          trailingAfterSpots={
+            round.spotsRemaining === 0 ? (
+              <Text style={styles.fullBadge}>Full</Text>
+            ) : undefined
+          }
+        />
+      </View>
+    );
+  };
+
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Open rounds</Text>
+      <Text style={styles.sectionTitle}>Rounds</Text>
       <Text style={styles.sectionHint}>
-        {viewerIsSelf ? "Your upcoming hosted rounds" : "Upcoming rounds they host"}
+        {viewerIsSelf
+          ? "Your upcoming hosted and joined rounds"
+          : "Upcoming rounds they are hosting or joined"}
       </Text>
-      {rounds.map((round) => {
-        const effectiveIso = round.teeTime ?? round.targetDate;
-        const mine = toMineRoundForHint(round);
-        return (
-          <View key={round.id} style={styles.cardWrap}>
-            <RoundListCard
-              roundId={round.id}
-              mode={
-                round.mode === "planning"
-                  ? "planning"
-                  : round.mode === "tournament"
-                    ? "tournament"
-                    : "scheduled"
-              }
-              courseName={round.courseName}
-              tournamentTitle={resolveTournamentTitle(round)}
-              inviteToken={round.inviteToken}
-              imageUrl={round.imageUrl}
-              joinPolicy={round.joinPolicy}
-              totalSpots={round.totalSpots}
-              confirmedPlayers={round.confirmedPlayers}
-              onCardPressIn={() =>
-                prefetchRoundOpen(round.inviteToken, round.imageUrl, () => getToken())
-              }
-              onPress={() =>
-                router.push({
-                  pathname: "/round/[token]",
-                  params: {
-                    token: round.inviteToken,
-                    roundHint: buildRoundListHint(mine),
-                  },
-                })
-              }
-              primaryMeta={
-                round.mode === "scheduled" || round.mode === "tournament"
-                  ? formatScheduledCardMeta(effectiveIso, round.teeTime)
-                  : formatPlanningWindow(getTimeWindows(round))
-              }
-              planningLocation={round.planningLocation}
-              planningHeaderDate={formatPlanningHeaderDate(round.targetDate)}
-              preferredTimeWindow={getTimeWindows(round)}
-              onPlayerPress={(player) =>
-                router.push({
-                  pathname: "/profile/[userId]",
-                  params: {
-                    userId: player.id,
-                    userName: player.name,
-                    userAvatar: player.avatar ?? "",
-                  },
-                })
-              }
-              onPlayerPressIn={(player) => prefetchPublicProfile(player.id, () => getToken())}
-              trailingAfterSpots={
-                round.spotsRemaining === 0 ? (
-                  <Text style={styles.fullBadge}>Full</Text>
-                ) : undefined
-              }
-            />
-          </View>
-        );
-      })}
+      {hosted.length > 0 ? <Text style={styles.subSectionTitle}>Hosting</Text> : null}
+      {hosted.map((round) => renderRoundCard(round))}
+      {joined.length > 0 ? <Text style={styles.subSectionTitle}>Joined</Text> : null}
+      {joined.map((round) => renderRoundCard(round))}
     </View>
   );
 }
@@ -193,6 +228,15 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginBottom: 12,
     lineHeight: 18,
+  },
+  subSectionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.muted,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginTop: 2,
   },
   loadingSection: {
     marginBottom: 0,
