@@ -223,6 +223,7 @@ export default function GamesScreen() {
         sessions.map((s) => {
           const def = getGameDefinition(s.gameType);
           const swipeEnabled = Platform.OS !== "web";
+          const isLive = s.status === "active";
           const openSession = () => {
             if (s.status === "completed") {
               const invite = s.roundInviteToken?.trim();
@@ -262,7 +263,11 @@ export default function GamesScreen() {
               onHostDelete={() => confirmDeleteSession(s)}
             >
               <Pressable
-                style={({ pressed }) => [styles.sessionRow, pressed && styles.sessionRowPressed]}
+                style={({ pressed }) => [
+                  styles.sessionRow,
+                  isLive && styles.sessionRowLive,
+                  pressed && styles.sessionRowPressed,
+                ]}
                 unstable_pressDelay={swipeEnabled ? 200 : undefined}
                 android_ripple={swipeEnabled ? null : undefined}
                 onPress={openSession}
@@ -274,6 +279,7 @@ export default function GamesScreen() {
                     {statusLabel(s.status)}
                   </Text>
                 </View>
+                {isLive ? <View style={styles.sessionLiveDot} /> : null}
                 <Ionicons name="chevron-forward" size={20} color={colors.muted} />
               </Pressable>
             </SwipeableMineRoundRow>
@@ -338,7 +344,17 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
+  sessionRowLive: {
+    borderColor: colors.fairway,
+  },
   sessionRowPressed: { opacity: 0.9 },
+  sessionLiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 99,
+    backgroundColor: colors.fairway,
+    marginRight: 8,
+  },
   sessionTextCol: { flex: 1, gap: 2 },
   sessionTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
   sessionMeta: { fontSize: 13, color: colors.muted },
