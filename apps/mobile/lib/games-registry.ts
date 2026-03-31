@@ -1,10 +1,13 @@
 /**
  * Backward-compatible API for game definitions, backed by the API-driven cache.
  */
+import { useSyncExternalStore } from "react";
 import type { GameTypeConfig } from "./game-types-cache";
 import {
   getCachedGameTypes,
   getGameDefinition as lookupDefinition,
+  getGameTypesVersionSnapshot,
+  subscribeGameTypes,
 } from "./game-types-cache";
 
 export type GameTypeId = string;
@@ -52,4 +55,13 @@ export function getGameDefinitions(): GameDefinition[] {
 export function getGameDefinition(slug: string): GameDefinition | undefined {
   const g = lookupDefinition(slug);
   return g ? toCompat(g) : undefined;
+}
+
+/** Re-render when game type copy is loaded/refreshed from API or AsyncStorage. */
+export function useGameTypesVersion(): number {
+  return useSyncExternalStore(
+    subscribeGameTypes,
+    getGameTypesVersionSnapshot,
+    getGameTypesVersionSnapshot,
+  );
 }

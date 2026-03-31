@@ -26,7 +26,7 @@ export type GameTypeConfig = {
 };
 
 /** Bump when clients must drop persisted copy (e.g. after admin copy changes). */
-const STORAGE_KEY = "partee:game-types-v2";
+const STORAGE_KEY = "partee:game-types-v3";
 
 const HARDCODED_SEED: GameTypeConfig[] = [
   {
@@ -242,6 +242,30 @@ const HARDCODED_SEED: GameTypeConfig[] = [
 
 let memoryCache: GameTypeConfig[] | null = null;
 
+const gameTypeListeners = new Set<() => void>();
+let gameTypesVersion = 0;
+
+export function subscribeGameTypes(listener: () => void) {
+  gameTypeListeners.add(listener);
+  return () => {
+    gameTypeListeners.delete(listener);
+  };
+}
+
+export function getGameTypesVersionSnapshot(): number {
+  return gameTypesVersion;
+}
+
+function notifyGameTypesChanged() {
+  gameTypesVersion += 1;
+  gameTypeListeners.forEach((l) => l());
+}
+
+function configsEqual(a: GameTypeConfig[] | null, b: GameTypeConfig[]): boolean {
+  if (a === null) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function getCachedGameTypes(): GameTypeConfig[] {
   return memoryCache ?? HARDCODED_SEED;
 }
@@ -256,7 +280,10 @@ export async function loadGameTypesFromStorage(): Promise<void> {
     if (raw) {
       const parsed = JSON.parse(raw) as GameTypeConfig[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        memoryCache = parsed;
+        if (!configsEqual(memoryCache, parsed)) {
+          memoryCache = parsed;
+          notifyGameTypesChanged();
+        }
       }
     }
   } catch {
@@ -266,10 +293,13 @@ export async function loadGameTypesFromStorage(): Promise<void> {
 
 export async function refreshGameTypes(): Promise<GameTypeConfig[]> {
   try {
-    const types = (await apiGet("/api/game-types", null)) as GameTypeConfig[];
+    const types = (await apiGet(`/api/game-types?t=${Date.now()}`, null)) as GameTypeConfig[];
     if (Array.isArray(types) && types.length > 0) {
-      memoryCache = types;
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(types)).catch(() => {});
+      if (!configsEqual(memoryCache, types)) {
+        memoryCache = types;
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(types)).catch(() => {});
+        notifyGameTypesChanged();
+      }
     }
     return memoryCache ?? HARDCODED_SEED;
   } catch {

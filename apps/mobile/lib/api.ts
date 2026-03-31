@@ -63,8 +63,11 @@ function responseLooksLikeHtmlPage(raw: string): boolean {
 }
 
 async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const method = options.method ?? "GET";
   const res = await fetch(`${apiBaseUrl}${path}`, {
-    method: options.method ?? "GET",
+    method,
+    /** Avoid stale JSON from HTTP caches (game types and other dynamic GETs). */
+    ...(method === "GET" ? { cache: "no-store" as RequestCache } : {}),
     headers: {
       "Content-Type": "application/json",
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),

@@ -19,7 +19,7 @@ import { GameSettingsSheetContent, gameSettingsSheetStyles } from "../../compone
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { createGameSession } from "../../lib/games-api";
-import { getGameDefinition } from "../../lib/games-registry";
+import { getGameDefinition, useGameTypesVersion } from "../../lib/games-registry";
 
 import type { RoundDetails } from "../../types/round";
 import { colors } from "../../lib/theme";
@@ -38,7 +38,11 @@ export default function CreateGameScreen() {
   const gameType = typeof params.gameType === "string" ? params.gameType : params.gameType?.[0];
   const roundInviteToken = typeof params.roundInviteToken === "string" ? params.roundInviteToken : params.roundInviteToken?.[0];
 
-  const def = gameType ? getGameDefinition(gameType) : undefined;
+  const gameTypesVersion = useGameTypesVersion();
+  const def = useMemo(
+    () => (gameType ? getGameDefinition(gameType) : undefined),
+    [gameType, gameTypesVersion],
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);

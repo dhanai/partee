@@ -72,7 +72,7 @@ import {
 } from "../../lib/round-card-meta";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { TimePickerModal } from "../../components/time-picker-modal";
-import { getGameDefinitions } from "../../lib/games-registry";
+import { getGameDefinitions, useGameTypesVersion } from "../../lib/games-registry";
 
 /** Caps sheet height so it does not extend under the status bar; list scrolls inside. */
 const SIDE_GAMES_SHEET_SNAP_POINTS = ["78%"] as const;
@@ -127,6 +127,11 @@ export default function RoundDetailsScreen() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  const gameTypesVersion = useGameTypesVersion();
+  const sideGameDefs = useMemo(
+    () => getGameDefinitions().filter((g) => g.implemented),
+    [gameTypesVersion],
+  );
   const [finalizeQuery, setFinalizeQuery] = useState("");
   const [finalizeResults, setFinalizeResults] = useState<CourseResult[]>([]);
   const [finalizeCourse, setFinalizeCourse] = useState<CourseResult | null>(null);
@@ -1236,9 +1241,7 @@ export default function RoundDetailsScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {getGameDefinitions()
-              .filter((g) => g.implemented)
-              .map((g) => (
+            {sideGameDefs.map((g) => (
                 <Pressable
                   key={g.id}
                   style={({ pressed }) => [

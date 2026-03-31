@@ -16,7 +16,11 @@ import { useAbly } from "ably/react";
 import { Ionicons } from "@expo/vector-icons";
 import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
 import { deleteGameSession, listMyGameSessions, type GameSessionSummary } from "../../lib/games-api";
-import { getGameDefinitions, getGameDefinition, type GameDefinition } from "../../lib/games-registry";
+import {
+  getGameDefinitions,
+  getGameDefinition,
+  useGameTypesVersion,
+} from "../../lib/games-registry";
 import { loadGameTypesFromStorage, refreshGameTypes } from "../../lib/game-types-cache";
 import { subscribeGamesListRefresh } from "../../lib/games-list-refresh";
 import { parfadeGameSessionChannel } from "../../lib/parfade-ably-channels";
@@ -28,20 +32,6 @@ function statusLabel(s: GameSessionSummary["status"]) {
   if (s === "active") return "Active";
   if (s === "completed") return "Done";
   return "Abandoned";
-}
-
-/** Avoid re-rendering the grid when API returns the same copy (new array reference every time). */
-function gameGridSignature(defs: GameDefinition[]): string {
-  return defs
-    .filter((g) => g.implemented)
-    .map((g) => `${g.id}\t${g.title}\t${g.subtitle}`)
-    .sort()
-    .join("\n");
-}
-
-function mergeGameDefsIfChanged(prev: GameDefinition[], next: GameDefinition[]): GameDefinition[] {
-  if (gameGridSignature(prev) === gameGridSignature(next)) return prev;
-  return next;
 }
 
 function formatSessionListDate(iso: string): string {
@@ -65,8 +55,9 @@ export default function GamesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listScrollLockedForRowSwipe, setListScrollLockedForRowSwipe] = useState(false);
-  const [gameDefs, setGameDefs] = useState<GameDefinition[]>([]);
   const [gameGridReady, setGameGridReady] = useState(false);
+  const gameTypesVersion = useGameTypesVersion();
+  const gameDefs = useMemo(() => getGameDefinitions(), [gameTypesVersion]);
 
   const onGameRowSwipeActiveChange = useCallback((active: boolean) => {
     setListScrollLockedForRowSwipe(active);
@@ -127,11 +118,8 @@ export default function GamesScreen() {
       void (async () => {
         await loadGameTypesFromStorage();
         if (cancelled) return;
-        setGameDefs(getGameDefinitions());
         setGameGridReady(true);
         await refreshGameTypes();
-        if (cancelled) return;
-        setGameDefs((prev) => mergeGameDefsIfChanged(prev, getGameDefinitions()));
       })();
       return () => {
         cancelled = true;
@@ -185,7 +173,6 @@ export default function GamesScreen() {
                 await load();
                 await loadGameTypesFromStorage();
                 await refreshGameTypes();
-                setGameDefs((prev) => mergeGameDefsIfChanged(prev, getGameDefinitions()));
               } finally {
                 setRefreshing(false);
               }

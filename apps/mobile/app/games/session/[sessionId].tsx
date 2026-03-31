@@ -65,7 +65,7 @@ import {
   type GameSessionSummary,
 } from "../../../lib/games-api";
 import { holeCompletionAvatarUserIds } from "../../../lib/game-hole-display";
-import { getGameDefinition } from "../../../lib/games-registry";
+import { getGameDefinition, useGameTypesVersion } from "../../../lib/games-registry";
 import { letterLabelForUser } from "../../../lib/wolf-rotation";
 import type { WolfTeeOff } from "../../../lib/wolf-rotation";
 import { computeSkinsTotals, type SkinsTieHandling } from "../../../lib/skins-scoring";
@@ -115,7 +115,13 @@ export default function GameSessionScreen() {
   const sessionId = normalizeRouteParam(sessionIdRaw);
   const recapParam = normalizeRouteParam(recapRaw);
   const { getToken } = useAuth();
+  const gameTypesVersion = useGameTypesVersion();
   const [session, setSession] = useState<GameSessionSummary | null>(null);
+  const gameTypeSlug = session?.gameType;
+  const def = useMemo(
+    () => (gameTypeSlug ? getGameDefinition(gameTypeSlug) : undefined),
+    [gameTypeSlug, gameTypesVersion],
+  );
   const [players, setPlayers] = useState<GamePlayerRow[]>([]);
   const [holes, setHoles] = useState<GameHoleRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -480,7 +486,6 @@ export default function GameSessionScreen() {
     );
   }
 
-  const def = getGameDefinition(session.gameType);
   const scoringMode = def?.scoringMode ?? session.gameType;
   const standingsMode = def?.standingsMode ?? session.gameType;
   const holesCount = session.holesCount;
@@ -564,7 +569,7 @@ export default function GameSessionScreen() {
             </View>
           ) : (
             <>
-              <Text style={styles.head}>{def?.title ?? session.gameType}</Text>
+              <Text style={styles.head}>{session.gameType}</Text>
               <Text style={styles.sub}>
                 Tap a hole to record results ·{" "}
                 {session.status === "active" ? "Active" : session.status}
