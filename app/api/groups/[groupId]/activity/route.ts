@@ -16,7 +16,7 @@ type Ctx = { params: { groupId: string } };
 
 type ActivityItem =
   | { type: "post"; id: string; body: string; imageUrl: string | null; isPinned: boolean; createdAt: string; likeCount: number; commentCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
-  | { type: "round_created"; id: string; roundId: string; courseName: string | null; targetDate: string; createdAt: string; user: { id: string; name: string; avatar: string | null } }
+  | { type: "round_created"; id: string; roundId: string; roundToken: string; courseName: string | null; targetDate: string; createdAt: string; user: { id: string; name: string; avatar: string | null } }
   | { type: "member_joined"; id: string; joinedAt: string; user: { id: string; name: string; avatar: string | null } };
 
 export async function GET(req: Request, { params }: Ctx) {
@@ -112,9 +112,15 @@ export async function GET(req: Request, { params }: Ctx) {
     }
 
     // ── Rounds ───────────────────────────────────────────────────
+    // Only show rounds that were intentionally public to the group feed.
+    // Private/invite-only rounds should not appear as generic group activity.
     const roundWhere = cursorDate
-      ? and(eq(rounds.groupId, groupId), lt(rounds.createdAt, cursorDate))
-      : eq(rounds.groupId, groupId);
+      ? and(
+          eq(rounds.groupId, groupId),
+          eq(rounds.visibility, "public"),
+          lt(rounds.createdAt, cursorDate),
+        )
+      : and(eq(rounds.groupId, groupId), eq(rounds.visibility, "public"));
 
     const roundRows = await db
       .select({
@@ -138,6 +144,7 @@ export async function GET(req: Request, { params }: Ctx) {
         type: "round_created",
         id: `round-${r.id}`,
         roundId: r.id,
+        roundToken: r.inviteToken,
         courseName: r.courseName,
         targetDate: r.targetDate.toISOString(),
         createdAt: r.createdAt.toISOString(),

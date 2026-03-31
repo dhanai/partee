@@ -67,6 +67,7 @@ type ActivityItem = {
   createdAt: string;
   joinedAt?: string;
   roundId?: string;
+  roundToken?: string;
   courseName?: string | null;
   targetDate?: string;
   user: { id: string; name: string; avatar: string | null };
@@ -909,8 +910,9 @@ export default function GroupLandingScreen() {
               <Pressable
                 style={styles.activityRow}
                 onPress={() => {
-                  if (item.roundId) {
-                    router.push(`/round/${item.roundId}`);
+                  const token = item.roundToken?.trim();
+                  if (token) {
+                    router.push(`/round/${token}`);
                   }
                 }}
               >
