@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
 import { deleteGameSession, listMyGameSessions, type GameSessionSummary } from "../../lib/games-api";
 import { getGameDefinitions, getGameDefinition, type GameDefinition } from "../../lib/games-registry";
-import { refreshGameTypes } from "../../lib/game-types-cache";
+import { loadGameTypesFromStorage, refreshGameTypes } from "../../lib/game-types-cache";
 import { subscribeGamesListRefresh } from "../../lib/games-list-refresh";
 import { parfadeGameSessionChannel } from "../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
@@ -28,6 +28,20 @@ function statusLabel(s: GameSessionSummary["status"]) {
   if (s === "active") return "Active";
   if (s === "completed") return "Done";
   return "Abandoned";
+}
+
+/** Avoid re-rendering the grid when API returns the same copy (new array reference every time). */
+function gameGridSignature(defs: GameDefinition[]): string {
+  return defs
+    .filter((g) => g.implemented)
+    .map((g) => `${g.id}\t${g.title}\t${g.subtitle}`)
+    .sort()
+    .join("\n");
+}
+
+function mergeGameDefsIfChanged(prev: GameDefinition[], next: GameDefinition[]): GameDefinition[] {
+  if (gameGridSignature(prev) === gameGridSignature(next)) return prev;
+  return next;
 }
 
 function formatSessionListDate(iso: string): string {
@@ -51,7 +65,8 @@ export default function GamesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listScrollLockedForRowSwipe, setListScrollLockedForRowSwipe] = useState(false);
-  const [gameDefs, setGameDefs] = useState<GameDefinition[]>(() => getGameDefinitions());
+  const [gameDefs, setGameDefs] = useState<GameDefinition[]>([]);
+  const [gameGridReady, setGameGridReady] = useState(false);
 
   const onGameRowSwipeActiveChange = useCallback((active: boolean) => {
     setListScrollLockedForRowSwipe(active);
@@ -108,7 +123,19 @@ export default function GamesScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-      void refreshGameTypes().then(() => setGameDefs(getGameDefinitions()));
+      let cancelled = false;
+      void (async () => {
+        await loadGameTypesFromStorage();
+        if (cancelled) return;
+        setGameDefs(getGameDefinitions());
+        setGameGridReady(true);
+        await refreshGameTypes();
+        if (cancelled) return;
+        setGameDefs((prev) => mergeGameDefsIfChanged(prev, getGameDefinitions()));
+      })();
+      return () => {
+        cancelled = true;
+      };
     }, [load]),
   );
 
@@ -153,7 +180,16 @@ export default function GamesScreen() {
           refreshing={refreshing}
           onRefresh={() => {
             setRefreshing(true);
-            void load();
+            void (async () => {
+              try {
+                await load();
+                await loadGameTypesFromStorage();
+                await refreshGameTypes();
+                setGameDefs((prev) => mergeGameDefsIfChanged(prev, getGameDefinitions()));
+              } finally {
+                setRefreshing(false);
+              }
+            })();
           }}
           tintColor={colors.fairway}
         />
@@ -173,31 +209,35 @@ export default function GamesScreen() {
       ) : null}
 
       <Text style={styles.sectionLabel}>Start a game</Text>
-      <View style={styles.gameGrid}>
-        {gameDefs.filter((g) => g.implemented).map((g) => (
-          <Pressable
-            key={g.id}
-            style={({ pressed }) => [styles.gameCard, pressed && styles.gameCardPressed]}
-            onPress={() => {
-              router.push({
-                pathname: "/games/create",
-                params: {
-                  gameType: g.id,
-                  ...(roundInviteToken
-                    ? { roundInviteToken: String(roundInviteToken) }
-                    : {}),
-                },
-              });
-            }}
-          >
-            <Ionicons name="golf-outline" size={22} color={colors.fairway} />
-            <Text style={styles.gameTitle}>{g.title}</Text>
-            <Text style={styles.gameSub} numberOfLines={2}>
-              {g.subtitle}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {!gameGridReady ? (
+        <ActivityIndicator color={colors.fairway} style={styles.gridLoader} />
+      ) : (
+        <View style={styles.gameGrid}>
+          {gameDefs.filter((g) => g.implemented).map((g) => (
+            <Pressable
+              key={g.id}
+              style={({ pressed }) => [styles.gameCard, pressed && styles.gameCardPressed]}
+              onPress={() => {
+                router.push({
+                  pathname: "/games/create",
+                  params: {
+                    gameType: g.id,
+                    ...(roundInviteToken
+                      ? { roundInviteToken: String(roundInviteToken) }
+                      : {}),
+                  },
+                });
+              }}
+            >
+              <Ionicons name="golf-outline" size={22} color={colors.fairway} />
+              <Text style={styles.gameTitle}>{g.title}</Text>
+              <Text style={styles.gameSub} numberOfLines={2}>
+                {g.subtitle}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       <Text style={styles.sectionLabel}>Your sessions</Text>
       {loading ? (
@@ -285,6 +325,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: 10,
   },
+  gridLoader: { minHeight: 120, marginBottom: 28 },
   gameGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 28 },
   gameCard: {
     width: "47%",

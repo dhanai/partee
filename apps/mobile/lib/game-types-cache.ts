@@ -25,7 +25,8 @@ export type GameTypeConfig = {
   enabled: boolean;
 };
 
-const STORAGE_KEY = "partee:game-types-v1";
+/** Bump when clients must drop persisted copy (e.g. after admin copy changes). */
+const STORAGE_KEY = "partee:game-types-v2";
 
 const HARDCODED_SEED: GameTypeConfig[] = [
   {

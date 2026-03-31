@@ -5,7 +5,7 @@ import { gameTypes } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { isUserAdmin } from "@/lib/require-admin";
 import {
-  getGameTypes,
+  getGameTypesFresh,
   invalidateGameTypesCache,
   toPublicGameType,
 } from "@/lib/game-types-config";
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     if (!isUserAdmin(user))
       return NextResponse.json({ error: "Not authorized." }, { status: 403 });
 
-    const all = await getGameTypes();
+    const all = await getGameTypesFresh();
     return NextResponse.json(all.map((g) => ({ ...toPublicGameType(g), id: g.id })));
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized")

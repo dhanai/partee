@@ -71,8 +71,8 @@ export default function AdminGamesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/admin/game-types");
@@ -82,7 +82,7 @@ export default function AdminGamesPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
@@ -158,9 +158,10 @@ export default function AdminGamesPage() {
         });
         const json = await res.json();
         if (!res.ok) throw new Error((json as { error?: string }).error ?? "Create failed");
-        setRows((prev) => [...prev, json as GameTypeRow]);
         setNote(`"${form.title}" created.`);
         closeForm();
+        // Single list update from server — avoids double setRows + load flicker.
+        await load({ silent: true });
       } else if (editing) {
         const res = await fetch(`/api/admin/game-types/${editing.id}`, {
           method: "PATCH",
@@ -169,11 +170,9 @@ export default function AdminGamesPage() {
         });
         const json = await res.json();
         if (!res.ok) throw new Error((json as { error?: string }).error ?? "Update failed");
-        setRows((prev) =>
-          prev.map((r) => (r.id === editing.id ? (json as GameTypeRow) : r)),
-        );
         setNote(`"${form.title}" updated.`);
         closeForm();
+        await load({ silent: true });
       }
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Save failed");
