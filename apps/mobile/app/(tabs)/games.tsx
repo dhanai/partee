@@ -28,6 +28,9 @@ import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { useSnackbar } from "../../lib/snackbar-context";
 import { colors } from "../../lib/theme";
 
+/** Match the "In play" chip dot color in game session header. */
+const LIVE_ACCENT = "#7dffb1";
+
 function statusLabel(s: GameSessionSummary["status"]) {
   if (s === "active") return "Active";
   if (s === "completed") return "Done";
@@ -273,14 +276,20 @@ export default function GamesScreen() {
                 onPress={openSession}
               >
                 <View style={styles.sessionTextCol}>
-                  <Text style={styles.sessionTitle}>{def?.title ?? s.gameType}</Text>
-                  <Text style={styles.sessionMeta}>
+                  <Text style={[styles.sessionTitle, isLive && styles.sessionTitleLive]}>
+                    {def?.title ?? s.gameType}
+                  </Text>
+                  <Text style={[styles.sessionMeta, isLive && styles.sessionMetaLive]}>
                     {formatSessionListDate(s.startedAt || s.createdAt)} · {s.holesCount} holes ·{" "}
                     {statusLabel(s.status)}
                   </Text>
                 </View>
                 {isLive ? <View style={styles.sessionLiveDot} /> : null}
-                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={isLive ? "rgba(255,255,255,0.85)" : colors.muted}
+                />
               </Pressable>
             </SwipeableMineRoundRow>
             </View>
@@ -345,6 +354,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   sessionRowLive: {
+    backgroundColor: colors.fairway,
     borderColor: colors.fairway,
   },
   sessionRowPressed: { opacity: 0.9 },
@@ -352,10 +362,12 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 99,
-    backgroundColor: colors.fairway,
+    backgroundColor: LIVE_ACCENT,
     marginRight: 8,
   },
   sessionTextCol: { flex: 1, gap: 2 },
   sessionTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+  sessionTitleLive: { color: "#fff" },
   sessionMeta: { fontSize: 13, color: colors.muted },
+  sessionMetaLive: { color: "rgba(255,255,255,0.82)" },
 });
