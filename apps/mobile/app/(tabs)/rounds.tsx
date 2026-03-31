@@ -42,10 +42,11 @@ import { parseParfadeRealtimeMessage } from "../../lib/parfade-ably-messages";
 import { colors } from "../../lib/theme";
 import { MineRound } from "../../types/round";
 
-type MineTab = "hosting" | "joined" | "invited";
+type MineTab = "rounds" | "invites";
+type ApiMineTab = "hosting" | "joined" | "invited";
 
 type MineTabResponse = {
-  tab: MineTab;
+  tab: ApiMineTab;
   rounds: MineRound[];
   nextCursor: string | null;
   hasMore: boolean;
@@ -126,28 +127,24 @@ export default function MyRoundsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<MineTab>("hosting");
-  const activeTabRef = useRef<MineTab>("hosting");
+  const [activeTab, setActiveTab] = useState<MineTab>("rounds");
+  const activeTabRef = useRef<MineTab>("rounds");
   const lastHandledRefreshRef = useRef<string | null>(null);
   const [tabMetrics, setTabMetrics] = useState<{
-    hosting: { x: number; width: number } | null;
-    joined: { x: number; width: number } | null;
-    invited: { x: number; width: number } | null;
+    rounds: { x: number; width: number } | null;
+    invites: { x: number; width: number } | null;
   }>({
-    hosting: null,
-    joined: null,
-    invited: null,
+    rounds: null,
+    invites: null,
   });
-  const tabLoadedRef = useRef<{ hosting: boolean; joined: boolean; invited: boolean }>({
-    hosting: false,
-    joined: false,
-    invited: false,
+  const tabLoadedRef = useRef<{ rounds: boolean; invites: boolean }>({
+    rounds: false,
+    invites: false,
   });
   /** Ignore stale `finally` from overlapping fetches for the same tab (focus + subscription + tab effect). */
   const fetchSeqRef = useRef<Record<MineTab, number>>({
-    hosting: 0,
-    joined: 0,
-    invited: 0,
+    rounds: 0,
+    invites: 0,
   });
   const underlineX = useRef(new Animated.Value(0)).current;
   const underlineW = useRef(new Animated.Value(0)).current;
@@ -168,12 +165,6 @@ export default function MyRoundsScreen() {
   const onRowSwipeActiveChange = useCallback((active: boolean) => {
     setListScrollLockedForRowSwipe(active);
   }, []);
-
-  useEffect(() => {
-    if (activeTab !== "hosting" && activeTab !== "invited") {
-      setListScrollLockedForRowSwipe(false);
-    }
-  }, [activeTab]);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -261,21 +252,19 @@ export default function MyRoundsScreen() {
 
       lastHandledRefreshRef.current = refreshParam;
       const requestedTab: MineTab =
-        tabParam === "invited" ? "invited" : tabParam === "joined" ? "joined" : "hosting";
+        tabParam === "invited" || tabParam === "invites" ? "invites" : "rounds";
       setActiveTab(requestedTab);
 
-      if (requestedTab === "hosting") {
+      if (requestedTab === "rounds") {
         setHostingCursor(null);
         setHostingHasMore(true);
-        tabLoadedRef.current.hosting = false;
-      } else if (requestedTab === "joined") {
         setJoinedCursor(null);
         setJoinedHasMore(true);
-        tabLoadedRef.current.joined = false;
+        tabLoadedRef.current.rounds = false;
       } else {
         setInvitedCursor(null);
         setInvitedHasMore(true);
-        tabLoadedRef.current.invited = false;
+        tabLoadedRef.current.invites = false;
       }
 
       void loadTabRoundsRef.current(requestedTab, { reset: true });
@@ -323,12 +312,10 @@ export default function MyRoundsScreen() {
     async (tab: MineTab, options?: { reset?: boolean; silent?: boolean }) => {
       const reset = options?.reset ?? false;
       const silent = options?.silent ?? false;
-      const cursor =
-        tab === "hosting" ? hostingCursor : tab === "joined" ? joinedCursor : invitedCursor;
       const hasMore =
-        tab === "hosting" ? hostingHasMore : tab === "joined" ? joinedHasMore : invitedHasMore;
+        tab === "rounds" ? hostingHasMore || joinedHasMore : invitedHasMore;
       const existingCount =
-        tab === "hosting" ? hosting.length : tab === "joined" ? joined.length : invited.length;
+        tab === "rounds" ? hosting.length + joined.length : invited.length;
       if (!reset && (!hasMore || loadingMore)) return;
       fetchSeqRef.current[tab] += 1;
       const seq = fetchSeqRef.current[tab];
@@ -343,22 +330,52 @@ export default function MyRoundsScreen() {
           setLoadingMore(true);
         }
         const authToken = await getTokenRef.current();
-        const params = new URLSearchParams();
-        params.set("tab", tab);
-        params.set("limit", "20");
-        if (!reset && cursor) params.set("cursor", cursor);
-        const data = await apiGet<MineTabResponse>(`/api/rounds/mine?${params.toString()}`, authToken);
-        if (tab === "hosting") {
-          setHosting((prev) => (reset ? data.rounds : appendUniqueMineRounds(prev, data.rounds)));
-          setHostingCursor(data.nextCursor);
-          setHostingHasMore(data.hasMore);
-          if (reset) tabLoadedRef.current.hosting = true;
-        } else if (tab === "joined") {
-          setJoined((prev) => (reset ? data.rounds : appendUniqueMineRounds(prev, data.rounds)));
-          setJoinedCursor(data.nextCursor);
-          setJoinedHasMore(data.hasMore);
-          if (reset) tabLoadedRef.current.joined = true;
+        if (tab === "rounds") {
+          const requests: Array<Promise<{ apiTab: ApiMineTab; data: MineTabResponse }>> = [];
+          if (reset || hostingHasMore) {
+            const p = new URLSearchParams();
+            p.set("tab", "hosting");
+            p.set("limit", "20");
+            if (!reset && hostingCursor) p.set("cursor", hostingCursor);
+            requests.push(
+              apiGet<MineTabResponse>(`/api/rounds/mine?${p.toString()}`, authToken).then((data) => ({
+                apiTab: "hosting",
+                data,
+              })),
+            );
+          }
+          if (reset || joinedHasMore) {
+            const p = new URLSearchParams();
+            p.set("tab", "joined");
+            p.set("limit", "20");
+            if (!reset && joinedCursor) p.set("cursor", joinedCursor);
+            requests.push(
+              apiGet<MineTabResponse>(`/api/rounds/mine?${p.toString()}`, authToken).then((data) => ({
+                apiTab: "joined",
+                data,
+              })),
+            );
+          }
+
+          const results = await Promise.all(requests);
+          for (const { apiTab, data } of results) {
+            if (apiTab === "hosting") {
+              setHosting((prev) => (reset ? data.rounds : appendUniqueMineRounds(prev, data.rounds)));
+              setHostingCursor(data.nextCursor);
+              setHostingHasMore(data.hasMore);
+            } else {
+              setJoined((prev) => (reset ? data.rounds : appendUniqueMineRounds(prev, data.rounds)));
+              setJoinedCursor(data.nextCursor);
+              setJoinedHasMore(data.hasMore);
+            }
+          }
+          if (reset) tabLoadedRef.current.rounds = true;
         } else {
+          const params = new URLSearchParams();
+          params.set("tab", "invited");
+          params.set("limit", "20");
+          if (!reset && invitedCursor) params.set("cursor", invitedCursor);
+          const data = await apiGet<MineTabResponse>(`/api/rounds/mine?${params.toString()}`, authToken);
           setInvited((prev) => {
             if (!reset) {
               return appendUniqueMineRounds(prev, data.rounds);
@@ -373,7 +390,7 @@ export default function MyRoundsScreen() {
           });
           setInvitedCursor(data.nextCursor);
           setInvitedHasMore(data.hasMore);
-          if (reset) tabLoadedRef.current.invited = true;
+          if (reset) tabLoadedRef.current.invites = true;
         }
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : "Unable to load rounds.");
@@ -408,7 +425,7 @@ export default function MyRoundsScreen() {
   }, [loadTabRounds]);
 
   useEffect(() => {
-    void loadTabRoundsRef.current("hosting", { reset: true });
+    void loadTabRoundsRef.current("rounds", { reset: true });
   }, []);
 
   useEffect(() => {
@@ -421,11 +438,7 @@ export default function MyRoundsScreen() {
 
   useEffect(() => {
     const listLen =
-      activeTab === "hosting"
-        ? hosting.length
-        : activeTab === "joined"
-          ? joined.length
-          : invited.length;
+      activeTab === "rounds" ? hosting.length + joined.length : invited.length;
     const alreadyLoaded = tabLoadedRef.current[activeTab];
     if (!alreadyLoaded && listLen === 0 && !loading && !loadingMore) {
       void loadTabRoundsRef.current(activeTab, { reset: true });
@@ -530,64 +543,49 @@ export default function MyRoundsScreen() {
     return "You declined this invite.";
   }
 
-  const activeRounds =
-    activeTab === "hosting" ? hosting : activeTab === "joined" ? joined : invited;
+  const mergedRounds = useMemo(
+    () => dedupeMineRoundsById([...hosting, ...joined]).sort(sortMineByDate),
+    [hosting, joined],
+  );
+  const hostedRoundIds = useMemo(() => new Set(hosting.map((r) => r.id)), [hosting]);
+  const activeRounds = activeTab === "rounds" ? mergedRounds : invited;
   /** Avoid empty-state flash when switching tabs before global `loading` flips true. */
   const tabHasLoadedOnce = tabLoadedRef.current[activeTab];
   const showEmptyListLoader =
     activeRounds.length === 0 && (loading || refreshing || !tabHasLoadedOnce);
-  const emptyTitle =
-    activeTab === "hosting"
-      ? "No hosted rounds yet"
-      : activeTab === "joined"
-        ? "No joined rounds yet"
-        : "No invites right now";
+  const emptyTitle = activeTab === "rounds" ? "No rounds yet" : "No invites right now";
   const emptyMessage =
-    activeTab === "hosting"
-      ? "Create your first round and invite friends to get a game going."
-      : activeTab === "joined"
-        ? "Claim a spot from Discover and your joined rounds will show up here."
-        : "Invites show here until you respond. Declined rounds stay listed so you can open them again.";
+    activeTab === "rounds"
+      ? "Rounds you host and rounds you've joined show up here."
+      : "Invites show here until you respond. Declined rounds stay listed so you can open them again.";
   const listHeader = (
     <>
       <Text style={styles.heading}>My rounds</Text>
-      <Text style={styles.subheading}>Hosting, invites, and rounds you&apos;ve joined.</Text>
+      <Text style={styles.subheading}>Your hosted rounds, joined rounds, and invites.</Text>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <View style={styles.tabsRow}>
         <Pressable
           style={styles.tabLink}
           onLayout={(event) => {
             const { x, width } = event.nativeEvent.layout;
-            setTabMetrics((prev) => ({ ...prev, hosting: { x, width } }));
+            setTabMetrics((prev) => ({ ...prev, rounds: { x, width } }));
           }}
-          onPress={() => setActiveTab("hosting")}
+          onPress={() => setActiveTab("rounds")}
         >
-          <Text style={[styles.tabText, activeTab === "hosting" && styles.tabTextActive]}>
-            Hosting
+          <Text style={[styles.tabText, activeTab === "rounds" && styles.tabTextActive]}>
+            Rounds
           </Text>
         </Pressable>
         <Pressable
           style={styles.tabLink}
           onLayout={(event) => {
             const { x, width } = event.nativeEvent.layout;
-            setTabMetrics((prev) => ({ ...prev, joined: { x, width } }));
+            setTabMetrics((prev) => ({ ...prev, invites: { x, width } }));
           }}
-          onPress={() => setActiveTab("joined")}
+          onPress={() => setActiveTab("invites")}
         >
-          <Text style={[styles.tabText, activeTab === "joined" && styles.tabTextActive]}>
-            Joined
-          </Text>
-        </Pressable>
-        <Pressable
-          style={styles.tabLink}
-          onLayout={(event) => {
-            const { x, width } = event.nativeEvent.layout;
-            setTabMetrics((prev) => ({ ...prev, invited: { x, width } }));
-          }}
-          onPress={() => setActiveTab("invited")}
-        >
-          <Text style={[styles.tabText, activeTab === "invited" && styles.tabTextActive]}>
-            Invited
+          <Text style={[styles.tabText, activeTab === "invites" && styles.tabTextActive]}>
+            Invites
           </Text>
         </Pressable>
         <Animated.View
@@ -624,11 +622,9 @@ export default function MyRoundsScreen() {
               <View style={styles.emptyIconWrap}>
                 <Ionicons
                   name={
-                    activeTab === "hosting"
+                    activeTab === "rounds"
                       ? "flag-outline"
-                      : activeTab === "joined"
-                        ? "people-outline"
-                        : "mail-outline"
+                      : "mail-outline"
                   }
                   size={18}
                   color={colors.fairway}
@@ -640,7 +636,7 @@ export default function MyRoundsScreen() {
                 style={styles.emptyCta}
                 onPress={() =>
                   router.push(
-                    activeTab === "hosting"
+                    activeTab === "rounds"
                       ? {
                           pathname: "/(tabs)/create",
                           params: { mode: "scheduled", session: String(Date.now()) },
@@ -650,7 +646,7 @@ export default function MyRoundsScreen() {
                 }
               >
                 <Text style={styles.emptyCtaText}>
-                  {activeTab === "hosting" ? "Create a round" : "Browse Discover"}
+                  {activeTab === "rounds" ? "Create a round" : "Browse Discover"}
                 </Text>
               </Pressable>
             </View>
@@ -668,27 +664,24 @@ export default function MyRoundsScreen() {
         refreshing={refreshing}
         onRefresh={() => {
           setRefreshing(true);
-          if (activeTab === "hosting") {
+          if (activeTab === "rounds") {
             setHostingCursor(null);
             setHostingHasMore(true);
-            tabLoadedRef.current.hosting = false;
-          } else if (activeTab === "joined") {
             setJoinedCursor(null);
             setJoinedHasMore(true);
-            tabLoadedRef.current.joined = false;
+            tabLoadedRef.current.rounds = false;
           } else {
             setInvitedCursor(null);
             setInvitedHasMore(true);
-            tabLoadedRef.current.invited = false;
+            tabLoadedRef.current.invites = false;
           }
           void loadTabRounds(activeTab, { reset: true });
         }}
         onEndReachedThreshold={0.35}
         onEndReached={() => {
           if (loading || refreshing || loadingMore) return;
-          if (activeTab === "hosting" && !hostingHasMore) return;
-          if (activeTab === "joined" && !joinedHasMore) return;
-          if (activeTab === "invited" && !invitedHasMore) return;
+          if (activeTab === "rounds" && !hostingHasMore && !joinedHasMore) return;
+          if (activeTab === "invites" && !invitedHasMore) return;
           void loadTabRounds(activeTab, { reset: false });
         }}
         renderItem={({ item: round }) => {
@@ -697,16 +690,17 @@ export default function MyRoundsScreen() {
             optimisticInviteOutcome ??
             (round.spotStatus === "declined" ? "declined" : undefined);
           const rowBusy = inviteActionRoundId === round.id;
+          const isHostedRow = hostedRoundIds.has(round.id);
           const swipeVariant: "host" | "invite" | "none" =
-            activeTab === "hosting"
+            activeTab === "rounds" && isHostedRow
               ? "host"
-              : activeTab === "invited" && !effectiveInviteOutcome
+              : activeTab === "invites" && !effectiveInviteOutcome
                 ? "invite"
                 : "none";
           const swipeEnabled =
-            activeTab === "hosting"
+            activeTab === "rounds" && isHostedRow
               ? !hostActionRoundId
-              : activeTab === "invited"
+              : activeTab === "invites"
                 ? !effectiveInviteOutcome && !inviteActionRoundId
                 : false;
           const effectiveIso = round.teeTime ?? round.targetDate;
@@ -783,12 +777,12 @@ export default function MyRoundsScreen() {
                   prefetchPublicProfile(player.id, () => getTokenRef.current())
                 }
                 trailingAfterSpots={
-                  activeTab === "joined" && round.spotStatus === "requested" ? (
+                  activeTab === "rounds" && round.spotStatus === "requested" ? (
                     <Text style={styles.badgeMutedSub}>Pending</Text>
                   ) : undefined
                 }
                 footer={
-                  activeTab === "invited" ? (
+                  activeTab === "invites" ? (
                     <View style={styles.inviteFooter}>
                       {effectiveInviteOutcome ? (
                         <Text
