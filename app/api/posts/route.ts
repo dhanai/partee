@@ -17,7 +17,7 @@ const createSchema = z.object({
 
 export async function GET(req: Request) {
   try {
-    await requireDbUser(req);
+    const viewer = await requireDbUser(req);
     const url = new URL(req.url);
     const groupId = url.searchParams.get("groupId");
     const userId = url.searchParams.get("userId");
