@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
@@ -34,7 +34,8 @@ import {
   resolveTournamentTitle,
 } from "../../lib/round-card-meta";
 import { buildRoundListHint, prefetchRoundOpen } from "../../lib/round-details-cache";
-import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
+import { getCachedMeProfile, isMeProfileStale, setCachedMeProfile } from "../../lib/me-profile-cache";
+import { subscribeProfileActivityEvents } from "../../lib/profile-activity-events";
 import { colors } from "../../lib/theme";
 import type { MineRound } from "../../types/round";
 
@@ -119,6 +120,7 @@ function toMineRoundForHint(r: ProfileRound): MineRound {
 
 const AVATAR_RADIUS = 28;
 const COMMENT_SNAP_POINTS = ["55%"] as const;
+let savedSelfProfileScrollY = 0;
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
@@ -146,6 +148,8 @@ export default function ProfileScreen() {
   const [loadingComments, setLoadingComments] = useState(false);
   const [postingComment, setPostingComment] = useState(false);
   const [overflowPost, setOverflowPost] = useState<ProfilePost | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const restoredScrollRef = useRef(false);
 
   const avatarSize = Math.round(Math.min(windowWidth - 48, 340) * 0.75);
 
@@ -261,24 +265,41 @@ export default function ProfileScreen() {
     await Promise.all([loadProfileRounds(targetUserId), loadProfilePosts(targetUserId)]);
   }
 
-  useFocusEffect(
-    useCallback(() => {
-      const cached = getCachedMeProfile();
-      if (cached) {
-        setName(cached.name ?? "");
-        setHandicap(cached.handicap ?? "");
-        setLocation(cached.location ?? cached.homeCourse ?? "");
-        setAvatar(cached.avatar ?? null);
-        setMyUserId(cached.id);
-        setFollowersCount(cached.followersCount ?? 0);
-        setFollowingCount(cached.followingCount ?? 0);
-        setLoading(false);
-      } else {
-        setLoading(true);
-      }
-      void loadProfile({ silent: Boolean(cached) });
-    }, []),
-  );
+  useEffect(() => {
+    const cached = getCachedMeProfile();
+    if (cached) {
+      setName(cached.name ?? "");
+      setHandicap(cached.handicap ?? "");
+      setLocation(cached.location ?? cached.homeCourse ?? "");
+      setAvatar(cached.avatar ?? null);
+      setMyUserId(cached.id);
+      setFollowersCount(cached.followersCount ?? 0);
+      setFollowingCount(cached.followingCount ?? 0);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    void loadProfile({ silent: Boolean(cached) && !isMeProfileStale() });
+  }, []);
+
+  useEffect(() => {
+    return subscribeProfileActivityEvents((event) => {
+      if (event.userId && event.userId !== myUserId) return;
+      if (!myUserId) return;
+      void (async () => {
+        try {
+          const token = await getTokenRef.current();
+          const data = await apiGet<{ posts: ProfilePost[] }>(
+            `/api/posts?userId=${encodeURIComponent(myUserId)}&limit=20`,
+            token,
+          );
+          setPosts(data.posts ?? []);
+        } catch {
+          // best effort
+        }
+      })();
+    });
+  }, [myUserId]);
 
   const handicapDisplay = handicap.trim();
   const locationDisplay = location.trim();
@@ -442,7 +463,26 @@ export default function ProfileScreen() {
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          savedSelfProfileScrollY = event.nativeEvent.contentOffset.y;
+        }}
+        onContentSizeChange={() => {
+          if (restoredScrollRef.current) return;
+          if (savedSelfProfileScrollY <= 0) {
+            restoredScrollRef.current = true;
+            return;
+          }
+          requestAnimationFrame(() => {
+            scrollRef.current?.scrollTo({ y: savedSelfProfileScrollY, animated: false });
+            restoredScrollRef.current = true;
+          });
+        }}
+      >
         {loading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.fairway} />
@@ -716,7 +756,7 @@ export default function ProfileScreen() {
           {
             key: "pin",
             label: overflowPost.isPinned ? "Unpin post" : "Pin to top",
-            icon: (overflowPost.isPinned ? "pin-outline" : "pin") as const,
+            icon: overflowPost.isPinned ? "pin-outline" : "pin",
             onPress: () => void handleTogglePin(overflowPost),
           },
           {

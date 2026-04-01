@@ -16,6 +16,8 @@ import { Image } from "expo-image";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiPatch, apiPost } from "../../lib/api";
+import { getCachedMeProfile } from "../../lib/me-profile-cache";
+import { emitProfileActivityEvent } from "../../lib/profile-activity-events";
 import { uploadImage, POST_MAX_BYTES } from "../../lib/upload-image";
 import { colors } from "../../lib/theme";
 
@@ -89,15 +91,18 @@ export default function ProfilePostScreen() {
         imageUrl = undefined;
       }
 
+      let changedUserId: string | null | undefined = getCachedMeProfile()?.id ?? null;
       if (isEditing && editId) {
         await apiPatch(`/api/posts/${editId}`, { body: trimmed, imageUrl }, token);
       } else {
-        await apiPost(
+        const result = await apiPost<{ post?: { user?: { id?: string } } }>(
           "/api/posts",
           { body: trimmed, imageUrl, scope: "profile" },
           token,
         );
+        changedUserId = result.post?.user?.id ?? changedUserId;
       }
+      emitProfileActivityEvent({ userId: changedUserId });
       router.back();
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Could not post.");

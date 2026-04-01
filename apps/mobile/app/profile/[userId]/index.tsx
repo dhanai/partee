@@ -47,6 +47,7 @@ import {
   PublicProfile,
   setCachedPublicProfile,
 } from "../../../lib/public-profile-cache";
+import { subscribeProfileActivityEvents } from "../../../lib/profile-activity-events";
 import { colors } from "../../../lib/theme";
 import type { MineRound } from "../../../types/round";
 
@@ -97,6 +98,7 @@ type ProfileComment = {
 };
 
 const COMMENT_SNAP_POINTS = ["55%"] as const;
+const savedPublicProfileScrollY = new Map<string, number>();
 
 function toMineRoundForHint(r: ProfileRound): MineRound {
   return {
@@ -205,6 +207,8 @@ export default function PublicProfileScreen() {
   const [reportOpen, setReportOpen] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [dmBusy, setDmBusy] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const restoredScrollRef = useRef(false);
 
   const [prevUserId, setPrevUserId] = useState(userId);
   if (userId !== prevUserId) {
@@ -215,6 +219,7 @@ export default function PublicProfileScreen() {
     setRounds([]);
     setPosts([]);
     setError(null);
+    restoredScrollRef.current = false;
   }
 
   const avatarSize = Math.round(Math.min(windowWidth - 48, 340) * 0.75);
@@ -238,7 +243,7 @@ export default function PublicProfileScreen() {
       setProfile(json);
       const [roundsData, postsData] = await Promise.all([
         apiGet<ProfileRoundsResponse>(`/api/users/${encodeURIComponent(userId)}/open-rounds`, token)
-          .catch(() => ({ hosting: [], joined: [] })),
+          .catch(() => ({ rounds: [], hosting: [], joined: [] })),
         apiGet<{ posts: ProfilePost[] }>(
           `/api/posts?userId=${encodeURIComponent(userId)}&limit=20`,
           token,
@@ -281,6 +286,25 @@ export default function PublicProfileScreen() {
     const hasBootstrap = Boolean(computeBootstrapProfile(userId, userName, userAvatar));
     void loadProfile({ silent: hasBootstrap });
   }, [userId, userName, userAvatar, loadProfile]);
+
+  useEffect(() => {
+    return subscribeProfileActivityEvents((event) => {
+      if (!profile?.user.id) return;
+      if (event.userId && event.userId !== profile.user.id) return;
+      void (async () => {
+        try {
+          const token = await getTokenRef.current();
+          const data = await apiGet<{ posts: ProfilePost[] }>(
+            `/api/posts?userId=${encodeURIComponent(profile.user.id)}&limit=20`,
+            token,
+          );
+          setPosts(data.posts ?? []);
+        } catch {
+          // best effort
+        }
+      })();
+    });
+  }, [profile?.user.id]);
 
   const openOrCreateDm = useCallback(async () => {
     if (!userId || dmBusy) return;
@@ -580,9 +604,27 @@ export default function PublicProfileScreen() {
       {ablyChatMounted && userId ? (
         <ParfadeProfileLiveRefresh profileUserId={userId} onProfileMaybeUpdated={onRemoteProfileUpdate} />
       ) : null}
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
+    <ScrollView
+      ref={scrollRef}
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      scrollEventThrottle={16}
+      onScroll={(event) => {
+        if (!userId) return;
+        savedPublicProfileScrollY.set(userId, event.nativeEvent.contentOffset.y);
+      }}
+      onContentSizeChange={() => {
+        if (!userId || restoredScrollRef.current) return;
+        const savedY = savedPublicProfileScrollY.get(userId) ?? 0;
+        if (savedY <= 0) {
+          restoredScrollRef.current = true;
+          return;
+        }
+        requestAnimationFrame(() => {
+          scrollRef.current?.scrollTo({ y: savedY, animated: false });
+          restoredScrollRef.current = true;
+        });
+      }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -953,7 +995,7 @@ export default function PublicProfileScreen() {
         {
           key: "pin",
           label: overflowPost.isPinned ? "Unpin post" : "Pin to top",
-          icon: (overflowPost.isPinned ? "pin-outline" : "pin") as const,
+          icon: overflowPost.isPinned ? "pin-outline" : "pin",
           onPress: () => void handleTogglePin(overflowPost),
         },
         {
@@ -988,7 +1030,7 @@ export default function PublicProfileScreen() {
         {
           key: "block",
           label: `${blocked ? "Unblock" : "Block"} ${profile?.user.name?.split(" ")[0] ?? "user"}`,
-          icon: (blocked ? "person-add-outline" : "ban-outline") as const,
+          icon: blocked ? "person-add-outline" : "ban-outline",
           destructive: !blocked,
           onPress: () => {
             const name = profile?.user.name?.split(" ")[0] ?? "this user";
