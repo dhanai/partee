@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import {
   conversations,
+  groupJoinRequests,
   groupMembers,
   groups,
 } from "@/db/schema";
@@ -35,6 +36,18 @@ export async function GET(req: Request, { params }: Ctx) {
       )
       .limit(1);
 
+    const [pendingJoinRequest] = await db
+      .select({ id: groupJoinRequests.id })
+      .from(groupJoinRequests)
+      .where(
+        and(
+          eq(groupJoinRequests.groupId, groupId),
+          eq(groupJoinRequests.userId, viewer.id),
+          eq(groupJoinRequests.status, "pending"),
+        ),
+      )
+      .limit(1);
+
     const [{ memberCount }] = await db
       .select({ memberCount: count() })
       .from(groupMembers)
@@ -60,6 +73,7 @@ export async function GET(req: Request, { params }: Ctx) {
         createdAt: group.createdAt.toISOString(),
         memberCount: Number(memberCount),
         myRole: membership?.role ?? null,
+        myJoinRequestPending: Boolean(pendingJoinRequest),
         myMuteGroupPush: membership?.muteGroupPush ?? false,
         conversationId: conv?.id ?? null,
       },

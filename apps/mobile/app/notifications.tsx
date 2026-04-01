@@ -47,6 +47,7 @@ type ActivityNotificationItem = {
   actorUserId: string;
   actorName: string;
   actorAvatar: string | null;
+  viewerFollowsActor?: boolean;
   stillPending: boolean;
   joinRequestId: string | null;
   createdAt: string;
@@ -95,6 +96,7 @@ export default function NotificationsScreen() {
   const [groupRequestBusyId, setGroupRequestBusyId] = useState<string | null>(null);
   const [followBackBusyId, setFollowBackBusyId] = useState<string | null>(null);
   const [followedBackUserIds, setFollowedBackUserIds] = useState<Set<string>>(new Set());
+  const [pendingFollowBackUserIds, setPendingFollowBackUserIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -222,18 +224,40 @@ export default function NotificationsScreen() {
 
   const handleFollowBack = useCallback(async (actorUserId: string) => {
     const userId = actorUserId.trim();
-    if (!userId || followBackBusyId === userId || followedBackUserIds.has(userId)) return;
+    if (
+      !userId ||
+      followBackBusyId === userId ||
+      followedBackUserIds.has(userId) ||
+      pendingFollowBackUserIds.has(userId)
+    ) {
+      return;
+    }
     setFollowBackBusyId(userId);
     try {
       const authToken = await getTokenRef.current();
-      await apiPost(`/api/users/${encodeURIComponent(userId)}/follow`, {}, authToken);
-      setFollowedBackUserIds((prev) => new Set(prev).add(userId));
+      const data = await apiPost<{ status?: "accepted" | "requested" }>(
+        `/api/users/${encodeURIComponent(userId)}/follow`,
+        {},
+        authToken,
+      );
+      if (data.status === "requested") {
+        setPendingFollowBackUserIds((prev) => new Set(prev).add(userId));
+      } else {
+        setFollowedBackUserIds((prev) => new Set(prev).add(userId));
+      }
+      setActivityItems((prev) =>
+        prev.map((item) =>
+          item.actorUserId === userId
+            ? { ...item, viewerFollowsActor: data.status === "accepted" }
+            : item,
+        ),
+      );
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Unable to follow back.");
     } finally {
       setFollowBackBusyId(null);
     }
-  }, [followBackBusyId, followedBackUserIds]);
+  }, [followBackBusyId, followedBackUserIds, pendingFollowBackUserIds]);
 
   type FeedRow =
     | {
@@ -408,7 +432,12 @@ export default function NotificationsScreen() {
     (item: ActivityNotificationItem) => {
       if (item.type === "new_follower") {
         const followBackId = item.actorUserId?.trim() ?? "";
-        const followedBack = followBackId.length > 0 && followedBackUserIds.has(followBackId);
+        const isFollowing =
+          followBackId.length > 0 &&
+          (Boolean(item.viewerFollowsActor) || followedBackUserIds.has(followBackId));
+        const isRequested =
+          followBackId.length > 0 && pendingFollowBackUserIds.has(followBackId);
+        const buttonDone = isFollowing || isRequested;
         const isBusy = followBackId.length > 0 && followBackBusyId === followBackId;
         const timeLabel = formatNotificationTime(item.createdAt);
         return (
@@ -445,17 +474,17 @@ export default function NotificationsScreen() {
               <Pressable
                 style={[
                   styles.followBackBtn,
-                  followedBack && styles.followBackBtnDone,
-                  (isBusy || followedBack) && styles.disabledBtn,
+                  buttonDone && styles.followBackBtnDone,
+                  (isBusy || buttonDone) && styles.disabledBtn,
                 ]}
                 onPress={() => void handleFollowBack(followBackId)}
-                disabled={isBusy || followedBack || followBackId.length === 0}
+                disabled={isBusy || buttonDone || followBackId.length === 0}
               >
                 {isBusy ? (
                   <ActivityIndicator size="small" color={colors.fairway} />
                 ) : (
-                  <Text style={[styles.followBackBtnText, followedBack && styles.followBackBtnTextDone]}>
-                    {followedBack ? "Following" : "Follow back"}
+                  <Text style={[styles.followBackBtnText, buttonDone && styles.followBackBtnTextDone]}>
+                    {isFollowing ? "Following" : isRequested ? "Requested" : "Follow back"}
                   </Text>
                 )}
               </Pressable>
@@ -667,6 +696,7 @@ export default function NotificationsScreen() {
     [
       followBackBusyId,
       followedBackUserIds,
+      pendingFollowBackUserIds,
       groupRequestBusyId,
       handleGroupRequestAction,
       handleFollowBack,

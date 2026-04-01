@@ -49,17 +49,36 @@ export async function POST(req: Request, { params }: Ctx) {
     }
 
     if (group.joinPolicy === "approval") {
-      await db
-        .insert(groupJoinRequests)
-        .values({ groupId, userId: viewer.id, status: "pending" })
-        .onConflictDoNothing();
+      const [existingRequest] = await db
+        .select({ id: groupJoinRequests.id, status: groupJoinRequests.status })
+        .from(groupJoinRequests)
+        .where(
+          and(
+            eq(groupJoinRequests.groupId, groupId),
+            eq(groupJoinRequests.userId, viewer.id),
+          ),
+        )
+        .limit(1);
 
-      await notifyGroupJoinRequest({
-        groupId,
-        groupName: group.name,
-        requesterId: viewer.id,
-        requesterName: viewer.name,
-      }).catch((e) => console.error("[join] notifyGroupJoinRequest", e));
+      if (!existingRequest) {
+        await db
+          .insert(groupJoinRequests)
+          .values({ groupId, userId: viewer.id, status: "pending" });
+      } else if (existingRequest.status !== "pending") {
+        await db
+          .update(groupJoinRequests)
+          .set({ status: "pending", createdAt: new Date() })
+          .where(eq(groupJoinRequests.id, existingRequest.id));
+      }
+
+      if (!existingRequest || existingRequest.status !== "pending") {
+        await notifyGroupJoinRequest({
+          groupId,
+          groupName: group.name,
+          requesterId: viewer.id,
+          requesterName: viewer.name,
+        }).catch((e) => console.error("[join] notifyGroupJoinRequest", e));
+      }
 
       return NextResponse.json({ status: "requested" });
     }

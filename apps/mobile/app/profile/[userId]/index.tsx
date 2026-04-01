@@ -524,7 +524,36 @@ export default function PublicProfileScreen() {
       if (shouldDelete) {
         await apiDelete(`/api/users/${userId}/follow`, token);
       } else {
-        await apiPost(`/api/users/${userId}/follow`, {}, token);
+        const data = await apiPost<{ status?: "requested" | "accepted" }>(
+          `/api/users/${userId}/follow`,
+          {},
+          token,
+        );
+        const serverStatus = data.status;
+        if (serverStatus === "requested" || serverStatus === "accepted") {
+          const base = prevProfile.user;
+          const nextFollowersCount =
+            serverStatus === "accepted" ? base.followersCount + 1 : base.followersCount;
+          const nextRelationship: PublicProfile["user"]["relationship"] =
+            serverStatus === "requested"
+              ? "requested_by_viewer"
+              : base.relationship === "followed_by"
+                ? "mutual"
+                : "following";
+          setProfile((current) => {
+            if (!current) return current;
+            const reconciled = {
+              ...current,
+              user: {
+                ...current.user,
+                relationship: nextRelationship,
+                followersCount: nextFollowersCount,
+              },
+            };
+            setCachedPublicProfile(reconciled);
+            return reconciled;
+          });
+        }
       }
     } catch (followError) {
       setProfile(prevProfile);

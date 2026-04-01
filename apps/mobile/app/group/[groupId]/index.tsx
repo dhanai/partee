@@ -8,13 +8,11 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Keyboard,
   Pressable,
   RefreshControl,
   Share,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { Image } from "expo-image";
@@ -52,6 +50,7 @@ type GroupDetail = {
   createdBy: string;
   memberCount: number;
   myRole: "owner" | "admin" | "member" | null;
+  myJoinRequestPending?: boolean;
   myMuteGroupPush?: boolean;
   conversationId: string | null;
 };
@@ -86,7 +85,17 @@ type CommentItem = {
   id: string;
   body: string;
   createdAt: string;
+  parentCommentId?: string | null;
+  replyToCommentId?: string | null;
+  likeCount?: number;
+  viewerLiked?: boolean;
   user: { id: string; name: string; avatar: string | null };
+};
+
+type ReplyTarget = {
+  commentId: string;
+  parentCommentId: string;
+  userName: string;
 };
 
 const COMMENT_SNAP_POINTS = ["55%"] as const;
@@ -115,6 +124,7 @@ function computeBootstrapGroup(
     createdBy: "",
     memberCount,
     myRole: (role as GroupDetail["myRole"]) ?? null,
+    myJoinRequestPending: false,
     myMuteGroupPush: false,
     conversationId: null,
   };
@@ -172,16 +182,15 @@ export default function GroupLandingScreen() {
   const { show: showSnackbar } = useSnackbar();
   const [overflowItem, setOverflowItem] = useState<ActivityItem | null>(null);
   const [reportItem, setReportItem] = useState<ActivityItem | null>(null);
-  const [reportComment, setReportComment] = useState<CommentItem | null>(null);
   const [groupOverflowOpen, setGroupOverflowOpen] = useState(false);
 
   // Comments bottom sheet
   const [commentSheetItem, setCommentSheetItem] = useState<ActivityItem | null>(null);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [loadingComments, setLoadingComments] = useState(false);
   const [postingComment, setPostingComment] = useState(false);
-  const commentInputRef = useRef<TextInput>(null) as React.RefObject<any>;
 
   // Reactive profile for composer + permission checks
   const [meAvatar, setMeAvatar] = useState<string | null>(getCachedMeProfile()?.avatar ?? null);
@@ -315,6 +324,25 @@ export default function GroupLandingScreen() {
     [activity],
   );
   const openPostId = commentSheetItem ? rawPostId(commentSheetItem) : null;
+  const commentsById = useMemo(() => {
+    const map = new Map<string, CommentItem>();
+    for (const comment of comments) map.set(comment.id, comment);
+    return map;
+  }, [comments]);
+  const topLevelComments = useMemo(
+    () => comments.filter((comment) => !comment.parentCommentId),
+    [comments],
+  );
+  const repliesByParent = useMemo(() => {
+    const grouped = new Map<string, CommentItem[]>();
+    for (const comment of comments) {
+      if (!comment.parentCommentId) continue;
+      const list = grouped.get(comment.parentCommentId) ?? [];
+      list.push(comment);
+      grouped.set(comment.parentCommentId, list);
+    }
+    return grouped;
+  }, [comments]);
   useEffect(() => {
     if (postIds.length === 0) return;
     const subs: { channel: ReturnType<typeof ably.channels.get>; handler: (msg: import("ably").Message) => void }[] = [];
@@ -446,11 +474,20 @@ export default function GroupLandingScreen() {
       );
       if (data.status === "joined" || data.status === "already_member") {
         setGroup((prev) =>
-          prev ? { ...prev, myRole: "member", memberCount: prev.memberCount + 1 } : prev,
+          prev
+            ? {
+                ...prev,
+                myRole: "member",
+                myJoinRequestPending: false,
+                memberCount:
+                  data.status === "joined" ? prev.memberCount + 1 : prev.memberCount,
+              }
+            : prev,
         );
         showSnackbar("Joined group");
         void load({ silent: true });
       } else if (data.status === "requested") {
+        setGroup((prev) => (prev ? { ...prev, myJoinRequestPending: true } : prev));
         showSnackbar("Request sent — awaiting approval");
       }
     } catch (e) {
@@ -595,23 +632,30 @@ export default function GroupLandingScreen() {
     async (item: ActivityItem) => {
       setCommentSheetItem(item);
       setCommentDraft("");
+      setReplyTarget(null);
       setComments([]);
       setLoadingComments(true);
       try {
         const token = await getTokenRef.current();
-        const annId = rawPostId(item);
+        const postId = rawPostId(item);
         const data = await apiGet<{ comments: CommentItem[] }>(
-          `/api/groups/${groupId}/announcements/comments?announcementId=${annId}`,
+          `/api/posts/${postId}/comments`,
           token,
         );
-        setComments(data.comments);
+        const nextComments = data.comments ?? [];
+        setComments(nextComments);
+        setActivity((prev) =>
+          prev.map((a) =>
+            a.id === item.id ? { ...a, commentCount: nextComments.length } : a,
+          ),
+        );
       } catch {
         // ignore
       } finally {
         setLoadingComments(false);
       }
     },
-    [groupId],
+    [],
   );
 
   const handlePostComment = useCallback(async () => {
@@ -622,18 +666,28 @@ export default function GroupLandingScreen() {
     setPostingComment(true);
     try {
       const token = await getTokenRef.current();
-      const annId = rawPostId(commentSheetItem);
+      const postId = rawPostId(commentSheetItem);
       const data = await apiPost<{ comment: CommentItem }>(
-        `/api/groups/${groupId}/announcements/comments`,
-        { announcementId: annId, body },
+        `/api/posts/${postId}/comments`,
+        {
+          body,
+          parentCommentId: replyTarget?.parentCommentId ?? null,
+          replyToCommentId: replyTarget?.commentId ?? null,
+        },
         token,
       );
-      setComments((prev) => [...prev, data.comment]);
+      let nextCount = 0;
+      setComments((prev) => {
+        const next = [...prev, data.comment];
+        nextCount = next.length;
+        return next;
+      });
       setCommentDraft("");
+      setReplyTarget(null);
       setActivity((prev) =>
         prev.map((a) =>
           a.id === commentSheetItem.id
-            ? { ...a, commentCount: (a.commentCount ?? 0) + 1 }
+            ? { ...a, commentCount: nextCount }
             : a,
         ),
       );
@@ -642,40 +696,48 @@ export default function GroupLandingScreen() {
     } finally {
       setPostingComment(false);
     }
-  }, [commentDraft, commentSheetItem, groupId]);
+  }, [commentDraft, commentSheetItem, replyTarget]);
 
-  const handleDeleteComment = useCallback(
-    (comment: CommentItem) => {
-      if (!commentSheetItem) return;
-      Alert.alert("Delete comment", "This cannot be undone.", [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const token = await getTokenRef.current();
-              await apiDelete(
-                `/api/groups/${groupId}/announcements/comments?id=${comment.id}`,
-                token,
-              );
-              setComments((prev) => prev.filter((c) => c.id !== comment.id));
-              setActivity((prev) =>
-                prev.map((a) =>
-                  a.id === commentSheetItem.id
-                    ? { ...a, commentCount: Math.max(0, (a.commentCount ?? 0) - 1) }
-                    : a,
-                ),
-              );
-            } catch (e) {
-              Alert.alert("Error", e instanceof Error ? e.message : "Could not delete comment.");
+  const handleToggleCommentLike = useCallback(async (comment: CommentItem) => {
+    if (!commentSheetItem) return;
+    const wasLiked = Boolean(comment.viewerLiked);
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === comment.id
+          ? {
+              ...c,
+              viewerLiked: !wasLiked,
+              likeCount: Math.max(0, (c.likeCount ?? 0) + (wasLiked ? -1 : 1)),
             }
-          },
-        },
-      ]);
-    },
-    [commentSheetItem, groupId],
-  );
+          : c,
+      ),
+    );
+    try {
+      const token = await getTokenRef.current();
+      await apiPost(`/api/posts/${rawPostId(commentSheetItem)}/comments/${comment.id}/like`, {}, token);
+    } catch {
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === comment.id
+            ? {
+                ...c,
+                viewerLiked: wasLiked,
+                likeCount: Math.max(0, (c.likeCount ?? 0) + (wasLiked ? 1 : -1)),
+              }
+            : c,
+        ),
+      );
+    }
+  }, [commentSheetItem]);
+
+  const beginReplyToComment = useCallback((comment: CommentItem) => {
+    const parentCommentId = comment.parentCommentId ?? comment.id;
+    setReplyTarget({
+      commentId: comment.id,
+      parentCommentId,
+      userName: comment.user.name,
+    });
+  }, []);
 
   // ── Loading / error states ────────────────────────────────────
 
@@ -699,6 +761,7 @@ export default function GroupLandingScreen() {
 
   const isAdmin = apiResolved && (group.myRole === "owner" || group.myRole === "admin");
   const isMember = apiResolved && group.myRole !== null;
+  const isJoinRequestPending = apiResolved && !isMember && Boolean(group.myJoinRequestPending);
 
   function goToProfile(user: { id: string; name: string; avatar: string | null }) {
     router.push({
@@ -795,9 +858,17 @@ export default function GroupLandingScreen() {
           This group is invite only. Ask a member to invite you.
         </Text>
       ) : apiResolved && !isMember ? (
-        <Pressable style={styles.joinBtn} onPress={handleJoin}>
+        <Pressable
+          style={[styles.joinBtn, isJoinRequestPending ? styles.joinBtnDisabled : null]}
+          onPress={handleJoin}
+          disabled={isJoinRequestPending}
+        >
           <Text style={styles.joinBtnText}>
-            {group.joinPolicy === "approval" ? "Request to Join" : "Join Group"}
+            {isJoinRequestPending
+              ? "Request Pending"
+              : group.joinPolicy === "approval"
+                ? "Request to Join"
+                : "Join Group"}
           </Text>
         </Pressable>
       ) : null}
@@ -1095,8 +1166,17 @@ export default function GroupLandingScreen() {
       <AnimatedBottomSheetFrame
         visible={!!commentSheetItem}
         onClose={() => {
-          Keyboard.dismiss();
+          if (commentSheetItem) {
+            setActivity((prev) =>
+              prev.map((a) =>
+                a.id === commentSheetItem.id
+                  ? { ...a, commentCount: comments.length }
+                  : a,
+              ),
+            );
+          }
           setCommentSheetItem(null);
+          setReplyTarget(null);
           setComments([]);
           setCommentDraft("");
         }}
@@ -1119,82 +1199,135 @@ export default function GroupLandingScreen() {
               size="small"
               style={{ marginVertical: 24 }}
             />
-          ) : comments.length === 0 ? (
+          ) : topLevelComments.length === 0 ? (
             <Text style={styles.commentEmpty}>No comments yet. Be the first!</Text>
           ) : (
-            comments.map((comment) => {
+            topLevelComments.map((comment) => {
               const commentAvatar = comment.user.avatar;
+              const replies = repliesByParent.get(comment.id) ?? [];
               return (
-              <View key={comment.id} style={styles.commentRow}>
-                <Pressable onPress={() => goToProfile(comment.user)}>
-                  {commentAvatar ? (
-                    <Image source={toAbsoluteUrl(commentAvatar)} style={styles.commentAvatar} transition={0} />
-                  ) : (
-                    <InitialAvatar name={comment.user.name} size={32} maxInitials={2} />
-                  )}
-                </Pressable>
-                <View style={styles.commentContent}>
-                  <View style={styles.commentBubble}>
-                    <Text style={styles.commentAuthor} onPress={() => goToProfile(comment.user)}>{comment.user.name}</Text>
-                    <Text style={styles.commentBody}>{comment.body}</Text>
+                <View key={comment.id} style={styles.commentThread}>
+                  <View style={styles.commentRow}>
+                    <Pressable onPress={() => goToProfile(comment.user)}>
+                      {commentAvatar ? (
+                        <Image source={toAbsoluteUrl(commentAvatar)} style={styles.commentAvatar} transition={0} />
+                      ) : (
+                        <InitialAvatar name={comment.user.name} size={32} maxInitials={2} />
+                      )}
+                    </Pressable>
+                    <View style={styles.commentContent}>
+                      <View style={styles.commentBubble}>
+                        <Text style={styles.commentAuthor} onPress={() => goToProfile(comment.user)}>
+                          {comment.user.name}
+                        </Text>
+                        <Text style={styles.commentBody}>{comment.body}</Text>
+                      </View>
+                      <View style={styles.commentMetaRow}>
+                        <Text style={styles.commentTime}>{formatRelative(comment.createdAt)}</Text>
+                        <Pressable onPress={() => beginReplyToComment(comment)}>
+                          <Text style={styles.commentDeleteText}>Reply</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                    <Pressable
+                      style={styles.commentLikeIconBtn}
+                      hitSlop={8}
+                      onPress={() => void handleToggleCommentLike(comment)}
+                    >
+                      <Ionicons
+                        name={comment.viewerLiked ? "heart" : "heart-outline"}
+                        size={16}
+                        color={comment.viewerLiked ? colors.danger : colors.muted}
+                      />
+                      {(comment.likeCount ?? 0) > 0 ? (
+                        <Text style={styles.commentLikeCount}>{comment.likeCount}</Text>
+                      ) : null}
+                    </Pressable>
                   </View>
-                  <View style={styles.commentMetaRow}>
-                    <Text style={styles.commentTime}>{formatRelative(comment.createdAt)}</Text>
-                    {(comment.user.id === meId || isAdmin) ? (
-                      <Pressable
-                        onPress={() => handleDeleteComment(comment)}
-                        hitSlop={8}
-                      >
-                        <Text style={styles.commentDeleteText}>Delete</Text>
-                      </Pressable>
-                    ) : null}
-                    {comment.user.id !== meId ? (
-                      <Pressable
-                        onPress={() => setReportComment(comment)}
-                        hitSlop={8}
-                      >
-                        <Text style={styles.commentDeleteText}>Report</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
+
+                  {replies.length > 0 ? (
+                    <View style={styles.replyList}>
+                      {replies.map((reply) => {
+                        const replyTargetName = reply.replyToCommentId
+                          ? commentsById.get(reply.replyToCommentId)?.user.name
+                          : null;
+                        return (
+                          <View key={reply.id} style={styles.commentRow}>
+                            <Pressable onPress={() => goToProfile(reply.user)}>
+                              {reply.user.avatar ? (
+                                <Image
+                                  source={toAbsoluteUrl(reply.user.avatar)}
+                                  style={styles.commentAvatarSmall}
+                                  transition={0}
+                                />
+                              ) : (
+                                <InitialAvatar name={reply.user.name} size={24} maxInitials={2} />
+                              )}
+                            </Pressable>
+                            <View style={styles.replyBodyWrap}>
+                              <Text style={styles.commentAuthor} onPress={() => goToProfile(reply.user)}>
+                                {reply.user.name}
+                              </Text>
+                              <Text style={styles.commentBody}>
+                                {replyTargetName ? `@${replyTargetName} ` : ""}
+                                {reply.body}
+                              </Text>
+                            </View>
+                            <Pressable
+                              style={styles.commentLikeIconBtn}
+                              hitSlop={8}
+                              onPress={() => void handleToggleCommentLike(reply)}
+                            >
+                              <Ionicons
+                                name={reply.viewerLiked ? "heart" : "heart-outline"}
+                                size={14}
+                                color={reply.viewerLiked ? colors.danger : colors.muted}
+                              />
+                              {(reply.likeCount ?? 0) > 0 ? (
+                                <Text style={styles.commentLikeCount}>{reply.likeCount}</Text>
+                              ) : null}
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
                 </View>
-              </View>
               );
             })
           )}
         </BottomSheetScrollView>
-        <View style={styles.commentInputRow}>
-          {meAvatar ? (
-            <Image source={toAbsoluteUrl(meAvatar)} style={styles.commentInputAvatar} transition={0} />
-          ) : (
-            <View style={[styles.commentInputAvatar, styles.commentAvatarFallback]}>
-              <Ionicons name="person" size={12} color={colors.muted} />
-            </View>
-          )}
+        {replyTarget ? (
+          <View style={styles.replyingBanner}>
+            <Text style={styles.replyingText}>Replying to @{replyTarget.userName}</Text>
+            <Pressable onPress={() => setReplyTarget(null)}>
+              <Text style={styles.replyingCancel}>Cancel</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <View style={styles.commentComposerRow}>
           <BottomSheetTextInput
-            ref={commentInputRef}
             style={styles.commentInput}
             value={commentDraft}
             onChangeText={setCommentDraft}
-            placeholder="Add a comment..."
+            placeholder={replyTarget ? `Reply to @${replyTarget.userName}...` : "Write a comment..."}
             placeholderTextColor={colors.muted}
             maxLength={2000}
             returnKeyType="send"
             onSubmitEditing={() => void handlePostComment()}
           />
           <Pressable
+            style={[
+              styles.commentSendBtn,
+              (!commentDraft.trim() || postingComment) && styles.commentSendBtnDisabled,
+            ]}
             onPress={() => void handlePostComment()}
             disabled={!commentDraft.trim() || postingComment}
-            hitSlop={6}
           >
             {postingComment ? (
-              <ActivityIndicator color={colors.fairway} size="small" />
+              <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Ionicons
-                name="send"
-                size={20}
-                color={commentDraft.trim() ? colors.fairway : colors.muted}
-              />
+              <Text style={styles.commentSendText}>Post</Text>
             )}
           </Pressable>
         </View>
@@ -1207,14 +1340,6 @@ export default function GroupLandingScreen() {
         contentId={reportItem?.id ?? ""}
         targetUserId={reportItem?.user.id}
         targetLabel="this post"
-      />
-      <ReportSheet
-        visible={!!reportComment}
-        onClose={() => setReportComment(null)}
-        contentType="comment"
-        contentId={reportComment?.id ?? ""}
-        targetUserId={reportComment?.user.id}
-        targetLabel="this comment"
       />
       <FullscreenImageViewer
         images={viewerImages}
@@ -1375,6 +1500,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   joinBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  joinBtnDisabled: {
+    backgroundColor: colors.muted,
+  },
   inviteOnlyNote: {
     color: colors.muted,
     fontSize: 14,
