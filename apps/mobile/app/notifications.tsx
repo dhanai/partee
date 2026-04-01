@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { subscribeNotificationsListsRefresh } from "../lib/notifications-list-refresh";
 import { ActivityIndicator, Image, Pressable, RefreshControl, FlatList, StyleSheet, Text, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
@@ -142,7 +142,8 @@ export default function NotificationsScreen() {
       let cancelled = false;
 
       const run = async () => {
-        setLoading(true);
+        const hasRows = activityItems.length > 0 || followRequestNotifications.length > 0;
+        if (!hasRows) setLoading(true);
         setError(null);
         try {
           await fetchNotificationsData();
@@ -165,7 +166,7 @@ export default function NotificationsScreen() {
       return () => {
         cancelled = true;
       };
-    }, [fetchNotificationsData]),
+    }, [activityItems.length, fetchNotificationsData, followRequestNotifications.length]),
   );
 
   useEffect(() => {
@@ -349,6 +350,60 @@ export default function NotificationsScreen() {
     );
   }, []);
 
+  const renderActorAvatar = useCallback(
+    (avatar: string | null, fallbackIcon: keyof typeof Ionicons.glyphMap, fallbackSize = 14) => {
+      if (avatar) {
+        return <Image source={{ uri: toAbsoluteUrl(avatar) }} style={styles.notificationAvatar} />;
+      }
+      return (
+        <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+          <Ionicons name={fallbackIcon} size={fallbackSize} color={colors.fairway} />
+        </View>
+      );
+    },
+    [],
+  );
+
+  const renderRightAccessory = useCallback((previewUri: string | null, ctaLabel = "View") => {
+    if (previewUri) {
+      return <Image source={{ uri: previewUri }} style={styles.notificationThumb} />;
+    }
+    return (
+      <View style={styles.notificationInlineCta}>
+        <Text style={styles.notificationInlineCtaText}>{ctaLabel}</Text>
+      </View>
+    );
+  }, []);
+
+  const renderActorTemplateCard = useCallback(
+    (input: {
+      actorAvatar: string | null;
+      fallbackIcon: keyof typeof Ionicons.glyphMap;
+      fallbackSize?: number;
+      title: string;
+      subtitle: string;
+      timeLabel: string;
+      onPress: () => void;
+      right?: ReactNode;
+    }) => {
+      return (
+        <Pressable style={styles.notificationCard} onPress={input.onPress}>
+          <View style={styles.notificationRow}>
+            {renderActorAvatar(input.actorAvatar, input.fallbackIcon, input.fallbackSize)}
+            <View style={styles.notificationRowText}>
+              <Text style={styles.notificationTitle} numberOfLines={1}>
+                {input.title}
+              </Text>
+              {renderMetaInline(input.subtitle, input.timeLabel)}
+            </View>
+            {input.right}
+          </View>
+        </Pressable>
+      );
+    },
+    [renderActorAvatar, renderMetaInline],
+  );
+
   const renderActivityCard = useCallback(
     (item: ActivityNotificationItem) => {
       if (item.type === "new_follower") {
@@ -411,192 +466,80 @@ export default function NotificationsScreen() {
       if (item.type === "round_invite") {
         const previewUri = resolveNotificationPreview(item);
         const timeLabel = formatNotificationTime(item.createdAt);
-        return (
-          <Pressable
-            style={styles.notificationCard}
-            onPress={() => openRoundNotification(item)}
-          >
-            <View style={styles.notificationRow}>
-              {item.actorAvatar ? (
-                <Image
-                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
-                  style={styles.notificationAvatar}
-                />
-              ) : (
-                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
-                  <Ionicons name="mail-outline" size={15} color={colors.fairway} />
-                </View>
-              )}
-              <View style={styles.notificationRowText}>
-                <Text style={styles.notificationTitle} numberOfLines={1}>
-                  {item.title || "Round invite"}
-                </Text>
-                {renderMetaInline(item.body, timeLabel)}
-              </View>
-              {previewUri ? (
-                <Image source={{ uri: previewUri }} style={styles.notificationThumb} />
-              ) : (
-                <View style={styles.notificationInlineCta}>
-                  <Text style={styles.notificationInlineCtaText}>View</Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
-        );
+        return renderActorTemplateCard({
+          actorAvatar: item.actorAvatar,
+          fallbackIcon: "mail-outline",
+          fallbackSize: 15,
+          title: item.title || "Round invite",
+          subtitle: item.body,
+          timeLabel,
+          onPress: () => openRoundNotification(item),
+          right: renderRightAccessory(previewUri, "View"),
+        });
       }
       if (item.type === "post_liked") {
         const previewUri = resolveNotificationPreview(item);
         const timeLabel = formatNotificationTime(item.createdAt);
-        return (
-          <Pressable style={styles.notificationCard} onPress={() => openPostNotification(item)}>
-            <View style={styles.notificationRow}>
-              {item.actorAvatar ? (
-                <Image
-                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
-                  style={styles.notificationAvatar}
-                />
-              ) : (
-                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
-                  <Ionicons name="heart" size={14} color={colors.fairway} />
-                </View>
-              )}
-              <View style={styles.notificationRowText}>
-                <Text style={styles.notificationTitle} numberOfLines={1}>
-                  {item.actorName}
-                </Text>
-                {renderMetaInline("Liked your post", timeLabel)}
-              </View>
-              {previewUri ? (
-                <Image source={{ uri: previewUri }} style={styles.notificationThumb} />
-              ) : (
-                <View style={styles.notificationInlineCta}>
-                  <Text style={styles.notificationInlineCtaText}>View</Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
-        );
+        return renderActorTemplateCard({
+          actorAvatar: item.actorAvatar,
+          fallbackIcon: "heart",
+          title: item.actorName,
+          subtitle: "Liked your post",
+          timeLabel,
+          onPress: () => openPostNotification(item),
+          right: renderRightAccessory(previewUri, "View"),
+        });
       }
       if (item.type === "post_commented") {
         const isReply = Boolean(item.replyToCommentId || item.parentCommentId);
         const previewUri = resolveNotificationPreview(item);
         const timeLabel = formatNotificationTime(item.createdAt);
-        return (
-          <Pressable style={styles.notificationCard} onPress={() => openPostNotification(item)}>
-            <View style={styles.notificationRow}>
-              {item.actorAvatar ? (
-                <Image
-                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
-                  style={styles.notificationAvatar}
-                />
-              ) : (
-                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
-                  <Ionicons name="chatbubble-outline" size={14} color={colors.fairway} />
-                </View>
-              )}
-              <View style={styles.notificationRowText}>
-                <Text style={styles.notificationTitle} numberOfLines={1}>
-                  {item.actorName}
-                </Text>
-                {renderMetaInline(
-                  isReply ? "Replied to your comment" : "Commented on your post",
-                  timeLabel,
-                )}
-              </View>
-              {previewUri ? (
-                <Image source={{ uri: previewUri }} style={styles.notificationThumb} />
-              ) : (
-                <View style={styles.notificationInlineCta}>
-                  <Text style={styles.notificationInlineCtaText}>View</Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
-        );
+        return renderActorTemplateCard({
+          actorAvatar: item.actorAvatar,
+          fallbackIcon: "chatbubble-outline",
+          title: item.actorName,
+          subtitle: isReply ? "Replied to your comment" : "Commented on your post",
+          timeLabel,
+          onPress: () => openPostNotification(item),
+          right: renderRightAccessory(previewUri, "View"),
+        });
       }
       if (item.type === "group_post") {
         const previewUri = resolveNotificationPreview(item);
         const timeLabel = formatNotificationTime(item.createdAt);
-        return (
-          <Pressable
-            style={styles.notificationCard}
-            onPress={() => {
-              if (item.groupId) {
-                router.push({
-                  pathname: "/group/[groupId]",
-                  params: { groupId: item.groupId, ...(item.postId ? { postId: item.postId } : {}) },
-                });
-              }
-            }}
-          >
-            <View style={styles.notificationRow}>
-              {item.actorAvatar ? (
-                <Image
-                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
-                  style={styles.notificationAvatar}
-                />
-              ) : (
-                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
-                  <Ionicons name="people" size={14} color={colors.fairway} />
-                </View>
-              )}
-              <View style={styles.notificationRowText}>
-                <Text style={styles.notificationTitle} numberOfLines={1}>
-                  {item.actorName}
-                </Text>
-                {renderMetaInline("Posted in your group", timeLabel)}
-              </View>
-              {previewUri ? (
-                <Image source={{ uri: previewUri }} style={styles.notificationThumb} />
-              ) : (
-                <View style={styles.notificationInlineCta}>
-                  <Text style={styles.notificationInlineCtaText}>View</Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
-        );
+        return renderActorTemplateCard({
+          actorAvatar: item.actorAvatar,
+          fallbackIcon: "people",
+          title: item.actorName,
+          subtitle: "Posted in your group",
+          timeLabel,
+          onPress: () => {
+            if (item.groupId) {
+              router.push({
+                pathname: "/group/[groupId]",
+                params: { groupId: item.groupId, ...(item.postId ? { postId: item.postId } : {}) },
+              });
+            }
+          },
+          right: renderRightAccessory(previewUri, "View"),
+        });
       }
       if (item.type === "profile_post") {
         const previewUri = resolveNotificationPreview(item);
         const timeLabel = formatNotificationTime(item.createdAt);
-        return (
-          <Pressable
-            style={styles.notificationCard}
-            onPress={() =>
-              router.push({
-                pathname: "/(tabs)/profile",
-                params: { ...(item.postId ? { postId: item.postId } : {}) },
-              })
-            }
-          >
-            <View style={styles.notificationRow}>
-              {item.actorAvatar ? (
-                <Image
-                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
-                  style={styles.notificationAvatar}
-                />
-              ) : (
-                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
-                  <Ionicons name="create-outline" size={14} color={colors.fairway} />
-                </View>
-              )}
-              <View style={styles.notificationRowText}>
-                <Text style={styles.notificationTitle} numberOfLines={1}>
-                  {item.actorName}
-                </Text>
-                {renderMetaInline("Posted on your profile", timeLabel)}
-              </View>
-              {previewUri ? (
-                <Image source={{ uri: previewUri }} style={styles.notificationThumb} />
-              ) : (
-                <View style={styles.notificationInlineCta}>
-                  <Text style={styles.notificationInlineCtaText}>View</Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
-        );
+        return renderActorTemplateCard({
+          actorAvatar: item.actorAvatar,
+          fallbackIcon: "create-outline",
+          title: item.actorName,
+          subtitle: "Posted on your profile",
+          timeLabel,
+          onPress: () =>
+            router.push({
+              pathname: "/(tabs)/profile",
+              params: { ...(item.postId ? { postId: item.postId } : {}) },
+            }),
+          right: renderRightAccessory(previewUri, "View"),
+        });
       }
       if (item.type === "round_rsvp_accepted" || item.type === "round_rsvp_declined") {
         const rsvpBody = item.roundRsvpMeta
@@ -729,6 +672,9 @@ export default function NotificationsScreen() {
       handleFollowBack,
       openPostNotification,
       openRoundNotification,
+      renderActorTemplateCard,
+      renderActorAvatar,
+      renderRightAccessory,
       renderMetaInline,
       resolveNotificationPreview,
       router,
@@ -828,10 +774,8 @@ export default function NotificationsScreen() {
 
   const keyExtractor = useCallback((row: FeedRow) => row.id, []);
 
-  const isEmpty =
-    !loading &&
-    followRequestNotifications.length === 0 &&
-    activityItems.length === 0;
+  const isEmpty = !loading && followRequestNotifications.length === 0 && activityItems.length === 0;
+  const showInitialLoader = loading && feedRows.length === 0 && !refreshing;
 
   return (
     <FlatList
@@ -843,18 +787,13 @@ export default function NotificationsScreen() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.fairway} />
       }
-      ListHeaderComponent={
-        <>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          {loading ? (
-            <View style={styles.loadingWrap}>
-              <ActivityIndicator color={colors.fairway} />
-            </View>
-          ) : null}
-        </>
-      }
+      ListHeaderComponent={error ? <Text style={styles.errorText}>{error}</Text> : null}
       ListEmptyComponent={
-        !loading && isEmpty ? (
+        showInitialLoader ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator color={colors.fairway} />
+          </View>
+        ) : isEmpty ? (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIconWrap}>
               <Ionicons name="notifications-off-outline" size={18} color={colors.fairway} />
