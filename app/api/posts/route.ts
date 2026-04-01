@@ -20,11 +20,24 @@ import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 const createSchema = z.object({
   body: z.string().min(1).max(2000),
   imageUrl: z.string().url().optional(),
+  imageUrls: z.array(z.string().url()).max(10).optional(),
   isPinned: z.boolean().default(true),
   groupId: z.string().uuid().optional(),
   profileUserId: z.string().uuid().optional(),
   scope: z.enum(["group", "profile"]).default("group"),
 });
+
+function normalizePostImages(input: { imageUrl?: string; imageUrls?: string[] }) {
+  const urls = (input.imageUrls ?? []).map((url) => url.trim()).filter((url) => url.length > 0);
+  if (urls.length > 0) {
+    return { imageUrls: urls, imageUrl: urls[0] ?? null };
+  }
+  if (input.imageUrl && input.imageUrl.trim().length > 0) {
+    const single = input.imageUrl.trim();
+    return { imageUrls: [single], imageUrl: single };
+  }
+  return { imageUrls: [] as string[], imageUrl: null };
+}
 
 export async function GET(req: Request) {
   const done = withPerfTimer("GET /api/posts");
@@ -64,6 +77,7 @@ export async function GET(req: Request) {
         id: posts.id,
         body: posts.body,
         imageUrl: posts.imageUrl,
+        imageUrls: posts.imageUrls,
         isPinned: posts.isPinned,
         groupId: posts.groupId,
         profileUserId: posts.profileUserId,
@@ -119,6 +133,7 @@ export async function GET(req: Request) {
         id: r.id,
         body: r.body,
         imageUrl: r.imageUrl,
+        imageUrls: (r.imageUrls ?? []) as string[],
         isPinned: r.isPinned,
         groupId: r.groupId,
         scope: r.scope,
@@ -155,6 +170,7 @@ export async function POST(req: Request) {
     if (!postLimiter.success) return rateLimitResponse();
     const body = await req.json();
     const input = createSchema.parse(body);
+    const normalizedImages = normalizePostImages(input);
 
     if (input.scope === "group") {
       if (!input.groupId) {
@@ -182,7 +198,8 @@ export async function POST(req: Request) {
           userId: viewer.id,
           scope: "group",
           body: input.body,
-          imageUrl: input.imageUrl ?? null,
+          imageUrl: normalizedImages.imageUrl,
+          imageUrls: normalizedImages.imageUrls,
           isPinned: canPin && input.isPinned,
         })
         .returning();
@@ -218,6 +235,7 @@ export async function POST(req: Request) {
           id: post.id,
           body: post.body,
           imageUrl: post.imageUrl,
+          imageUrls: (post.imageUrls ?? []) as string[],
           isPinned: post.isPinned,
           groupId: post.groupId,
           scope: post.scope,
@@ -270,7 +288,8 @@ export async function POST(req: Request) {
         profileUserId,
         scope: "profile",
         body: input.body,
-        imageUrl: input.imageUrl ?? null,
+        imageUrl: normalizedImages.imageUrl,
+        imageUrls: normalizedImages.imageUrls,
         isPinned: false,
         hiddenOnProfile: false,
       })
@@ -291,6 +310,7 @@ export async function POST(req: Request) {
         id: post.id,
         body: post.body,
         imageUrl: post.imageUrl,
+        imageUrls: (post.imageUrls ?? []) as string[],
         isPinned: post.isPinned,
         profileUserId: post.profileUserId,
         groupId: null,

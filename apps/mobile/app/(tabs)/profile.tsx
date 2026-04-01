@@ -16,24 +16,17 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Reanimated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
 import {
   AnimatedBottomSheetFrame,
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "../../components/animated-bottom-sheet-frame";
+import { FullscreenImageViewer } from "../../components/fullscreen-image-viewer";
 import { InitialAvatar } from "../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { ParfadeProfileLiveRefresh } from "../../components/parfade-profile-live-refresh";
 import { RoundListCard } from "../../components/round-list-card";
+import { SocialPostCard } from "../../components/social-post-card";
 import { useAblyChatMounted } from "../../lib/ably-chat-context";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../lib/api";
@@ -74,6 +67,7 @@ type ProfilePost = {
   id: string;
   body: string;
   imageUrl: string | null;
+  imageUrls?: string[];
   createdAt: string;
   isPinned?: boolean;
   profileUserId?: string | null;
@@ -180,6 +174,9 @@ export default function ProfileScreen() {
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [commentSheetPost, setCommentSheetPost] = useState<ProfilePost | null>(null);
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerImages, setViewerImages] = useState<string[]>([]);
+  const [viewerIndex, setViewerIndex] = useState(0);
   const [comments, setComments] = useState<ProfileComment[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
@@ -456,13 +453,14 @@ export default function ProfileScreen() {
 
   function openEditPost(post: ProfilePost) {
     setOverflowPost(null);
+    const editImages = resolvePostImages(post);
     router.push({
       pathname: "/profile/post",
       params: {
         editId: post.id,
         editBody: post.body,
         ...(post.profileUserId ? { profileUserId: post.profileUserId } : {}),
-        ...(post.imageUrl ? { editImageUrl: post.imageUrl } : {}),
+        ...(editImages.length > 0 ? { editImageUrls: JSON.stringify(editImages) } : {}),
       },
     });
   }
@@ -803,76 +801,33 @@ export default function ProfileScreen() {
                       item.kind === "post" ? (
                         (() => {
                           const post = item.post;
+                          const postImages = resolvePostImages(post);
                           return (
-                            <DoubleTapLikeCard key={item.id} onDoubleTap={() => handleDoubleTapLike(post)}>
-                              <View style={styles.postCard}>
-                                <View style={styles.postHeader}>
-                                {post.user.avatar ? (
-                                  <Image
-                                    source={{ uri: toAbsoluteUrl(post.user.avatar) }}
-                                    style={styles.postAvatar}
-                                  />
-                                ) : (
-                                  <InitialAvatar name={post.user.name} size={36} maxInitials={2} />
-                                )}
-                                <View style={styles.postHeaderText}>
-                                  <Text style={styles.postAuthor}>{post.user.name}</Text>
-                                  <Text style={styles.postDate}>
-                                    {new Date(post.createdAt).toLocaleDateString("en-US", {
-                                      month: "short",
-                                      day: "numeric",
-                                      year: "numeric",
-                                    })}
-                                  </Text>
-                                </View>
-                                {post.isPinned ? (
-                                  <Ionicons name="pin" size={14} color={colors.muted} />
-                                ) : null}
-                                <Pressable
-                                  style={styles.postOverflow}
-                                  onPress={() => setOverflowPost(post)}
-                                  hitSlop={8}
-                                >
-                                  <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
-                                </Pressable>
-                              </View>
-                                <Text style={styles.postBody}>{post.body}</Text>
-                                {post.imageUrl ? (
-                                  <Image source={{ uri: toAbsoluteUrl(post.imageUrl) }} style={styles.postImage} />
-                                ) : null}
-                                <View style={styles.postFooter}>
-                                  <Pressable
-                                    style={styles.postLikeBtn}
-                                    onPress={() => void handleToggleLike(post)}
-                                  >
-                                    <Ionicons
-                                      name={post.viewerLiked ? "heart" : "heart-outline"}
-                                      size={18}
-                                      color={post.viewerLiked ? colors.danger : colors.muted}
-                                    />
-                                    {(post.likeCount ?? 0) > 0 ? (
-                                      <Text
-                                        style={[
-                                          styles.postLikeCount,
-                                          post.viewerLiked && styles.postLikeCountActive,
-                                        ]}
-                                      >
-                                        {post.likeCount}
-                                      </Text>
-                                    ) : null}
-                                  </Pressable>
-                                  <Pressable
-                                    style={styles.postCommentBtn}
-                                    onPress={() => void openCommentSheet(post)}
-                                  >
-                                    <Ionicons name="chatbubble-outline" size={17} color={colors.muted} />
-                                    {(post.commentCount ?? 0) > 0 ? (
-                                      <Text style={styles.postCommentCount}>{post.commentCount}</Text>
-                                    ) : null}
-                                  </Pressable>
-                                </View>
-                              </View>
-                            </DoubleTapLikeCard>
+                            <SocialPostCard
+                              key={item.id}
+                              user={post.user}
+                              body={post.body}
+                              images={postImages}
+                              createdAtLabel={new Date(post.createdAt).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })}
+                              isPinned={post.isPinned}
+                              likeCount={post.likeCount}
+                              commentCount={post.commentCount}
+                              viewerLiked={post.viewerLiked}
+                              showOverflow
+                              onPressOverflow={() => setOverflowPost(post)}
+                              onPressImage={(index) => {
+                                setViewerImages(postImages);
+                                setViewerIndex(index);
+                                setViewerVisible(true);
+                              }}
+                              onToggleLike={() => void handleToggleLike(post)}
+                              onOpenComments={() => void openCommentSheet(post)}
+                              onDoubleTapLike={() => handleDoubleTapLike(post)}
+                            />
                           );
                         })()
                       ) : (
@@ -1136,59 +1091,17 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
       </AnimatedBottomSheetFrame>
+      {viewerImages.length > 0 ? (
+        <FullscreenImageViewer
+          images={viewerImages}
+          initialIndex={viewerIndex}
+          visible={viewerVisible}
+          onClose={() => setViewerVisible(false)}
+        />
+      ) : null}
     </>
   );
 }
-
-function DoubleTapLikeCard({
-  children,
-  onDoubleTap,
-}: {
-  children: React.ReactNode;
-  onDoubleTap: () => void;
-}) {
-  const heartScale = useSharedValue(0);
-  const heartOpacity = useSharedValue(0);
-
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd(() => {
-      runOnJS(onDoubleTap)();
-      heartScale.value = withSequence(
-        withTiming(1.2, { duration: 180 }),
-        withTiming(1, { duration: 100 }),
-      );
-      heartOpacity.value = withSequence(
-        withTiming(1, { duration: 120 }),
-        withDelay(400, withTiming(0, { duration: 280 })),
-      );
-    });
-
-  const heartAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: heartScale.value }],
-    opacity: heartOpacity.value,
-  }));
-
-  return (
-    <GestureDetector gesture={doubleTap}>
-      <View style={doubleTapStyles.wrapper}>
-        {children}
-        <Reanimated.View style={[doubleTapStyles.heartOverlay, heartAnimStyle]} pointerEvents="none">
-          <Ionicons name="heart" size={64} color={colors.danger} />
-        </Reanimated.View>
-      </View>
-    </GestureDetector>
-  );
-}
-
-const doubleTapStyles = StyleSheet.create({
-  wrapper: { position: "relative" },
-  heartOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-});
 
 function formatCommentAge(iso: string): string {
   const ageMs = Date.now() - new Date(iso).getTime();
@@ -1200,6 +1113,13 @@ function formatCommentAge(iso: string): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
   return new Date(iso).toLocaleDateString();
+}
+
+function resolvePostImages(post: ProfilePost): string[] {
+  const list = (post.imageUrls ?? []).map((image) => image.trim()).filter((image) => image.length > 0);
+  if (list.length > 0) return list;
+  if (post.imageUrl && post.imageUrl.trim().length > 0) return [post.imageUrl.trim()];
+  return [];
 }
 
 const styles = StyleSheet.create({

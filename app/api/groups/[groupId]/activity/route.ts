@@ -19,7 +19,7 @@ import { resolveRoundImageUrl } from "@/lib/round-images";
 type Ctx = { params: { groupId: string } };
 
 type ActivityItem =
-  | { type: "post"; id: string; body: string; imageUrl: string | null; isPinned: boolean; createdAt: string; likeCount: number; commentCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
+  | { type: "post"; id: string; body: string; imageUrl: string | null; imageUrls: string[]; isPinned: boolean; createdAt: string; likeCount: number; commentCount: number; viewerLiked: boolean; user: { id: string; name: string; avatar: string | null } }
   | {
       type: "round_created";
       id: string;
@@ -65,6 +65,7 @@ export async function GET(req: Request, { params }: Ctx) {
         id: posts.id,
         body: posts.body,
         imageUrl: posts.imageUrl,
+        imageUrls: posts.imageUrls,
         isPinned: posts.isPinned,
         createdAt: posts.createdAt,
         userId: posts.userId,
@@ -127,6 +128,7 @@ export async function GET(req: Request, { params }: Ctx) {
         id: `post-${r.id}`,
         body: r.body,
         imageUrl: r.imageUrl,
+        imageUrls: (r.imageUrls ?? []) as string[],
         isPinned: r.isPinned,
         createdAt: r.createdAt.toISOString(),
         likeCount: likeCountMap.get(r.id) ?? 0,

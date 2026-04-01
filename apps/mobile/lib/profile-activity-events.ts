@@ -2,6 +2,7 @@ type ProfileEventPost = {
   id: string;
   body: string;
   imageUrl: string | null;
+  imageUrls?: string[];
   createdAt: string;
   isPinned?: boolean;
   profileUserId?: string | null;

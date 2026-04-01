@@ -36,6 +36,7 @@ type FollowRequestsResponse = {
 type ActivityNotificationItem = {
   id: string;
   type:
+    | "round_invite"
     | "round_rsvp_accepted"
     | "round_rsvp_declined"
     | "group_join_request"
@@ -227,6 +228,7 @@ export default function NotificationsScreen() {
   type SectionRow =
     | { kind: "group_request"; item: ActivityNotificationItem }
     | { kind: "new_follower"; item: ActivityNotificationItem }
+    | { kind: "activity_round_invite"; item: ActivityNotificationItem }
     | { kind: "post_liked"; item: ActivityNotificationItem }
     | { kind: "post_commented"; item: ActivityNotificationItem }
     | { kind: "group_post"; item: ActivityNotificationItem }
@@ -244,6 +246,13 @@ export default function NotificationsScreen() {
     const followers = activityItems.filter((i) => i.type === "new_follower");
     if (followers.length > 0) {
       result.push({ title: "New followers", data: followers.map((item) => ({ kind: "new_follower" as const, item })) });
+    }
+    const activityInvites = activityItems.filter((i) => i.type === "round_invite");
+    if (activityInvites.length > 0) {
+      result.push({
+        title: "Round invites",
+        data: activityInvites.map((item) => ({ kind: "activity_round_invite" as const, item })),
+      });
     }
     const likes = activityItems.filter((i) => i.type === "post_liked");
     if (likes.length > 0) {
@@ -379,6 +388,40 @@ export default function NotificationsScreen() {
               <View style={styles.notificationRowText}>
                 <Text style={styles.notificationTitle}>{item.actorName}</Text>
                 <Text style={styles.notificationMeta}>Started following you</Text>
+              </View>
+            </View>
+          </Pressable>
+        );
+      }
+      if (row.kind === "activity_round_invite") {
+        const item = row.item;
+        return (
+          <Pressable
+            style={styles.notificationCard}
+            onPress={() =>
+              router.push({
+                pathname: "/round/[token]",
+                params: {
+                  token: item.inviteToken,
+                  ...(item.roundHint ? { roundHint: item.roundHint } : {}),
+                },
+              })
+            }
+          >
+            <View style={styles.notificationRow}>
+              {item.actorAvatar ? (
+                <Image
+                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
+                  style={styles.notificationAvatar}
+                />
+              ) : (
+                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                  <Ionicons name="mail-outline" size={15} color={colors.fairway} />
+                </View>
+              )}
+              <View style={styles.notificationRowText}>
+                <Text style={styles.notificationTitle}>{item.title || "Round invite"}</Text>
+                <Text style={styles.notificationMeta}>{item.body}</Text>
               </View>
             </View>
           </Pressable>

@@ -37,6 +37,7 @@ export async function registerExpoPushTokenWithBackend(
   getAuthToken: () => Promise<string | null>,
 ): Promise<void> {
   if (Platform.OS === "web") return;
+  if (!Constants.isDevice) return;
 
   const projectId = resolveExpoProjectId();
   if (!projectId) {

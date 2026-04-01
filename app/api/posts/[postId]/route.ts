@@ -10,6 +10,7 @@ type Ctx = { params: { postId: string } };
 const editSchema = z.object({
   body: z.string().min(1).max(2000).optional(),
   imageUrl: z.string().url().nullable().optional(),
+  imageUrls: z.array(z.string().url()).max(10).optional(),
   isPinned: z.boolean().optional(),
   hideFromProfile: z.boolean().optional(),
 });
@@ -62,6 +63,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (input.body !== undefined && (isAuthor || isAdminOrOwner)) updates.body = input.body;
     if (input.imageUrl !== undefined && (isAuthor || isAdminOrOwner)) {
       updates.imageUrl = input.imageUrl;
+      updates.imageUrls = input.imageUrl ? [input.imageUrl] : [];
+    }
+    if (input.imageUrls !== undefined && (isAuthor || isAdminOrOwner)) {
+      const next = input.imageUrls.map((url) => url.trim()).filter((url) => url.length > 0);
+      updates.imageUrls = next;
+      updates.imageUrl = next[0] ?? null;
     }
     const canPin = existing.groupId ? isAdminOrOwner : isAuthor || isProfileOwner;
     if (input.isPinned !== undefined && canPin) updates.isPinned = input.isPinned;

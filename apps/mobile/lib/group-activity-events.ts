@@ -2,6 +2,7 @@ type GroupEventPost = {
   id: string;
   body: string;
   imageUrl: string | null;
+  imageUrls?: string[];
   isPinned: boolean;
   createdAt: string;
   user: { id: string; name: string; avatar: string | null };

@@ -20,6 +20,7 @@ type ProfilePostActivity = {
     id: string;
     body: string;
     imageUrl: string | null;
+    imageUrls: string[];
     isPinned: boolean;
     groupId: string | null;
     scope: string;
@@ -75,6 +76,7 @@ export async function GET(req: Request, { params }: RouteContext) {
           id: posts.id,
           body: posts.body,
           imageUrl: posts.imageUrl,
+          imageUrls: posts.imageUrls,
           isPinned: posts.isPinned,
           groupId: posts.groupId,
           profileUserId: posts.profileUserId,
@@ -130,6 +132,7 @@ export async function GET(req: Request, { params }: RouteContext) {
         id: row.id,
         body: row.body,
         imageUrl: row.imageUrl,
+        imageUrls: (row.imageUrls ?? []) as string[],
         isPinned: row.isPinned,
         groupId: row.groupId,
         scope: row.scope,

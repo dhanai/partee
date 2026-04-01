@@ -18,20 +18,12 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Reanimated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSequence,
-  withTiming,
-  withDelay,
-  runOnJS,
-} from "react-native-reanimated";
 import { AnimatedBottomSheetFrame, BottomSheetScrollView, BottomSheetTextInput } from "../../../components/animated-bottom-sheet-frame";
 import { InitialAvatar } from "../../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../../components/report-sheet";
 import { RoundListCard } from "../../../components/round-list-card";
+import { SocialPostCard } from "../../../components/social-post-card";
 import { useAbly } from "ably/react";
 import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../../lib/api";
 import { subscribeGroupActivityEvents } from "../../../lib/group-activity-events";
@@ -69,6 +61,7 @@ type ActivityItem = {
   id: string;
   body?: string;
   imageUrl?: string | null;
+  imageUrls?: string[];
   isPinned?: boolean;
   likeCount?: number;
   commentCount?: number;
@@ -171,6 +164,7 @@ export default function GroupLandingScreen() {
   // Fullscreen image viewer
   const [viewerImages, setViewerImages] = useState<string[]>([]);
   const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerStartIndex, setViewerStartIndex] = useState(0);
 
   // Image upload
   const [uploadingImage, setUploadingImage] = useState<"profile" | "hero" | null>(null);
@@ -283,6 +277,7 @@ export default function GroupLandingScreen() {
           id: `post-${event.post.id}`,
           body: event.post.body,
           imageUrl: event.post.imageUrl,
+          imageUrls: event.post.imageUrls,
           isPinned: event.post.isPinned,
           createdAt: event.post.createdAt,
           likeCount: 0,
@@ -486,13 +481,14 @@ export default function GroupLandingScreen() {
 
   const openEditAnnouncement = useCallback((item: ActivityItem) => {
     setOverflowItem(null);
+    const editImages = resolveActivityPostImages(item);
     router.push({
       pathname: "/group/[groupId]/post",
       params: {
         groupId,
         editId: rawPostId(item),
         editBody: item.body ?? "",
-        ...(item.imageUrl ? { editImageUrl: item.imageUrl } : {}),
+        ...(editImages.length > 0 ? { editImageUrls: JSON.stringify(editImages) } : {}),
       },
     });
   }, [router, groupId]);
@@ -891,74 +887,29 @@ export default function GroupLandingScreen() {
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
           if (item.type === "post") {
-            const liked = item.viewerLiked ?? false;
-            const likeCount = item.likeCount ?? 0;
-            const postAuthorAvatar = item.user.avatar;
+            const postImages = resolveActivityPostImages(item);
             return (
-              <DoubleTapLikeCard onDoubleTap={() => handleDoubleTapLike(item)}>
-              <View style={styles.postCard}>
-                <View style={styles.postHeader}>
-                  <Pressable style={styles.postAuthorTap} onPress={() => goToProfile(item.user)}>
-                    {postAuthorAvatar ? (
-                      <Image source={toAbsoluteUrl(postAuthorAvatar)} style={styles.postAvatar} transition={0} />
-                    ) : (
-                      <InitialAvatar name={item.user.name} size={40} maxInitials={2} />
-                    )}
-                    <View style={styles.postHeaderText}>
-                      <Text style={styles.postAuthor}>{item.user.name}</Text>
-                      <Text style={styles.postDate}>
-                        {formatRelative(item.createdAt)}
-                        {item.isPinned ? "  · Pinned" : ""}
-                      </Text>
-                    </View>
-                  </Pressable>
-                  <Pressable
-                    style={styles.postOverflow}
-                    onPress={() => setOverflowItem(item)}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
-                  </Pressable>
-                </View>
-                <Text style={styles.postBody}>{item.body}</Text>
-                {item.imageUrl ? (
-                  <Pressable onPress={() => { setViewerImages([item.imageUrl!]); setViewerVisible(true); }}>
-                    <Image
-                      source={item.imageUrl}
-                      style={styles.postImage}
-                      contentFit="cover"
-                      transition={0}
-                    />
-                  </Pressable>
-                ) : null}
-                <View style={styles.postFooter}>
-                  <Pressable
-                    style={styles.postLikeBtn}
-                    onPress={() => void handleToggleLike(item)}
-                  >
-                    <Ionicons
-                      name={liked ? "heart" : "heart-outline"}
-                      size={18}
-                      color={liked ? colors.danger : colors.muted}
-                    />
-                    {likeCount > 0 ? (
-                      <Text style={[styles.postLikeCount, liked && styles.postLikeCountActive]}>
-                        {likeCount}
-                      </Text>
-                    ) : null}
-                  </Pressable>
-                  <Pressable
-                    style={styles.postCommentBtn}
-                    onPress={() => void openCommentSheet(item)}
-                  >
-                    <Ionicons name="chatbubble-outline" size={17} color={colors.muted} />
-                    {(item.commentCount ?? 0) > 0 ? (
-                      <Text style={styles.postCommentCount}>{item.commentCount}</Text>
-                    ) : null}
-                  </Pressable>
-                </View>
-              </View>
-              </DoubleTapLikeCard>
+              <SocialPostCard
+                user={item.user}
+                body={item.body ?? ""}
+                images={postImages}
+                createdAtLabel={formatRelative(item.createdAt)}
+                isPinned={item.isPinned}
+                likeCount={item.likeCount}
+                commentCount={item.commentCount}
+                viewerLiked={item.viewerLiked}
+                showOverflow
+                onPressAuthor={() => goToProfile(item.user)}
+                onPressOverflow={() => setOverflowItem(item)}
+                onPressImage={(index) => {
+                  setViewerImages(postImages);
+                  setViewerStartIndex(index);
+                  setViewerVisible(true);
+                }}
+                onToggleLike={() => void handleToggleLike(item)}
+                onOpenComments={() => void openCommentSheet(item)}
+                onDoubleTapLike={() => handleDoubleTapLike(item)}
+              />
             );
           }
 
@@ -1267,65 +1218,13 @@ export default function GroupLandingScreen() {
       />
       <FullscreenImageViewer
         images={viewerImages}
+        initialIndex={viewerStartIndex}
         visible={viewerVisible}
         onClose={() => setViewerVisible(false)}
       />
     </View>
   );
 }
-
-function DoubleTapLikeCard({
-  children,
-  onDoubleTap,
-}: {
-  children: React.ReactNode;
-  onDoubleTap: () => void;
-}) {
-  const heartScale = useSharedValue(0);
-  const heartOpacity = useSharedValue(0);
-
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd(() => {
-      runOnJS(onDoubleTap)();
-      heartScale.value = withSequence(
-        withTiming(1.2, { duration: 180 }),
-        withTiming(1, { duration: 100 }),
-      );
-      heartOpacity.value = withSequence(
-        withTiming(1, { duration: 120 }),
-        withDelay(400, withTiming(0, { duration: 280 })),
-      );
-    });
-
-  const heartAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: heartScale.value }],
-    opacity: heartOpacity.value,
-  }));
-
-  return (
-    <GestureDetector gesture={doubleTap}>
-      <View style={doubleTapStyles.wrapper}>
-        {children}
-        <Reanimated.View
-          style={[doubleTapStyles.heartOverlay, heartAnimStyle]}
-          pointerEvents="none"
-        >
-          <Ionicons name="heart" size={64} color={colors.danger} />
-        </Reanimated.View>
-      </View>
-    </GestureDetector>
-  );
-}
-
-const doubleTapStyles = StyleSheet.create({
-  wrapper: { position: "relative" },
-  heartOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-});
 
 function formatRelative(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -1337,6 +1236,13 @@ function formatRelative(iso: string): string {
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
   return new Date(iso).toLocaleDateString();
+}
+
+function resolveActivityPostImages(item: ActivityItem): string[] {
+  const list = (item.imageUrls ?? []).map((image) => image.trim()).filter((image) => image.length > 0);
+  if (list.length > 0) return list;
+  if (item.imageUrl && item.imageUrl.trim().length > 0) return [item.imageUrl.trim()];
+  return [];
 }
 
 const HERO_ASPECT = 16 / 9;

@@ -85,6 +85,8 @@ export function ParfadeAppRealtime() {
       }
       if (parsed.type === "round-invite-toast") {
         emitRoundListsShouldRefresh();
+        void refreshNotificationBadge();
+        emitNotificationsListsShouldRefresh();
         showRoundInviteToast({
           inviteToken: parsed.inviteToken,
           roundTitle: parsed.roundTitle,

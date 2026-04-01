@@ -8,7 +8,6 @@ import { notifyRoundInvites } from "@/lib/notify-user";
 import { buildRoundInvitePushBody } from "@/lib/round-invite-push-message";
 import {
   publishAfterRoundDetailChanged,
-  publishNotificationBadgeNudge,
   publishRoundInviteToast,
 } from "@/lib/parfade-ably-publish";
 import { formatChatPushTitleLine } from "@/lib/round-invite-push-message";
@@ -95,6 +94,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       await notifyRoundInvites({
         inviteToken: params.token,
         inviteeUserIds: inviteRows.map((r) => r.userId),
+        inviterUserId: currentUser.id,
         body: buildRoundInvitePushBody({
           inviterDisplayName: currentUser.name,
           teeTime: round.teeTime,
@@ -114,8 +114,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       targetDate: round.targetDate,
     });
     await Promise.all([
-      ...inviteRows.flatMap((row) => [
-        publishNotificationBadgeNudge(row.userId, "round-invite"),
+      ...inviteRows.map((row) =>
         publishRoundInviteToast({
           inviteeUserId: row.userId,
           inviteToken: params.token,
@@ -123,7 +122,7 @@ export async function POST(req: Request, { params }: RouteContext) {
           inviterName: currentUser.name,
           inviterAvatar: currentUser.avatar,
         }),
-      ]),
+      ),
       publishAfterRoundDetailChanged(params.token, "invites"),
     ]);
 

@@ -363,6 +363,7 @@ export async function POST(req: Request) {
       await notifyRoundInvites({
         inviteToken: createdRound.inviteToken,
         inviteeUserIds,
+        inviterUserId: user.id,
         body: buildRoundInvitePushBody({
           inviterDisplayName: user.name,
           teeTime: createdRound.teeTime,

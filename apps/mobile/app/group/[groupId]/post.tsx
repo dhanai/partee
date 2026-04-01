@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -33,11 +34,13 @@ export default function GroupPostScreen() {
     editId,
     editBody,
     editImageUrl,
+    editImageUrls,
   } = useLocalSearchParams<{
     groupId: string;
     editId?: string;
     editBody?: string;
     editImageUrl?: string;
+    editImageUrls?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -48,7 +51,21 @@ export default function GroupPostScreen() {
 
   const isEditing = Boolean(editId);
   const [body, setBody] = useState(editBody ?? "");
-  const [imageUri, setImageUri] = useState<string | null>(editImageUrl ?? null);
+  const initialImageUris = useMemo(() => {
+    const fromJson = (() => {
+      if (!editImageUrls) return [];
+      try {
+        const parsed = JSON.parse(editImageUrls);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.map((value) => String(value)).filter((value) => value.trim().length > 0);
+      } catch {
+        return [];
+      }
+    })();
+    if (fromJson.length > 0) return fromJson;
+    return editImageUrl ? [editImageUrl] : [];
+  }, [editImageUrl, editImageUrls]);
+  const [imageUris, setImageUris] = useState<string[]>(initialImageUris);
   const [submitting, setSubmitting] = useState(false);
 
   const stickyOffset = useMemo(
@@ -66,9 +83,14 @@ export default function GroupPostScreen() {
       mediaTypes: ["images"],
       quality: 0.8,
       allowsEditing: false,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
     });
-    if (!result.canceled && result.assets[0]?.uri) {
-      setImageUri(result.assets[0].uri);
+    if (!result.canceled) {
+      const next = result.assets.map((asset) => asset.uri).filter((uri) => uri?.length > 0);
+      if (next.length > 0) {
+        setImageUris((prev) => [...prev, ...next].slice(0, 10));
+      }
     }
   }, []);
 
@@ -79,12 +101,14 @@ export default function GroupPostScreen() {
     try {
       const token = await getTokenRef.current();
 
-      let imageUrl: string | null | undefined;
-      if (imageUri && imageUri.startsWith("http")) {
-        imageUrl = imageUri;
-      } else if (imageUri) {
+      const uploadedImageUrls: string[] = [];
+      for (const uri of imageUris) {
+        if (uri.startsWith("http")) {
+          uploadedImageUrls.push(uri);
+          continue;
+        }
         const uploaded = await uploadImage({
-          uri: imageUri,
+          uri,
           filename: "post-image.jpg",
           maxBytes: POST_MAX_BYTES,
           getToken: getTokenRef.current,
@@ -93,15 +117,13 @@ export default function GroupPostScreen() {
           setSubmitting(false);
           return;
         }
-        imageUrl = uploaded;
-      } else {
-        imageUrl = isEditing ? null : undefined;
+        uploadedImageUrls.push(uploaded);
       }
 
       if (isEditing && editId) {
         await apiPatch(
           `/api/groups/${groupId}/announcements`,
-          { id: editId, body: trimmed, imageUrl },
+          { id: editId, body: trimmed, imageUrls: uploadedImageUrls },
           token,
         );
         emitGroupActivityEvent({
@@ -116,13 +138,14 @@ export default function GroupPostScreen() {
             id: string;
             body: string;
             imageUrl: string | null;
+            imageUrls?: string[];
             isPinned: boolean;
             createdAt: string;
             user: { id: string; name: string; avatar: string | null };
           };
         }>(
           `/api/groups/${groupId}/announcements`,
-          { body: trimmed, imageUrl },
+          { body: trimmed, imageUrls: uploadedImageUrls },
           token,
         );
         if (result.announcement) {
@@ -143,7 +166,7 @@ export default function GroupPostScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [body, imageUri, isEditing, editId, groupId, router, showSnackbar]);
+  }, [body, imageUris, isEditing, editId, groupId, router, showSnackbar]);
 
   const canSubmit = body.trim().length > 0 && !submitting;
 
@@ -171,16 +194,22 @@ export default function GroupPostScreen() {
           textAlignVertical="top"
         />
 
-        {imageUri ? (
+        {imageUris.length > 0 ? (
           <View style={styles.imagePreviewWrap}>
-            <Image source={imageUri} style={styles.imagePreview} transition={0} />
-            <Pressable
-              style={styles.imageRemove}
-              onPress={() => setImageUri(null)}
-              hitSlop={6}
-            >
-              <Ionicons name="close-circle" size={22} color="rgba(0,0,0,0.7)" />
-            </Pressable>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {imageUris.map((uri, index) => (
+                <View key={`${uri}-${index}`} style={styles.previewItem}>
+                  <Image source={uri} style={styles.imagePreview} transition={0} />
+                  <Pressable
+                    style={styles.imageRemove}
+                    onPress={() => setImageUris((prev) => prev.filter((_, i) => i !== index))}
+                    hitSlop={6}
+                  >
+                    <Ionicons name="close-circle" size={22} color="rgba(0,0,0,0.7)" />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         ) : null}
       </KeyboardAwareScrollView>
@@ -257,7 +286,10 @@ const styles = StyleSheet.create({
   imagePreviewWrap: {
     marginTop: 10,
     position: "relative",
-    alignSelf: "flex-start",
+    alignSelf: "stretch",
+  },
+  previewItem: {
+    marginRight: 10,
   },
   imagePreview: {
     width: 120,

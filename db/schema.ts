@@ -40,6 +40,7 @@ export const planningTimeWindowEnum = pgEnum("planning_time_window", [
 export const followVisibilityEnum = pgEnum("follow_visibility", ["public", "private"]);
 export const followStatusEnum = pgEnum("follow_status", ["requested", "accepted"]);
 export const notificationEventEnum = pgEnum("notification_event_type", [
+  "round_invite",
   "round_rsvp_accepted",
   "round_rsvp_declined",
   "group_join_request",
@@ -647,6 +648,7 @@ export const posts = pgTable(
     scope: text("scope").notNull().default("group"),
     body: text("body").notNull(),
     imageUrl: text("image_url"),
+    imageUrls: jsonb("image_urls").$type<string[]>().notNull().default([]),
     isPinned: boolean("is_pinned").notNull().default(true),
     hiddenOnProfile: boolean("hidden_on_profile").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })

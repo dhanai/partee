@@ -18,6 +18,8 @@ export async function GET(req: Request, { params }: Ctx) {
       .select({
         id: posts.id,
         body: posts.body,
+        imageUrl: posts.imageUrl,
+        imageUrls: posts.imageUrls,
         isPinned: posts.isPinned,
         createdAt: posts.createdAt,
         userId: posts.userId,
@@ -34,6 +36,8 @@ export async function GET(req: Request, { params }: Ctx) {
       announcements: rows.map((r) => ({
         id: r.id,
         body: r.body,
+        imageUrl: r.imageUrl,
+        imageUrls: (r.imageUrls ?? []) as string[],
         isPinned: r.isPinned,
         createdAt: r.createdAt.toISOString(),
         user: { id: r.userId, name: r.userName, avatar: r.userAvatar },
@@ -51,6 +55,7 @@ export async function GET(req: Request, { params }: Ctx) {
 const createSchema = z.object({
   body: z.string().min(1).max(2000),
   imageUrl: z.string().url().optional(),
+  imageUrls: z.array(z.string().url()).max(10).optional(),
   isPinned: z.boolean().default(true),
 });
 
@@ -73,6 +78,7 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const body = await req.json();
     const input = createSchema.parse(body);
+    const normalizedImages = normalizePostImages(input);
 
     const canPin = membership.role === "owner" || membership.role === "admin";
 
@@ -83,7 +89,8 @@ export async function POST(req: Request, { params }: Ctx) {
         userId: viewer.id,
         scope: "group",
         body: input.body,
-        imageUrl: input.imageUrl ?? null,
+        imageUrl: normalizedImages.imageUrl,
+        imageUrls: normalizedImages.imageUrls,
         isPinned: canPin && input.isPinned,
       })
       .returning();
@@ -119,6 +126,7 @@ export async function POST(req: Request, { params }: Ctx) {
         id: post.id,
         body: post.body,
         imageUrl: post.imageUrl,
+        imageUrls: (post.imageUrls ?? []) as string[],
         isPinned: post.isPinned,
         createdAt: post.createdAt.toISOString(),
         user: { id: viewer.id, name: viewer.name, avatar: viewer.avatar },
@@ -140,8 +148,19 @@ const editSchema = z.object({
   id: z.string().uuid(),
   body: z.string().min(1).max(2000).optional(),
   imageUrl: z.string().url().nullable().optional(),
+  imageUrls: z.array(z.string().url()).max(10).optional(),
   isPinned: z.boolean().optional(),
 });
+
+function normalizePostImages(input: { imageUrl?: string | null; imageUrls?: string[] }) {
+  const urls = (input.imageUrls ?? []).map((url) => url.trim()).filter((url) => url.length > 0);
+  if (urls.length > 0) return { imageUrls: urls, imageUrl: urls[0] ?? null };
+  if (input.imageUrl && input.imageUrl.trim().length > 0) {
+    const single = input.imageUrl.trim();
+    return { imageUrls: [single], imageUrl: single };
+  }
+  return { imageUrls: [] as string[], imageUrl: null };
+}
 
 export async function PATCH(req: Request, { params }: Ctx) {
   try {
@@ -178,7 +197,15 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     const updates: Record<string, unknown> = {};
     if (input.body !== undefined) updates.body = input.body;
-    if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
+    if (input.imageUrl !== undefined) {
+      updates.imageUrl = input.imageUrl;
+      updates.imageUrls = input.imageUrl ? [input.imageUrl] : [];
+    }
+    if (input.imageUrls !== undefined) {
+      const normalized = normalizePostImages({ imageUrls: input.imageUrls });
+      updates.imageUrls = normalized.imageUrls;
+      updates.imageUrl = normalized.imageUrl;
+    }
     if (input.isPinned !== undefined && isAdminOrOwner) updates.isPinned = input.isPinned;
 
     if (Object.keys(updates).length > 0) {

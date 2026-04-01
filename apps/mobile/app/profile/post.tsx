@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -28,11 +29,19 @@ const STICKY_TOOLBAR_CONTENT_H = 52;
 
 export default function ProfilePostScreen() {
   const router = useRouter();
-  const { editId, editBody, editImageUrl, profileUserId, targetFirstName: rawTargetFirstName } =
+  const {
+    editId,
+    editBody,
+    editImageUrl,
+    editImageUrls,
+    profileUserId,
+    targetFirstName: rawTargetFirstName,
+  } =
     useLocalSearchParams<{
     editId?: string;
     editBody?: string;
     editImageUrl?: string;
+    editImageUrls?: string;
     profileUserId?: string;
     targetFirstName?: string;
   }>();
@@ -46,9 +55,21 @@ export default function ProfilePostScreen() {
 
   const isEditing = typeof editId === "string" && editId.length > 0;
   const [body, setBody] = useState(typeof editBody === "string" ? editBody : "");
-  const [imageUri, setImageUri] = useState<string | null>(
-    typeof editImageUrl === "string" ? editImageUrl : null,
-  );
+  const initialImageUris = useMemo(() => {
+    const fromJson = (() => {
+      if (!editImageUrls) return [];
+      try {
+        const parsed = JSON.parse(editImageUrls);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.map((value) => String(value)).filter((value) => value.trim().length > 0);
+      } catch {
+        return [];
+      }
+    })();
+    if (fromJson.length > 0) return fromJson;
+    return typeof editImageUrl === "string" && editImageUrl.length > 0 ? [editImageUrl] : [];
+  }, [editImageUrl, editImageUrls]);
+  const [imageUris, setImageUris] = useState<string[]>(initialImageUris);
   const [submitting, setSubmitting] = useState(false);
 
   const stickyOffset = useMemo(
@@ -66,9 +87,14 @@ export default function ProfilePostScreen() {
       mediaTypes: ["images"],
       quality: 0.8,
       allowsEditing: false,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
     });
-    if (!result.canceled && result.assets[0]?.uri) {
-      setImageUri(result.assets[0].uri);
+    if (!result.canceled) {
+      const next = result.assets.map((asset) => asset.uri).filter((uri) => uri?.length > 0);
+      if (next.length > 0) {
+        setImageUris((prev) => [...prev, ...next].slice(0, 10));
+      }
     }
   }, []);
 
@@ -79,12 +105,14 @@ export default function ProfilePostScreen() {
     try {
       const token = await getTokenRef.current();
 
-      let imageUrl: string | null | undefined;
-      if (imageUri && imageUri.startsWith("http")) {
-        imageUrl = imageUri;
-      } else if (imageUri) {
+      const uploadedImageUrls: string[] = [];
+      for (const uri of imageUris) {
+        if (uri.startsWith("http")) {
+          uploadedImageUrls.push(uri);
+          continue;
+        }
         const uploaded = await uploadImage({
-          uri: imageUri,
+          uri,
           filename: "profile-post-image.jpg",
           maxBytes: POST_MAX_BYTES,
           getToken: getTokenRef.current,
@@ -93,9 +121,7 @@ export default function ProfilePostScreen() {
           setSubmitting(false);
           return;
         }
-        imageUrl = uploaded;
-      } else {
-        imageUrl = undefined;
+        uploadedImageUrls.push(uploaded);
       }
 
       const defaultProfileUserId =
@@ -103,7 +129,7 @@ export default function ProfilePostScreen() {
           ? profileUserId
           : (getCachedMeProfile()?.id ?? null);
       if (isEditing && editId) {
-        await apiPatch(`/api/posts/${editId}`, { body: trimmed, imageUrl }, token);
+        await apiPatch(`/api/posts/${editId}`, { body: trimmed, imageUrls: uploadedImageUrls }, token);
         emitProfileActivityEvent({
           profileUserId: defaultProfileUserId,
           action: "updated",
@@ -115,6 +141,7 @@ export default function ProfilePostScreen() {
             id: string;
             body: string;
             imageUrl: string | null;
+            imageUrls?: string[];
             createdAt: string;
             isPinned?: boolean;
             profileUserId?: string | null;
@@ -124,7 +151,7 @@ export default function ProfilePostScreen() {
           "/api/posts",
           {
             body: trimmed,
-            imageUrl,
+            imageUrls: uploadedImageUrls,
             scope: "profile",
             ...(typeof profileUserId === "string" && profileUserId.length > 0
               ? { profileUserId }
@@ -157,7 +184,7 @@ export default function ProfilePostScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [body, imageUri, router, editId, isEditing, profileUserId, showSnackbar]);
+  }, [body, imageUris, router, editId, isEditing, profileUserId, showSnackbar]);
 
   const canSubmit = body.trim().length > 0 && !submitting;
 
@@ -187,16 +214,22 @@ export default function ProfilePostScreen() {
           textAlignVertical="top"
         />
 
-        {imageUri ? (
+        {imageUris.length > 0 ? (
           <View style={styles.imagePreviewWrap}>
-            <Image source={imageUri} style={styles.imagePreview} transition={0} />
-            <Pressable
-              style={styles.imageRemove}
-              onPress={() => setImageUri(null)}
-              hitSlop={6}
-            >
-              <Ionicons name="close-circle" size={22} color="rgba(0,0,0,0.7)" />
-            </Pressable>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {imageUris.map((uri, index) => (
+                <View key={`${uri}-${index}`} style={styles.previewItem}>
+                  <Image source={uri} style={styles.imagePreview} transition={0} />
+                  <Pressable
+                    style={styles.imageRemove}
+                    onPress={() => setImageUris((prev) => prev.filter((_, i) => i !== index))}
+                    hitSlop={6}
+                  >
+                    <Ionicons name="close-circle" size={22} color="rgba(0,0,0,0.7)" />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         ) : null}
       </KeyboardAwareScrollView>
@@ -273,7 +306,10 @@ const styles = StyleSheet.create({
   imagePreviewWrap: {
     marginTop: 10,
     position: "relative",
-    alignSelf: "flex-start",
+    alignSelf: "stretch",
+  },
+  previewItem: {
+    marginRight: 10,
   },
   imagePreview: {
     width: 120,

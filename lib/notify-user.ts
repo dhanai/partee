@@ -124,9 +124,26 @@ export async function notifyFollowRequest(input: {
 export async function notifyRoundInvites(input: {
   inviteToken: string;
   inviteeUserIds: string[];
+  inviterUserId: string;
   body: string;
 }): Promise<void> {
   if (input.inviteeUserIds.length === 0) return;
+
+  await Promise.all(
+    input.inviteeUserIds.map(async (recipientUserId) => {
+      await db.insert(inAppNotifications).values({
+        recipientUserId,
+        type: "round_invite",
+        title: "Round invite",
+        body: input.body,
+        data: {
+          inviteToken: input.inviteToken,
+          actorUserId: input.inviterUserId,
+        },
+      });
+      publishNotificationBadgeNudge(recipientUserId, "round-invite").catch(() => {});
+    }),
+  );
 
   const rows = await db
     .select({ token: users.expoPushToken })
@@ -138,18 +155,6 @@ export async function notifyRoundInvites(input: {
     .filter((t): t is string => Boolean(t));
 
   if (tokens.length === 0) {
-    if (input.inviteeUserIds.length > 0) {
-      const hint =
-        process.env.EXPO_ACCESS_TOKEN && process.env.EXPO_PUSH_DISABLED !== "1"
-          ? "Invitee(s) have no expo_push_token in DB (app never registered push, or permission denied)."
-          : "Set EXPO_ACCESS_TOKEN on the API host to send pushes (or EXPO_PUSH_DISABLED=1 to silence).";
-      if (process.env.EXPO_DEBUG_PUSH === "1") {
-        console.warn("[notifyRoundInvites] No push tokens for invitees.", {
-          inviteeCount: input.inviteeUserIds.length,
-          hint,
-        });
-      }
-    }
     return;
   }
 
