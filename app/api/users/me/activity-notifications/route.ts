@@ -187,6 +187,9 @@ export async function GET(req: Request) {
           inviteToken?: string;
           groupId?: string;
           postId?: string;
+          commentId?: string;
+          parentCommentId?: string;
+          replyToCommentId?: string;
           actorUserId?: string;
           mode?: "planning" | "scheduled";
           teeTimeIso?: string | null;
@@ -197,6 +200,9 @@ export async function GET(req: Request) {
         const inviteToken = typeof d.inviteToken === "string" ? d.inviteToken : "";
         const groupId = typeof d.groupId === "string" ? d.groupId : "";
         const postId = typeof d.postId === "string" ? d.postId : "";
+        const commentId = typeof d.commentId === "string" ? d.commentId : "";
+        const parentCommentId = typeof d.parentCommentId === "string" ? d.parentCommentId : "";
+        const replyToCommentId = typeof d.replyToCommentId === "string" ? d.replyToCommentId : "";
         const actorUserId = typeof d.actorUserId === "string" ? d.actorUserId : "";
 
         const actorProfile = actorUserId ? actorProfileMap.get(actorUserId) : undefined;
@@ -284,6 +290,9 @@ export async function GET(req: Request) {
             inviteToken,
             groupId,
             postId,
+            commentId,
+            parentCommentId,
+            replyToCommentId,
             actorUserId,
             actorName: actorProfile?.name ?? "",
             actorAvatar: actorProfile?.avatar ?? null,

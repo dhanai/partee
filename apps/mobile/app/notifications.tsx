@@ -49,6 +49,9 @@ type ActivityNotificationItem = {
   inviteToken: string;
   groupId: string;
   postId: string;
+  commentId: string;
+  parentCommentId: string;
+  replyToCommentId: string;
   actorUserId: string;
   actorName: string;
   actorAvatar: string | null;
@@ -416,6 +419,7 @@ export default function NotificationsScreen() {
       }
       if (row.kind === "post_commented") {
         const item = row.item;
+        const isReply = Boolean(item.replyToCommentId || item.parentCommentId);
         return (
           <Pressable
             style={styles.notificationCard}
@@ -443,7 +447,9 @@ export default function NotificationsScreen() {
               )}
               <View style={styles.notificationRowText}>
                 <Text style={styles.notificationTitle}>{item.actorName}</Text>
-                <Text style={styles.notificationMeta}>Commented on your post</Text>
+                <Text style={styles.notificationMeta}>
+                  {isReply ? "Replied to your comment" : "Commented on your post"}
+                </Text>
               </View>
             </View>
           </Pressable>

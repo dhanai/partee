@@ -137,6 +137,12 @@ export async function POST(req: Request, { params }: Ctx) {
 
     let parentCommentId: string | null = input.parentCommentId ?? null;
     let replyToCommentId: string | null = input.replyToCommentId ?? null;
+    let replyTargetComment: {
+      id: string;
+      postId: string;
+      parentCommentId: string | null;
+      userId: string;
+    } | null = null;
 
     if (replyToCommentId && !parentCommentId) {
       const [replyTarget] = await db
@@ -144,6 +150,7 @@ export async function POST(req: Request, { params }: Ctx) {
           id: postComments.id,
           postId: postComments.postId,
           parentCommentId: postComments.parentCommentId,
+          userId: postComments.userId,
         })
         .from(postComments)
         .where(eq(postComments.id, replyToCommentId))
@@ -151,6 +158,7 @@ export async function POST(req: Request, { params }: Ctx) {
       if (!replyTarget || replyTarget.postId !== postId) {
         return NextResponse.json({ error: "Reply target not found." }, { status: 400 });
       }
+      replyTargetComment = replyTarget;
       parentCommentId = replyTarget.parentCommentId ?? replyTarget.id;
       replyToCommentId = replyTarget.id;
     }
@@ -174,20 +182,25 @@ export async function POST(req: Request, { params }: Ctx) {
     }
 
     if (replyToCommentId && parentCommentId) {
-      const [replyTarget] = await db
-        .select({
-          id: postComments.id,
-          postId: postComments.postId,
-          parentCommentId: postComments.parentCommentId,
-        })
-        .from(postComments)
-        .where(eq(postComments.id, replyToCommentId))
-        .limit(1);
-      if (!replyTarget || replyTarget.postId !== postId) {
+      if (!replyTargetComment) {
+        const [replyTarget] = await db
+          .select({
+            id: postComments.id,
+            postId: postComments.postId,
+            parentCommentId: postComments.parentCommentId,
+            userId: postComments.userId,
+          })
+          .from(postComments)
+          .where(eq(postComments.id, replyToCommentId))
+          .limit(1);
+        replyTargetComment = replyTarget ?? null;
+      }
+      if (!replyTargetComment || replyTargetComment.postId !== postId) {
         return NextResponse.json({ error: "Reply target not found." }, { status: 400 });
       }
       const inSameThread =
-        replyTarget.id === parentCommentId || replyTarget.parentCommentId === parentCommentId;
+        replyTargetComment.id === parentCommentId ||
+        replyTargetComment.parentCommentId === parentCommentId;
       if (!inSameThread) {
         return NextResponse.json({ error: "Reply target must be in same thread." }, { status: 400 });
       }
@@ -219,7 +232,23 @@ export async function POST(req: Request, { params }: Ctx) {
       console.error("[POST comments] ably publish", e),
     );
 
-    if (post.userId !== viewer.id) {
+    if (comment.parentCommentId && replyTargetComment) {
+      if (replyTargetComment.userId !== viewer.id) {
+        await notifyPostInteraction({
+          recipientUserId: replyTargetComment.userId,
+          actorUserId: viewer.id,
+          actorName: viewer.name,
+          postId,
+          kind: "commented",
+          groupId: post.groupId,
+          commentBody: input.body,
+          commentContext: "reply",
+          commentId: comment.id,
+          parentCommentId: comment.parentCommentId,
+          replyToCommentId: comment.replyToCommentId,
+        }).catch(() => {});
+      }
+    } else if (post.userId !== viewer.id) {
       await notifyPostInteraction({
         recipientUserId: post.userId,
         actorUserId: viewer.id,
@@ -228,6 +257,10 @@ export async function POST(req: Request, { params }: Ctx) {
         kind: "commented",
         groupId: post.groupId,
         commentBody: input.body,
+        commentContext: "comment",
+        commentId: comment.id,
+        parentCommentId: comment.parentCommentId,
+        replyToCommentId: comment.replyToCommentId,
       }).catch(() => {});
     }
 

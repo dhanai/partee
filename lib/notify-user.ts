@@ -296,17 +296,26 @@ export async function notifyPostInteraction(input: {
   kind: "liked" | "commented";
   groupId?: string | null;
   commentBody?: string;
+  commentContext?: "comment" | "reply";
+  commentId?: string;
+  parentCommentId?: string | null;
+  replyToCommentId?: string | null;
 }): Promise<void> {
   if (input.recipientUserId === input.actorUserId) return;
 
   const type = input.kind === "liked" ? "post_liked" : "post_commented";
-  const title = input.kind === "liked" ? "Post liked" : "New comment";
+  const isReply = input.kind === "commented" && input.commentContext === "reply";
+  const title = input.kind === "liked" ? "Post liked" : isReply ? "New reply" : "New comment";
   const body =
     input.kind === "liked"
       ? `${input.actorName} liked your post.`
-      : `${input.actorName} commented on your post${
-          input.commentBody?.trim() ? `: ${input.commentBody.trim().slice(0, 80)}` : "."
-        }`;
+      : isReply
+        ? `${input.actorName} replied to your comment${
+            input.commentBody?.trim() ? `: ${input.commentBody.trim().slice(0, 80)}` : "."
+          }`
+        : `${input.actorName} commented on your post${
+            input.commentBody?.trim() ? `: ${input.commentBody.trim().slice(0, 80)}` : "."
+          }`;
 
   await db.insert(inAppNotifications).values({
     recipientUserId: input.recipientUserId,
@@ -316,6 +325,9 @@ export async function notifyPostInteraction(input: {
     data: {
       actorUserId: input.actorUserId,
       postId: input.postId,
+      ...(input.commentId ? { commentId: input.commentId } : {}),
+      ...(input.parentCommentId ? { parentCommentId: input.parentCommentId } : {}),
+      ...(input.replyToCommentId ? { replyToCommentId: input.replyToCommentId } : {}),
       ...(input.groupId ? { groupId: input.groupId } : {}),
     },
   });
@@ -340,6 +352,9 @@ export async function notifyPostInteraction(input: {
       data: {
         type,
         postId: input.postId,
+        ...(input.commentId ? { commentId: input.commentId } : {}),
+        ...(input.parentCommentId ? { parentCommentId: input.parentCommentId } : {}),
+        ...(input.replyToCommentId ? { replyToCommentId: input.replyToCommentId } : {}),
         ...(input.groupId ? { groupId: input.groupId } : {}),
       },
     },

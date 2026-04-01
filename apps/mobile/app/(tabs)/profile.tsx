@@ -558,7 +558,11 @@ export default function ProfileScreen() {
         `/api/posts/${post.id}/comments`,
         token,
       );
-      setComments(data.comments ?? []);
+      const nextComments = data.comments ?? [];
+      setComments(nextComments);
+      setPosts((prev) =>
+        prev.map((p) => (p.id === post.id ? { ...p, commentCount: nextComments.length } : p)),
+      );
     } catch {
       setComments([]);
     } finally {
@@ -582,19 +586,30 @@ export default function ProfileScreen() {
         },
         token,
       );
-      setComments((prev) => [...prev, data.comment]);
+      let nextCount = 0;
+      setComments((prev) => {
+        const next = [...prev, data.comment];
+        nextCount = next.length;
+        return next;
+      });
       setCommentDraft("");
       setReplyTarget(null);
-      if (!data.comment.parentCommentId) {
-        setPosts((prev) =>
-          prev.map((p) =>
-            p.id === commentSheetPost.id ? { ...p, commentCount: (p.commentCount ?? 0) + 1 } : p,
-          ),
-        );
-      }
+      setPosts((prev) =>
+        prev.map((p) => (p.id === commentSheetPost.id ? { ...p, commentCount: nextCount } : p)),
+      );
     } finally {
       setPostingComment(false);
     }
+  }
+
+  function closeCommentSheet() {
+    if (commentSheetPost) {
+      setPosts((prev) =>
+        prev.map((p) => (p.id === commentSheetPost.id ? { ...p, commentCount: comments.length } : p)),
+      );
+    }
+    setReplyTarget(null);
+    setCommentSheetPost(null);
   }
 
   function beginReplyToComment(comment: ProfileComment) {
@@ -789,8 +804,8 @@ export default function ProfileScreen() {
                         (() => {
                           const post = item.post;
                           return (
-                            <DoubleTapLikeCard onDoubleTap={() => handleDoubleTapLike(post)}>
-                              <View key={item.id} style={styles.postCard}>
+                            <DoubleTapLikeCard key={item.id} onDoubleTap={() => handleDoubleTapLike(post)}>
+                              <View style={styles.postCard}>
                                 <View style={styles.postHeader}>
                                 {post.user.avatar ? (
                                   <Image
@@ -986,7 +1001,7 @@ export default function ProfileScreen() {
       />
       <AnimatedBottomSheetFrame
         visible={!!commentSheetPost}
-        onClose={() => setCommentSheetPost(null)}
+        onClose={closeCommentSheet}
         snapPoints={COMMENT_SNAP_POINTS}
         topInset={insets.top}
         sheetStyle={styles.commentsSheet}

@@ -170,6 +170,9 @@ export const inAppNotifications = pgTable(
         inviteToken?: string;
         groupId?: string;
         postId?: string;
+        commentId?: string;
+        parentCommentId?: string;
+        replyToCommentId?: string;
         actorUserId: string;
         /** For round RSVP: lets the client format date/time in the viewer's timezone */
         mode?: "planning" | "scheduled" | "tournament";

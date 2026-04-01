@@ -61,11 +61,30 @@ function openNotificationData(
   }
   if (type === "post_liked" || type === "post_commented") {
     const groupId = typeof data.groupId === "string" ? data.groupId.trim() : "";
+    const postId = typeof data.postId === "string" ? data.postId.trim() : "";
+    const commentId = typeof data.commentId === "string" ? data.commentId.trim() : "";
+    const replyToCommentId =
+      typeof data.replyToCommentId === "string" ? data.replyToCommentId.trim() : "";
     if (groupId.length > 0) {
-      router.push({ pathname: "/group/[groupId]", params: { groupId } });
+      router.push({
+        pathname: "/group/[groupId]",
+        params: {
+          groupId,
+          ...(postId ? { postId } : {}),
+          ...(commentId ? { commentId } : {}),
+          ...(replyToCommentId ? { replyToCommentId } : {}),
+        },
+      });
       return;
     }
-    router.push("/(tabs)/profile");
+    router.push({
+      pathname: "/(tabs)/profile",
+      params: {
+        ...(postId ? { postId } : {}),
+        ...(commentId ? { commentId } : {}),
+        ...(replyToCommentId ? { replyToCommentId } : {}),
+      },
+    });
     return;
   }
   if (type === "profile_post") {
