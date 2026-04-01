@@ -1,5 +1,20 @@
+type ProfileEventPost = {
+  id: string;
+  body: string;
+  imageUrl: string | null;
+  createdAt: string;
+  isPinned?: boolean;
+  profileUserId?: string | null;
+  likeCount?: number;
+  commentCount?: number;
+  viewerLiked?: boolean;
+  user: { id: string; name: string; avatar: string | null };
+};
+
 type ProfileActivityEvent = {
-  userId?: string | null;
+  profileUserId?: string | null;
+  post?: ProfileEventPost;
+  action?: "created" | "updated" | "deleted";
 };
 
 const listeners = new Set<(event: ProfileActivityEvent) => void>();

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { postComments, posts, groupMembers, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { notifyPostInteraction } from "@/lib/notify-user";
 import { publishPostCommentAdded } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { groupId: string } };
@@ -84,7 +85,7 @@ export async function POST(req: Request, { params }: Ctx) {
     const input = createSchema.parse(await req.json());
 
     const [post] = await db
-      .select({ id: posts.id })
+      .select({ id: posts.id, userId: posts.userId })
       .from(posts)
       .where(
         and(
@@ -117,6 +118,18 @@ export async function POST(req: Request, { params }: Ctx) {
     await publishPostCommentAdded(input.announcementId, commentPayload).catch((e) =>
       console.error("[POST comments] ably publish", e),
     );
+
+    if (post.userId !== viewer.id) {
+      await notifyPostInteraction({
+        recipientUserId: post.userId,
+        actorUserId: viewer.id,
+        actorName: viewer.name,
+        postId: input.announcementId,
+        kind: "commented",
+        groupId,
+        commentBody: input.body,
+      }).catch((e) => console.error("[POST comments] notify", e));
+    }
 
     return NextResponse.json({ comment: commentPayload });
   } catch (error) {

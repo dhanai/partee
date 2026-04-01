@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -12,7 +12,7 @@ import {
   users,
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
-import { notifyGroupPost } from "@/lib/notify-user";
+import { notifyGroupPost, notifyProfilePost } from "@/lib/notify-user";
 import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
 
 const createSchema = z.object({
@@ -42,10 +42,7 @@ export async function GET(req: Request) {
       where = and(
         eq(posts.scope, "profile"),
         eq(posts.hiddenOnProfile, false),
-        or(
-          eq(posts.profileUserId, userId),
-          and(isNull(posts.profileUserId), eq(posts.userId, userId)),
-        ),
+        eq(posts.profileUserId, userId),
       );
     } else {
       return NextResponse.json({ error: "Provide groupId or userId." }, { status: 400 });
@@ -185,6 +182,7 @@ export async function POST(req: Request) {
           groupName: group?.name ?? "Group",
           senderUserId: viewer.id,
           senderName: viewer.name,
+          postId: post.id,
           body: input.body,
           memberUserIds: memberRows.map((m) => m.userId),
         }),
@@ -255,6 +253,16 @@ export async function POST(req: Request) {
         hiddenOnProfile: false,
       })
       .returning();
+
+    if (profileUserId !== viewer.id) {
+      await notifyProfilePost({
+        recipientUserId: profileUserId,
+        senderUserId: viewer.id,
+        senderName: viewer.name,
+        postId: post.id,
+        previewBody: input.body,
+      });
+    }
 
     return NextResponse.json({
       post: {

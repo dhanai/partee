@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiPatch, apiPost } from "../../lib/api";
 import { getCachedMeProfile } from "../../lib/me-profile-cache";
 import { emitProfileActivityEvent } from "../../lib/profile-activity-events";
+import { useSnackbar } from "../../lib/snackbar-context";
 import { uploadImage, POST_MAX_BYTES } from "../../lib/upload-image";
 import { colors } from "../../lib/theme";
 
@@ -27,13 +28,19 @@ const STICKY_TOOLBAR_CONTENT_H = 52;
 
 export default function ProfilePostScreen() {
   const router = useRouter();
-  const { editId, editBody, editImageUrl } = useLocalSearchParams<{
+  const { editId, editBody, editImageUrl, profileUserId, targetFirstName: rawTargetFirstName } =
+    useLocalSearchParams<{
     editId?: string;
     editBody?: string;
     editImageUrl?: string;
+    profileUserId?: string;
+    targetFirstName?: string;
   }>();
+  const targetFirstName =
+    typeof rawTargetFirstName === "string" ? rawTargetFirstName.trim() : "";
   const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
+  const { show: showSnackbar } = useSnackbar();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
@@ -91,25 +98,66 @@ export default function ProfilePostScreen() {
         imageUrl = undefined;
       }
 
-      let changedUserId: string | null | undefined = getCachedMeProfile()?.id ?? null;
+      const defaultProfileUserId =
+        typeof profileUserId === "string" && profileUserId.length > 0
+          ? profileUserId
+          : (getCachedMeProfile()?.id ?? null);
       if (isEditing && editId) {
         await apiPatch(`/api/posts/${editId}`, { body: trimmed, imageUrl }, token);
+        emitProfileActivityEvent({
+          profileUserId: defaultProfileUserId,
+          action: "updated",
+        });
+        showSnackbar("Post updated");
       } else {
-        const result = await apiPost<{ post?: { user?: { id?: string } } }>(
+        const result = await apiPost<{
+          post?: {
+            id: string;
+            body: string;
+            imageUrl: string | null;
+            createdAt: string;
+            isPinned?: boolean;
+            profileUserId?: string | null;
+            user: { id: string; name: string; avatar: string | null };
+          };
+        }>(
           "/api/posts",
-          { body: trimmed, imageUrl, scope: "profile" },
+          {
+            body: trimmed,
+            imageUrl,
+            scope: "profile",
+            ...(typeof profileUserId === "string" && profileUserId.length > 0
+              ? { profileUserId }
+              : {}),
+          },
           token,
         );
-        changedUserId = result.post?.user?.id ?? changedUserId;
+        if (result.post) {
+          emitProfileActivityEvent({
+            profileUserId: result.post.profileUserId ?? defaultProfileUserId,
+            action: "created",
+            post: {
+              ...result.post,
+              likeCount: 0,
+              commentCount: 0,
+              viewerLiked: false,
+            },
+          });
+        } else {
+          emitProfileActivityEvent({
+            profileUserId: defaultProfileUserId,
+            action: "created",
+          });
+        }
+        showSnackbar("Posted");
       }
-      emitProfileActivityEvent({ userId: changedUserId });
       router.back();
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Could not post.");
     } finally {
       setSubmitting(false);
     }
-  }, [body, imageUri, router, editId, isEditing]);
+  }, [body, imageUri, router, editId, isEditing, profileUserId, showSnackbar]);
 
   const canSubmit = body.trim().length > 0 && !submitting;
 
@@ -128,7 +176,9 @@ export default function ProfilePostScreen() {
           style={styles.input}
           value={body}
           onChangeText={setBody}
-          placeholder="What's on your mind?"
+          placeholder={
+            targetFirstName ? `Write something to ${targetFirstName}...` : "What's on your mind?"
+          }
           placeholderTextColor={colors.muted}
           multiline
           scrollEnabled

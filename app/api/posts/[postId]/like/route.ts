@@ -3,7 +3,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { groupMembers, inAppNotifications, postLikes, posts } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
-import { publishNotificationBadgeNudge, publishPostLikeUpdated } from "@/lib/parfade-ably-publish";
+import { notifyPostInteraction } from "@/lib/notify-user";
+import { publishPostLikeUpdated } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { postId: string } };
 
@@ -56,21 +57,14 @@ export async function POST(req: Request, { params }: Ctx) {
     await db.insert(postLikes).values({ postId, userId: viewer.id });
 
     if (post.userId !== viewer.id) {
-      await db
-        .insert(inAppNotifications)
-        .values({
-          recipientUserId: post.userId,
-          type: "post_liked",
-          title: "Post liked",
-          body: `${viewer.name} liked your post.`,
-          data: {
-            actorUserId: viewer.id,
-            postId,
-            ...(post.groupId ? { groupId: post.groupId } : {}),
-          },
-        })
-        .catch(() => {});
-      publishNotificationBadgeNudge(post.userId, "post-liked").catch(() => {});
+      await notifyPostInteraction({
+        recipientUserId: post.userId,
+        actorUserId: viewer.id,
+        actorName: viewer.name,
+        postId,
+        kind: "liked",
+        groupId: post.groupId,
+      }).catch(() => {});
     }
 
     await publishPostLikeUpdated(postId, viewer.id, true).catch(() => {});

@@ -35,7 +35,15 @@ type FollowRequestsResponse = {
 
 type ActivityNotificationItem = {
   id: string;
-  type: "round_rsvp_accepted" | "round_rsvp_declined" | "group_join_request" | "new_follower" | "post_liked";
+  type:
+    | "round_rsvp_accepted"
+    | "round_rsvp_declined"
+    | "group_join_request"
+    | "new_follower"
+    | "post_liked"
+    | "post_commented"
+    | "group_post"
+    | "profile_post";
   title: string;
   body: string;
   inviteToken: string;
@@ -217,6 +225,9 @@ export default function NotificationsScreen() {
     | { kind: "group_request"; item: ActivityNotificationItem }
     | { kind: "new_follower"; item: ActivityNotificationItem }
     | { kind: "post_liked"; item: ActivityNotificationItem }
+    | { kind: "post_commented"; item: ActivityNotificationItem }
+    | { kind: "group_post"; item: ActivityNotificationItem }
+    | { kind: "profile_post"; item: ActivityNotificationItem }
     | { kind: "round_update"; item: ActivityNotificationItem }
     | { kind: "follow_request"; request: FollowRequestsResponse["requests"][number] }
     | { kind: "round_invite"; round: MineRound };
@@ -234,6 +245,27 @@ export default function NotificationsScreen() {
     const likes = activityItems.filter((i) => i.type === "post_liked");
     if (likes.length > 0) {
       result.push({ title: "Likes", data: likes.map((item) => ({ kind: "post_liked" as const, item })) });
+    }
+    const comments = activityItems.filter((i) => i.type === "post_commented");
+    if (comments.length > 0) {
+      result.push({
+        title: "Comments",
+        data: comments.map((item) => ({ kind: "post_commented" as const, item })),
+      });
+    }
+    const groupPosts = activityItems.filter((i) => i.type === "group_post");
+    if (groupPosts.length > 0) {
+      result.push({
+        title: "Group posts",
+        data: groupPosts.map((item) => ({ kind: "group_post" as const, item })),
+      });
+    }
+    const profilePosts = activityItems.filter((i) => i.type === "profile_post");
+    if (profilePosts.length > 0) {
+      result.push({
+        title: "Profile posts",
+        data: profilePosts.map((item) => ({ kind: "profile_post" as const, item })),
+      });
     }
     const rsvps = activityItems.filter((i) => i.type === "round_rsvp_accepted" || i.type === "round_rsvp_declined");
     if (rsvps.length > 0) {
@@ -377,6 +409,100 @@ export default function NotificationsScreen() {
               <View style={styles.notificationRowText}>
                 <Text style={styles.notificationTitle}>{item.actorName}</Text>
                 <Text style={styles.notificationMeta}>Liked your post</Text>
+              </View>
+            </View>
+          </Pressable>
+        );
+      }
+      if (row.kind === "post_commented") {
+        const item = row.item;
+        return (
+          <Pressable
+            style={styles.notificationCard}
+            onPress={() => {
+              if (item.groupId) {
+                router.push({
+                  pathname: "/group/[groupId]",
+                  params: { groupId: item.groupId },
+                });
+              } else {
+                router.push("/(tabs)/profile");
+              }
+            }}
+          >
+            <View style={styles.notificationRow}>
+              {item.actorAvatar ? (
+                <Image
+                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
+                  style={styles.notificationAvatar}
+                />
+              ) : (
+                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                  <Ionicons name="chatbubble-outline" size={14} color={colors.fairway} />
+                </View>
+              )}
+              <View style={styles.notificationRowText}>
+                <Text style={styles.notificationTitle}>{item.actorName}</Text>
+                <Text style={styles.notificationMeta}>Commented on your post</Text>
+              </View>
+            </View>
+          </Pressable>
+        );
+      }
+      if (row.kind === "group_post") {
+        const item = row.item;
+        return (
+          <Pressable
+            style={styles.notificationCard}
+            onPress={() => {
+              if (item.groupId) {
+                router.push({
+                  pathname: "/group/[groupId]",
+                  params: { groupId: item.groupId },
+                });
+              }
+            }}
+          >
+            <View style={styles.notificationRow}>
+              {item.actorAvatar ? (
+                <Image
+                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
+                  style={styles.notificationAvatar}
+                />
+              ) : (
+                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                  <Ionicons name="people" size={14} color={colors.fairway} />
+                </View>
+              )}
+              <View style={styles.notificationRowText}>
+                <Text style={styles.notificationTitle}>{item.actorName}</Text>
+                <Text style={styles.notificationMeta}>Posted in your group</Text>
+              </View>
+            </View>
+          </Pressable>
+        );
+      }
+      if (row.kind === "profile_post") {
+        const item = row.item;
+        return (
+          <Pressable
+            style={styles.notificationCard}
+            onPress={() => router.push("/(tabs)/profile")}
+          >
+            <View style={styles.notificationRow}>
+              {item.actorAvatar ? (
+                <Image
+                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
+                  style={styles.notificationAvatar}
+                />
+              ) : (
+                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                  <Ionicons name="create-outline" size={14} color={colors.fairway} />
+                </View>
+              )}
+              <View style={styles.notificationRowText}>
+                <Text style={styles.notificationTitle}>{item.actorName}</Text>
+                <Text style={styles.notificationMeta}>Posted on your profile</Text>
               </View>
             </View>
           </Pressable>

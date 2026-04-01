@@ -4,8 +4,8 @@ import { z } from "zod";
 import { db } from "@/db";
 import { inAppNotifications, postLikes, posts, groupMembers } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { notifyPostInteraction } from "@/lib/notify-user";
 import { publishPostLikeUpdated } from "@/lib/parfade-ably-publish";
-import { publishNotificationBadgeNudge } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { groupId: string } };
 
@@ -70,24 +70,24 @@ export async function POST(req: Request, { params }: Ctx) {
     });
 
     const [post] = await db
-      .select({ userId: posts.userId })
+      .select({ userId: posts.userId, groupId: posts.groupId })
       .from(posts)
       .where(eq(posts.id, announcementId))
       .limit(1);
 
-    if (post && post.userId !== viewer.id) {
-      await db
-        .insert(inAppNotifications)
-        .values({
-          recipientUserId: post.userId,
-          type: "post_liked",
-          title: "Post liked",
-          body: `${viewer.name} liked your post.`,
-          data: { actorUserId: viewer.id, postId: announcementId, groupId },
-        })
-        .catch((e) => console.error("[like] insert notification", e));
+    if (post?.groupId !== groupId) {
+      return NextResponse.json({ error: "Post not found." }, { status: 404 });
+    }
 
-      publishNotificationBadgeNudge(post.userId, "post-liked").catch(() => {});
+    if (post.userId !== viewer.id) {
+      await notifyPostInteraction({
+        recipientUserId: post.userId,
+        actorUserId: viewer.id,
+        actorName: viewer.name,
+        postId: announcementId,
+        kind: "liked",
+        groupId,
+      }).catch((e) => console.error("[like] insert notification", e));
     }
 
     await publishPostLikeUpdated(announcementId, viewer.id, true).catch((e) =>

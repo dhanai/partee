@@ -47,6 +47,7 @@ import {
   PublicProfile,
   setCachedPublicProfile,
 } from "../../../lib/public-profile-cache";
+import { getCachedMeProfile } from "../../../lib/me-profile-cache";
 import { subscribeProfileActivityEvents } from "../../../lib/profile-activity-events";
 import { colors } from "../../../lib/theme";
 import type { MineRound } from "../../../types/round";
@@ -58,6 +59,7 @@ type ProfilePost = {
   imageUrl: string | null;
   createdAt: string;
   isPinned?: boolean;
+  profileUserId?: string | null;
   likeCount?: number;
   commentCount?: number;
   viewerLiked?: boolean;
@@ -207,6 +209,7 @@ export default function PublicProfileScreen() {
   const [reportOpen, setReportOpen] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [dmBusy, setDmBusy] = useState(false);
+  const meId = getCachedMeProfile()?.id ?? null;
   const scrollRef = useRef<ScrollView>(null);
   const restoredScrollRef = useRef(false);
 
@@ -260,7 +263,7 @@ export default function PublicProfileScreen() {
         source: "joined" as const,
       }));
       setRounds([...hosting, ...joined]);
-      setPosts(postsData.posts ?? []);
+      setPosts((postsData.posts ?? []).filter((post) => post.profileUserId === userId));
     } catch (profileError) {
       setError(profileError instanceof Error ? profileError.message : "Unable to load profile.");
       setRounds([]);
@@ -290,7 +293,15 @@ export default function PublicProfileScreen() {
   useEffect(() => {
     return subscribeProfileActivityEvents((event) => {
       if (!profile?.user.id) return;
-      if (event.userId && event.userId !== profile.user.id) return;
+      if (event.profileUserId && event.profileUserId !== profile.user.id) return;
+      if (event.post) {
+        if (event.post.profileUserId !== profile.user.id) return;
+        setPosts((prev) => {
+          const without = prev.filter((p) => p.id !== event.post!.id);
+          return [event.post as ProfilePost, ...without];
+        });
+        return;
+      }
       void (async () => {
         try {
           const token = await getTokenRef.current();
@@ -298,7 +309,7 @@ export default function PublicProfileScreen() {
             `/api/posts?userId=${encodeURIComponent(profile.user.id)}&limit=20`,
             token,
           );
-          setPosts(data.posts ?? []);
+          setPosts((data.posts ?? []).filter((post) => post.profileUserId === profile.user.id));
         } catch {
           // best effort
         }
@@ -537,6 +548,7 @@ export default function PublicProfileScreen() {
       params: {
         editId: post.id,
         editBody: post.body,
+        ...(post.profileUserId ? { profileUserId: post.profileUserId } : {}),
         ...(post.imageUrl ? { editImageUrl: post.imageUrl } : {}),
       },
     });
@@ -574,6 +586,28 @@ export default function PublicProfileScreen() {
     }
   }
 
+  async function handleHideFromProfile(post: ProfilePost) {
+    setOverflowPost(null);
+    setPosts((prev) => prev.filter((p) => p.id !== post.id));
+    try {
+      const token = await getTokenRef.current();
+      await apiPatch(`/api/posts/${post.id}`, { hideFromProfile: true }, token);
+    } catch {
+      try {
+        if (profile?.user.id) {
+          const token = await getTokenRef.current();
+          const data = await apiGet<{ posts: ProfilePost[] }>(
+            `/api/posts?userId=${encodeURIComponent(profile.user.id)}&limit=20`,
+            token,
+          );
+          setPosts((data.posts ?? []).filter((post) => post.profileUserId === profile.user.id));
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   function followButtonText() {
     const relationship = profile?.user.relationship;
     if (!relationship || relationship === "self") return "";
@@ -581,6 +615,18 @@ export default function PublicProfileScreen() {
     if (relationship === "following" || relationship === "mutual") return "Unfollow";
     if (relationship === "requested_to_viewer") return "Requested you";
     return "Follow";
+  }
+
+  function openFriendWallComposer() {
+    if (!userId || !profile) return;
+    const firstName = profile.user.name.trim().split(/\s+/)[0] ?? "";
+    router.push({
+      pathname: "/profile/post",
+      params: {
+        profileUserId: userId,
+        targetFirstName: firstName,
+      },
+    });
   }
 
   if (loading) {
@@ -741,6 +787,22 @@ export default function PublicProfileScreen() {
 
       {userId ? (
         <>
+          {isMutual && !isSelfProfile ? (
+            <Pressable style={styles.composerRow} onPress={openFriendWallComposer}>
+              {displayAvatar ? (
+                <Image source={toAbsoluteUrl(displayAvatar)} style={styles.composerAvatar} />
+              ) : (
+                <View style={[styles.composerAvatar, styles.composerAvatarFallback]}>
+                  <Ionicons name="person" size={16} color={colors.muted} />
+                </View>
+              )}
+              <View style={styles.composerFakeInput}>
+                <Text style={styles.composerPlaceholder}>
+                  {`Write something to ${profile.user.name.trim().split(/\s+/)[0] ?? "them"}`}
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
           <View style={styles.feedSection}>
             <Text style={styles.feedSectionTitle}>Activity</Text>
           </View>
@@ -790,7 +852,7 @@ export default function PublicProfileScreen() {
                           {post.isPinned ? (
                             <Ionicons name="pin" size={14} color={colors.muted} />
                           ) : null}
-                          {isSelfProfile ? (
+                          {meId && (isSelfProfile || post.user.id === meId) ? (
                             <Pressable
                               style={styles.postOverflow}
                               onPress={() => setOverflowPost(post)}
@@ -985,27 +1047,60 @@ export default function PublicProfileScreen() {
     <OverflowMenuSheet
       visible={!!overflowPost}
       onClose={() => setOverflowPost(null)}
-      items={overflowPost ? [
-        {
-          key: "edit",
-          label: "Edit post",
-          icon: "create-outline" as const,
-          onPress: () => openEditPost(overflowPost),
-        },
-        {
-          key: "pin",
-          label: overflowPost.isPinned ? "Unpin post" : "Pin to top",
-          icon: overflowPost.isPinned ? "pin-outline" : "pin",
-          onPress: () => void handleTogglePin(overflowPost),
-        },
-        {
-          key: "delete",
-          label: "Delete post",
-          icon: "trash-outline" as const,
-          destructive: true,
-          onPress: () => handleDeletePost(overflowPost),
-        },
-      ] : []}
+      items={
+        overflowPost
+          ? [
+              ...(meId && overflowPost.user.id === meId
+                ? [
+                    {
+                      key: "edit",
+                      label: "Edit post",
+                      icon: "create-outline" as const,
+                      onPress: () => openEditPost(overflowPost),
+                    },
+                    {
+                      key: "delete",
+                      label: "Delete post",
+                      icon: "trash-outline" as const,
+                      destructive: true,
+                      onPress: () => handleDeletePost(overflowPost),
+                    },
+                  ]
+                : []),
+              ...(isSelfProfile
+                ? [
+                    ...(overflowPost.isPinned
+                      ? [
+                          {
+                            key: "pin",
+                            label: "Unpin post",
+                            icon: "pin-outline" as const,
+                            onPress: () => void handleTogglePin(overflowPost),
+                          },
+                        ]
+                      : [
+                          {
+                            key: "pin",
+                            label: "Pin to top",
+                            icon: "pin" as const,
+                            onPress: () => void handleTogglePin(overflowPost),
+                          },
+                        ]),
+                    ...(meId && overflowPost.user.id !== meId
+                      ? [
+                          {
+                            key: "hide",
+                            label: "Hide from my profile",
+                            icon: "eye-off-outline" as const,
+                            onPress: () => void handleHideFromProfile(overflowPost),
+                          },
+                        ]
+                      : []),
+                  ]
+                : []),
+            ]
+          : []
+      }
     />
 
     <OverflowMenuSheet
@@ -1188,6 +1283,42 @@ const styles = StyleSheet.create({
   },
   errorText: { color: colors.danger, marginTop: 12, textAlign: "center" },
   disabledButton: { opacity: 0.6 },
+  composerRow: {
+    alignSelf: "stretch",
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 16,
+    marginBottom: 2,
+  },
+  composerAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+  },
+  composerAvatarFallback: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  composerFakeInput: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    height: 38,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  composerPlaceholder: {
+    color: colors.muted,
+    fontSize: 15,
+    fontWeight: "500",
+  },
   feedSection: {
     alignSelf: "stretch",
     width: "100%",

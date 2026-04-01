@@ -174,11 +174,36 @@ export async function notifyGroupPost(input: {
   groupName: string;
   senderUserId: string;
   senderName: string;
+  postId: string;
   body: string;
   memberUserIds: string[];
 }): Promise<void> {
   const recipientIds = input.memberUserIds.filter((id) => id !== input.senderUserId);
   if (recipientIds.length === 0) return;
+
+  const preview = input.body.length > 120 ? `${input.body.slice(0, 117)}…` : input.body;
+  const title = `${input.groupName} — New post`;
+  const body = `${input.senderName}: ${preview}`;
+
+  await Promise.all(
+    recipientIds.map((recipientUserId) =>
+      db.insert(inAppNotifications).values({
+        recipientUserId,
+        type: "group_post",
+        title,
+        body,
+        data: {
+          groupId: input.groupId,
+          postId: input.postId,
+          actorUserId: input.senderUserId,
+        },
+      }),
+    ),
+  );
+
+  for (const recipientUserId of recipientIds) {
+    publishNotificationBadgeNudge(recipientUserId, "group-post");
+  }
 
   const rows = await db
     .select({ token: users.expoPushToken })
@@ -191,17 +216,120 @@ export async function notifyGroupPost(input: {
 
   if (tokens.length === 0) return;
 
-  const preview = input.body.length > 120 ? `${input.body.slice(0, 117)}…` : input.body;
-
   await sendExpoPushMessages(
     tokens.map((to) => ({
       to,
       sound: "default" as const,
-      title: `${input.groupName} — Post`,
-      body: `${input.senderName}: ${preview}`,
+      title,
+      body,
       data: { type: "group_post", groupId: input.groupId },
     })),
   );
+}
+
+export async function notifyProfilePost(input: {
+  recipientUserId: string;
+  senderUserId: string;
+  senderName: string;
+  postId: string;
+  previewBody: string;
+}): Promise<void> {
+  if (input.recipientUserId === input.senderUserId) return;
+
+  const preview =
+    input.previewBody.length > 120 ? `${input.previewBody.slice(0, 117)}…` : input.previewBody;
+  const title = `${input.senderName} posted on your profile`;
+  const body = preview.length > 0 ? preview : "Tap to view";
+
+  await db.insert(inAppNotifications).values({
+    recipientUserId: input.recipientUserId,
+    type: "profile_post",
+    title,
+    body,
+    data: {
+      postId: input.postId,
+      actorUserId: input.senderUserId,
+    },
+  });
+
+  publishNotificationBadgeNudge(input.recipientUserId, "profile-post");
+
+  const [row] = await db
+    .select({ token: users.expoPushToken })
+    .from(users)
+    .where(eq(users.id, input.recipientUserId))
+    .limit(1);
+
+  const token = row?.token?.trim();
+  if (!token) return;
+
+  await sendExpoPushMessages([
+    {
+      to: token,
+      sound: "default",
+      title,
+      body,
+      data: { type: "profile_post" },
+    },
+  ]);
+}
+
+export async function notifyPostInteraction(input: {
+  recipientUserId: string;
+  actorUserId: string;
+  actorName: string;
+  postId: string;
+  kind: "liked" | "commented";
+  groupId?: string | null;
+  commentBody?: string;
+}): Promise<void> {
+  if (input.recipientUserId === input.actorUserId) return;
+
+  const type = input.kind === "liked" ? "post_liked" : "post_commented";
+  const title = input.kind === "liked" ? "Post liked" : "New comment";
+  const body =
+    input.kind === "liked"
+      ? `${input.actorName} liked your post.`
+      : `${input.actorName} commented on your post${
+          input.commentBody?.trim() ? `: ${input.commentBody.trim().slice(0, 80)}` : "."
+        }`;
+
+  await db.insert(inAppNotifications).values({
+    recipientUserId: input.recipientUserId,
+    type,
+    title,
+    body,
+    data: {
+      actorUserId: input.actorUserId,
+      postId: input.postId,
+      ...(input.groupId ? { groupId: input.groupId } : {}),
+    },
+  });
+
+  publishNotificationBadgeNudge(input.recipientUserId, type).catch(() => {});
+
+  const [row] = await db
+    .select({ token: users.expoPushToken })
+    .from(users)
+    .where(eq(users.id, input.recipientUserId))
+    .limit(1);
+
+  const token = row?.token?.trim();
+  if (!token) return;
+
+  await sendExpoPushMessages([
+    {
+      to: token,
+      sound: "default",
+      title,
+      body,
+      data: {
+        type,
+        postId: input.postId,
+        ...(input.groupId ? { groupId: input.groupId } : {}),
+      },
+    },
+  ]);
 }
 
 const DM_PREVIEW_MAX = 140;

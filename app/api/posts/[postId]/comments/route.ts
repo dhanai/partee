@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { groupMembers, postComments, posts, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
+import { notifyPostInteraction } from "@/lib/notify-user";
 import { publishPostCommentAdded } from "@/lib/parfade-ably-publish";
 
 type Ctx = { params: { postId: string } };
@@ -14,7 +15,7 @@ export async function GET(req: Request, { params }: Ctx) {
     const { postId } = params;
 
     const [post] = await db
-      .select({ id: posts.id, groupId: posts.groupId })
+      .select({ id: posts.id, groupId: posts.groupId, userId: posts.userId })
       .from(posts)
       .where(eq(posts.id, postId))
       .limit(1);
@@ -112,6 +113,19 @@ export async function POST(req: Request, { params }: Ctx) {
     await publishPostCommentAdded(postId, commentPayload).catch((e) =>
       console.error("[POST comments] ably publish", e),
     );
+
+    if (post.userId !== viewer.id) {
+      await notifyPostInteraction({
+        recipientUserId: post.userId,
+        actorUserId: viewer.id,
+        actorName: viewer.name,
+        postId,
+        kind: "commented",
+        groupId: post.groupId,
+        commentBody: input.body,
+      }).catch(() => {});
+    }
+
     return NextResponse.json({ comment: commentPayload });
   } catch (error) {
     if (error instanceof z.ZodError) {

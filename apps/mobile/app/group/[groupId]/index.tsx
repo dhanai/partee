@@ -34,6 +34,7 @@ import { ReportSheet } from "../../../components/report-sheet";
 import { RoundListCard } from "../../../components/round-list-card";
 import { useAbly } from "ably/react";
 import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../../lib/api";
+import { subscribeGroupActivityEvents } from "../../../lib/group-activity-events";
 import { hapticLight } from "../../../lib/haptics";
 import { getCachedMeProfile, subscribeMeProfile } from "../../../lib/me-profile-cache";
 import { parfadeGroupChannel, parfadePostChannel } from "../../../lib/parfade-ably-channels";
@@ -270,6 +271,32 @@ export default function GroupLandingScreen() {
       }
     }, [load]),
   );
+
+  useEffect(() => {
+    return subscribeGroupActivityEvents((event) => {
+      if (event.groupId !== groupId) return;
+      if (event.action === "created" && event.post) {
+        const optimistic: ActivityItem = {
+          type: "post",
+          id: `post-${event.post.id}`,
+          body: event.post.body,
+          imageUrl: event.post.imageUrl,
+          isPinned: event.post.isPinned,
+          createdAt: event.post.createdAt,
+          likeCount: 0,
+          commentCount: 0,
+          viewerLiked: false,
+          user: event.post.user,
+        };
+        setActivity((prev) => {
+          const without = prev.filter((item) => item.id !== optimistic.id);
+          return [optimistic, ...without];
+        });
+        return;
+      }
+      void load({ silent: true });
+    });
+  }, [groupId, load]);
 
   // Real-time: group activity feed updates
   useEffect(() => {
@@ -1023,8 +1050,10 @@ export default function GroupLandingScreen() {
           ...(isAdmin ? [{
             key: "pin",
             label: overflowItem.isPinned ? "Unpin post" : "Pin to top",
-            icon: (overflowItem.isPinned ? "pin-outline" : "pin") as const,
             onPress: () => void handleTogglePin(overflowItem),
+            ...(overflowItem.isPinned
+              ? ({ icon: "pin-outline" as const })
+              : ({ icon: "pin" as const })),
           }] : []),
           ...((overflowItem.user.id === meId || isAdmin) ? [{
             key: "delete",

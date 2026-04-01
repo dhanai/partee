@@ -58,6 +58,7 @@ type ProfilePost = {
   imageUrl: string | null;
   createdAt: string;
   isPinned?: boolean;
+  profileUserId?: string | null;
   likeCount?: number;
   commentCount?: number;
   viewerLiked?: boolean;
@@ -224,7 +225,7 @@ export default function ProfileScreen() {
         `/api/posts?userId=${encodeURIComponent(targetUserId)}&limit=20`,
         token,
       );
-      setPosts(data.posts ?? []);
+      setPosts((data.posts ?? []).filter((post) => post.profileUserId === targetUserId));
     } catch {
       setPosts([]);
     } finally {
@@ -284,8 +285,16 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     return subscribeProfileActivityEvents((event) => {
-      if (event.userId && event.userId !== myUserId) return;
       if (!myUserId) return;
+      if (event.profileUserId && event.profileUserId !== myUserId) return;
+      if (event.post) {
+        if (event.post.profileUserId !== myUserId) return;
+        setPosts((prev) => {
+          const without = prev.filter((p) => p.id !== event.post!.id);
+          return [event.post as ProfilePost, ...without];
+        });
+        return;
+      }
       void (async () => {
         try {
           const token = await getTokenRef.current();
@@ -293,7 +302,7 @@ export default function ProfileScreen() {
             `/api/posts?userId=${encodeURIComponent(myUserId)}&limit=20`,
             token,
           );
-          setPosts(data.posts ?? []);
+          setPosts((data.posts ?? []).filter((post) => post.profileUserId === myUserId));
         } catch {
           // best effort
         }
@@ -350,6 +359,7 @@ export default function ProfileScreen() {
       params: {
         editId: post.id,
         editBody: post.body,
+        ...(post.profileUserId ? { profileUserId: post.profileUserId } : {}),
         ...(post.imageUrl ? { editImageUrl: post.imageUrl } : {}),
       },
     });
@@ -384,6 +394,17 @@ export default function ProfileScreen() {
       await apiPatch(`/api/posts/${post.id}`, { isPinned: nextPinned }, token);
     } catch {
       setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, isPinned: post.isPinned } : p)));
+    }
+  }
+
+  async function handleHideFromProfile(post: ProfilePost) {
+    setOverflowPost(null);
+    setPosts((prev) => prev.filter((p) => p.id !== post.id));
+    try {
+      const token = await getTokenRef.current();
+      await apiPatch(`/api/posts/${post.id}`, { hideFromProfile: true }, token);
+    } catch {
+      void loadProfilePosts(myUserId);
     }
   }
 
@@ -746,27 +767,56 @@ export default function ProfileScreen() {
       <OverflowMenuSheet
         visible={!!overflowPost}
         onClose={() => setOverflowPost(null)}
-        items={overflowPost ? [
-          {
-            key: "edit",
-            label: "Edit post",
-            icon: "create-outline" as const,
-            onPress: () => openEditPost(overflowPost),
-          },
-          {
-            key: "pin",
-            label: overflowPost.isPinned ? "Unpin post" : "Pin to top",
-            icon: overflowPost.isPinned ? "pin-outline" : "pin",
-            onPress: () => void handleTogglePin(overflowPost),
-          },
-          {
-            key: "delete",
-            label: "Delete post",
-            icon: "trash-outline" as const,
-            destructive: true,
-            onPress: () => handleDeletePost(overflowPost),
-          },
-        ] : []}
+        items={
+          overflowPost
+            ? [
+                ...(myUserId && overflowPost.user.id === myUserId
+                  ? [
+                      {
+                        key: "edit",
+                        label: "Edit post",
+                        icon: "create-outline" as const,
+                        onPress: () => openEditPost(overflowPost),
+                      },
+                      {
+                        key: "delete",
+                        label: "Delete post",
+                        icon: "trash-outline" as const,
+                        destructive: true,
+                        onPress: () => handleDeletePost(overflowPost),
+                      },
+                    ]
+                  : []),
+                ...(overflowPost.isPinned
+                  ? [
+                      {
+                        key: "pin",
+                        label: "Unpin post",
+                        icon: "pin-outline" as const,
+                        onPress: () => void handleTogglePin(overflowPost),
+                      },
+                    ]
+                  : [
+                      {
+                        key: "pin",
+                        label: "Pin to top",
+                        icon: "pin" as const,
+                        onPress: () => void handleTogglePin(overflowPost),
+                      },
+                    ]),
+                ...(myUserId && overflowPost.user.id !== myUserId
+                  ? [
+                      {
+                        key: "hide",
+                        label: "Hide from my profile",
+                        icon: "eye-off-outline" as const,
+                        onPress: () => void handleHideFromProfile(overflowPost),
+                      },
+                    ]
+                  : []),
+              ]
+            : []
+        }
       />
       <AnimatedBottomSheetFrame
         visible={!!commentSheetPost}

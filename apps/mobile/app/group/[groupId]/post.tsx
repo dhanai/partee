@@ -16,6 +16,8 @@ import { Image } from "expo-image";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiPatch, apiPost } from "../../../lib/api";
+import { emitGroupActivityEvent } from "../../../lib/group-activity-events";
+import { useSnackbar } from "../../../lib/snackbar-context";
 import { uploadImage, POST_MAX_BYTES } from "../../../lib/upload-image";
 import { colors } from "../../../lib/theme";
 
@@ -40,6 +42,7 @@ export default function GroupPostScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { getToken } = useAuth();
+  const { show: showSnackbar } = useSnackbar();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
@@ -101,12 +104,38 @@ export default function GroupPostScreen() {
           { id: editId, body: trimmed, imageUrl },
           token,
         );
+        emitGroupActivityEvent({
+          groupId,
+          action: "updated",
+          postId: editId,
+        });
+        showSnackbar("Post updated");
       } else {
-        await apiPost(
+        const result = await apiPost<{
+          announcement?: {
+            id: string;
+            body: string;
+            imageUrl: string | null;
+            isPinned: boolean;
+            createdAt: string;
+            user: { id: string; name: string; avatar: string | null };
+          };
+        }>(
           `/api/groups/${groupId}/announcements`,
           { body: trimmed, imageUrl },
           token,
         );
+        if (result.announcement) {
+          emitGroupActivityEvent({
+            groupId,
+            action: "created",
+            postId: result.announcement.id,
+            post: result.announcement,
+          });
+        } else {
+          emitGroupActivityEvent({ groupId, action: "created" });
+        }
+        showSnackbar("Posted");
       }
       router.back();
     } catch (e) {
@@ -114,7 +143,7 @@ export default function GroupPostScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [body, imageUri, isEditing, editId, groupId, router]);
+  }, [body, imageUri, isEditing, editId, groupId, router, showSnackbar]);
 
   const canSubmit = body.trim().length > 0 && !submitting;
 

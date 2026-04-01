@@ -105,6 +105,7 @@ export async function POST(req: Request, { params }: Ctx) {
         groupName: group?.name ?? "Group",
         senderUserId: viewer.id,
         senderName: viewer.name,
+        postId: post.id,
         body: input.body,
         memberUserIds: memberRows.map((m) => m.userId),
       }),
@@ -117,6 +118,7 @@ export async function POST(req: Request, { params }: Ctx) {
       announcement: {
         id: post.id,
         body: post.body,
+        imageUrl: post.imageUrl,
         isPinned: post.isPinned,
         createdAt: post.createdAt.toISOString(),
         user: { id: viewer.id, name: viewer.name, avatar: viewer.avatar },

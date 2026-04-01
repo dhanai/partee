@@ -59,6 +59,19 @@ function openNotificationData(
       return;
     }
   }
+  if (type === "post_liked" || type === "post_commented") {
+    const groupId = typeof data.groupId === "string" ? data.groupId.trim() : "";
+    if (groupId.length > 0) {
+      router.push({ pathname: "/group/[groupId]", params: { groupId } });
+      return;
+    }
+    router.push("/(tabs)/profile");
+    return;
+  }
+  if (type === "profile_post") {
+    router.push("/(tabs)/profile");
+    return;
+  }
 }
 
 const COLD_START_DELAY_MS = 600;

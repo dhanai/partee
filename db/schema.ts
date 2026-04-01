@@ -44,6 +44,9 @@ export const notificationEventEnum = pgEnum("notification_event_type", [
   "group_join_request",
   "new_follower",
   "post_liked",
+  "group_post",
+  "profile_post",
+  "post_commented",
 ]);
 
 export const gameTypeEnum = pgEnum("game_type", [
