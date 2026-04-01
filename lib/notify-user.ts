@@ -205,10 +205,24 @@ export async function notifyGroupPost(input: {
     publishNotificationBadgeNudge(recipientUserId, "group-post");
   }
 
+  const mutedRows = await db
+    .select({ userId: groupMembers.userId })
+    .from(groupMembers)
+    .where(
+      and(
+        eq(groupMembers.groupId, input.groupId),
+        inArray(groupMembers.userId, recipientIds),
+        eq(groupMembers.muteGroupPush, true),
+      ),
+    );
+  const mutedSet = new Set(mutedRows.map((row) => row.userId));
+  const pushRecipientIds = recipientIds.filter((id) => !mutedSet.has(id));
+  if (pushRecipientIds.length === 0) return;
+
   const rows = await db
     .select({ token: users.expoPushToken })
     .from(users)
-    .where(inArray(users.id, recipientIds));
+    .where(inArray(users.id, pushRecipientIds));
 
   const tokens = rows
     .map((r) => r.token?.trim())

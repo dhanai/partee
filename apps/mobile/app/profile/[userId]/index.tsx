@@ -49,6 +49,7 @@ import {
 } from "../../../lib/public-profile-cache";
 import { getCachedMeProfile } from "../../../lib/me-profile-cache";
 import { subscribeProfileActivityEvents } from "../../../lib/profile-activity-events";
+import { subscribeRoundListsRefresh } from "../../../lib/round-lists-refresh";
 import { colors } from "../../../lib/theme";
 import type { MineRound } from "../../../types/round";
 
@@ -338,6 +339,13 @@ export default function PublicProfileScreen() {
       })();
     });
   }, [profile?.user.id]);
+
+  useEffect(() => {
+    return subscribeRoundListsRefresh(() => {
+      if (!profile?.user.id) return;
+      void loadProfile({ silent: true });
+    });
+  }, [profile?.user.id, loadProfile]);
 
   const openOrCreateDm = useCallback(async () => {
     if (!userId || dmBusy) return;

@@ -15,6 +15,7 @@ import { requireDbUser } from "@/lib/auth";
 import { notifyGroupPost, notifyProfilePost } from "@/lib/notify-user";
 import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
 import { withPerfTimer } from "@/lib/profile-activity-perf";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const createSchema = z.object({
   body: z.string().min(1).max(2000),
@@ -149,6 +150,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const viewer = await requireDbUser(req);
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const postLimiter = rateLimit(ip, `post-create:${viewer.id}`, 12, 60_000);
+    if (!postLimiter.success) return rateLimitResponse();
     const body = await req.json();
     const input = createSchema.parse(body);
 

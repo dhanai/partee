@@ -6,6 +6,7 @@ import { postComments, posts, groupMembers, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyPostInteraction } from "@/lib/notify-user";
 import { publishPostCommentAdded } from "@/lib/parfade-ably-publish";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 type Ctx = { params: { groupId: string } };
 
@@ -70,6 +71,9 @@ const createSchema = z.object({
 export async function POST(req: Request, { params }: Ctx) {
   try {
     const viewer = await requireDbUser(req);
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const commentLimiter = rateLimit(ip, `group-comment:${viewer.id}`, 24, 60_000);
+    if (!commentLimiter.success) return rateLimitResponse();
     const { groupId } = params;
 
     const [membership] = await db

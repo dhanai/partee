@@ -584,6 +584,7 @@ export const groupMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: groupMemberRoleEnum("role").notNull().default("member"),
+    muteGroupPush: boolean("mute_group_push").notNull().default(false),
     joinedAt: timestamp("joined_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -60,6 +60,7 @@ type GroupDetail = {
   createdBy: string;
   memberCount: number;
   myRole: "owner" | "admin" | "member" | null;
+  myMuteGroupPush?: boolean;
   conversationId: string | null;
 };
 
@@ -121,6 +122,7 @@ function computeBootstrapGroup(
     createdBy: "",
     memberCount,
     myRole: (role as GroupDetail["myRole"]) ?? null,
+    myMuteGroupPush: false,
     conversationId: null,
   };
 }
@@ -460,6 +462,21 @@ export default function GroupLandingScreen() {
       Alert.alert("Error", e instanceof Error ? e.message : "Could not join.");
     }
   }, [groupId, load, showSnackbar]);
+
+  const handleToggleGroupPushMute = useCallback(async () => {
+    if (!group) return;
+    const next = !(group.myMuteGroupPush ?? false);
+    setGroup((prev) => (prev ? { ...prev, myMuteGroupPush: next } : prev));
+    setGroupOverflowOpen(false);
+    try {
+      const token = await getTokenRef.current();
+      await apiPatch(`/api/groups/${group.id}`, { muteGroupPush: next }, token);
+      showSnackbar(next ? "Group push muted" : "Group push unmuted");
+    } catch (e) {
+      setGroup((prev) => (prev ? { ...prev, myMuteGroupPush: !next } : prev));
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not update push setting.");
+    }
+  }, [group, showSnackbar]);
 
   // ── Announcements ─────────────────────────────────────────────
 
@@ -1092,6 +1109,18 @@ export default function GroupLandingScreen() {
               });
             },
           },
+          ...(isMember
+            ? [
+                {
+                  key: "mute-push",
+                  label: group?.myMuteGroupPush ? "Unmute group push" : "Mute group push",
+                  icon: (group?.myMuteGroupPush
+                    ? "notifications-outline"
+                    : "notifications-off-outline") as const,
+                  onPress: () => void handleToggleGroupPushMute(),
+                },
+              ]
+            : []),
           ...(isAdmin
             ? [
                 {

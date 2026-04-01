@@ -23,7 +23,9 @@ import {
 } from "../../components/animated-bottom-sheet-frame";
 import { InitialAvatar } from "../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
+import { ParfadeProfileLiveRefresh } from "../../components/parfade-profile-live-refresh";
 import { RoundListCard } from "../../components/round-list-card";
+import { useAblyChatMounted } from "../../lib/ably-chat-context";
 import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles";
 import { apiDelete, apiGet, apiPatch, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../lib/api";
 import {
@@ -34,8 +36,15 @@ import {
   resolveTournamentTitle,
 } from "../../lib/round-card-meta";
 import { buildRoundListHint, prefetchRoundOpen } from "../../lib/round-details-cache";
-import { getCachedMeProfile, isMeProfileStale, setCachedMeProfile } from "../../lib/me-profile-cache";
+import {
+  getCachedMeProfile,
+  isMeProfileStale,
+  setCachedMeProfile,
+  subscribeMeProfile,
+  type MeProfile,
+} from "../../lib/me-profile-cache";
 import { subscribeProfileActivityEvents } from "../../lib/profile-activity-events";
+import { subscribeRoundListsRefresh } from "../../lib/round-lists-refresh";
 import { colors } from "../../lib/theme";
 import type { MineRound } from "../../types/round";
 
@@ -137,6 +146,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { getToken } = useAuth();
+  const ablyChatMounted = useAblyChatMounted();
   const getTokenRef = useRef(getToken);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -192,8 +202,10 @@ export default function ProfileScreen() {
     });
   }, [navigation, router]);
 
-  function applyMeUser(user: MeResponse["user"]) {
-    setCachedMeProfile(user);
+  function applyMeUser(user: MeProfile, options?: { syncCache?: boolean }) {
+    if (options?.syncCache !== false) {
+      setCachedMeProfile(user);
+    }
     setName(user.name ?? "");
     setHandicap(user.handicap ?? "");
     setLocation(user.location ?? user.homeCourse ?? "");
@@ -323,6 +335,12 @@ export default function ProfileScreen() {
   }, []);
 
   useEffect(() => {
+    return subscribeMeProfile((profile) => {
+      applyMeUser(profile, { syncCache: false });
+    });
+  }, []);
+
+  useEffect(() => {
     return subscribeProfileActivityEvents((event) => {
       if (!myUserId) return;
       if (event.profileUserId && event.profileUserId !== myUserId) return;
@@ -346,6 +364,13 @@ export default function ProfileScreen() {
           // best effort
         }
       })();
+    });
+  }, [myUserId]);
+
+  useEffect(() => {
+    return subscribeRoundListsRefresh(() => {
+      if (!myUserId) return;
+      void loadProfileFeed(myUserId);
     });
   }, [myUserId]);
 
@@ -523,6 +548,14 @@ export default function ProfileScreen() {
 
   return (
     <>
+      {ablyChatMounted && myUserId ? (
+        <ParfadeProfileLiveRefresh
+          profileUserId={myUserId}
+          onProfileMaybeUpdated={() => {
+            void loadProfile({ silent: true });
+          }}
+        />
+      ) : null}
       <ScrollView
         ref={scrollRef}
         style={styles.container}

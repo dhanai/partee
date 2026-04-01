@@ -28,7 +28,7 @@ export async function GET(req: Request, { params }: Ctx) {
     }
 
     const [membership] = await db
-      .select({ role: groupMembers.role })
+      .select({ role: groupMembers.role, muteGroupPush: groupMembers.muteGroupPush })
       .from(groupMembers)
       .where(
         and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, viewer.id)),
@@ -60,6 +60,7 @@ export async function GET(req: Request, { params }: Ctx) {
         createdAt: group.createdAt.toISOString(),
         memberCount: Number(memberCount),
         myRole: membership?.role ?? null,
+        myMuteGroupPush: membership?.muteGroupPush ?? false,
         conversationId: conv?.id ?? null,
       },
     });
@@ -78,6 +79,7 @@ const updateSchema = z.object({
   imageUrl: z.string().url().nullable().optional(),
   heroImageUrl: z.string().url().nullable().optional(),
   joinPolicy: z.enum(["public", "approval", "invite_only"]).optional(),
+  muteGroupPush: z.boolean().optional(),
 });
 
 export async function PATCH(req: Request, { params }: Ctx) {
@@ -93,25 +95,40 @@ export async function PATCH(req: Request, { params }: Ctx) {
       )
       .limit(1);
 
-    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+    if (!membership) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
     const body = await req.json();
     const input = updateSchema.parse(body);
 
-    const updates: Record<string, unknown> = {};
-    if (input.name !== undefined) updates.name = input.name;
-    if (input.description !== undefined) updates.description = input.description;
-    if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
-    if (input.heroImageUrl !== undefined) updates.heroImageUrl = input.heroImageUrl;
-    if (input.joinPolicy !== undefined) updates.joinPolicy = input.joinPolicy;
+    const groupUpdates: Record<string, unknown> = {};
+    if (input.name !== undefined) groupUpdates.name = input.name;
+    if (input.description !== undefined) groupUpdates.description = input.description;
+    if (input.imageUrl !== undefined) groupUpdates.imageUrl = input.imageUrl;
+    if (input.heroImageUrl !== undefined) groupUpdates.heroImageUrl = input.heroImageUrl;
+    if (input.joinPolicy !== undefined) groupUpdates.joinPolicy = input.joinPolicy;
 
-    if (Object.keys(updates).length > 0) {
-      await db.update(groups).set(updates).where(eq(groups.id, groupId));
+    const wantsGroupSettingsUpdate = Object.keys(groupUpdates).length > 0;
+    const isAdminOrOwner = membership.role === "owner" || membership.role === "admin";
+    if (wantsGroupSettingsUpdate && !isAdminOrOwner) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    if (wantsGroupSettingsUpdate) {
+      await db.update(groups).set(groupUpdates).where(eq(groups.id, groupId));
       await publishGroupActivityUpdated(groupId, "settings").catch((e) =>
         console.error("[PATCH group] ably", e),
       );
+    }
+
+    if (input.muteGroupPush !== undefined) {
+      await db
+        .update(groupMembers)
+        .set({ muteGroupPush: input.muteGroupPush })
+        .where(
+          and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, viewer.id)),
+        );
     }
 
     return NextResponse.json({ ok: true });

@@ -23,6 +23,18 @@
 - `GET /api/users/[userId]/activity` p95: <= 250ms
 - `GET /api/groups/[groupId]/activity` p95: <= 220ms
 
+## Must-Fix Consistency Gap (Profile Edit Reflects Immediately)
+- Problem:
+  - Editing self profile (auto-save) can persist successfully but not immediately reflect when navigating back to the self profile tab.
+  - Public-profile realtime refresh is wired, but self-profile rehydrate path is not equally reliable.
+- Required behavior:
+  - After self profile auto-save, returning to profile must always show updated name/handicap/location/avatar without manual refresh.
+  - If another viewer is on that user profile, they should also continue to receive realtime updates.
+- Planned implementation:
+  - Add explicit self-profile refresh trigger on successful save (event bus + targeted silent refetch).
+  - Ensure self profile subscribes to own profile-updated realtime signal or local equivalent.
+  - Add regression checks for “edit -> back” and tab-navigation roundtrip consistency.
+
 ## Baseline & Regression Workflow
 1. Run baseline query-plan script:
    - `npm run db:profile-activity-baseline -- <profileUserId> <viewerUserId> <groupId>`
