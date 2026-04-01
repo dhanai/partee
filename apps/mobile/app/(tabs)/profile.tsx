@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
@@ -155,6 +155,12 @@ const USE_UNIFIED_PROFILE_ACTIVITY = (process.env.EXPO_PUBLIC_PROFILE_ACTIVITY_U
 export default function ProfileScreen() {
   const navigation = useNavigation();
   const router = useRouter();
+  const { postId: rawPostId, commentId: rawCommentId, replyToCommentId: rawReplyToCommentId } =
+    useLocalSearchParams<{
+      postId?: string;
+      commentId?: string;
+      replyToCommentId?: string;
+    }>();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { getToken } = useAuth();
@@ -185,6 +191,8 @@ export default function ProfileScreen() {
   const [overflowPost, setOverflowPost] = useState<ProfilePost | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const restoredScrollRef = useRef(false);
+  const postYByIdRef = useRef<Map<string, number>>(new Map());
+  const handledDeepLinkKeyRef = useRef<string | null>(null);
 
   const avatarSize = Math.round(Math.min(windowWidth - 48, 340) * 0.75);
 
@@ -413,6 +421,14 @@ export default function ProfileScreen() {
       return b.ts - a.ts;
     });
   }, [rounds, posts]);
+  const deepLinkPostId = typeof rawPostId === "string" ? rawPostId.trim() : "";
+  const deepLinkCommentId = typeof rawCommentId === "string" ? rawCommentId.trim() : "";
+  const deepLinkReplyToCommentId =
+    typeof rawReplyToCommentId === "string" ? rawReplyToCommentId.trim() : "";
+  const deepLinkKey =
+    deepLinkPostId.length > 0
+      ? `${deepLinkPostId}:${deepLinkCommentId}:${deepLinkReplyToCommentId}`
+      : "";
   const commentsById = useMemo(() => {
     const map = new Map<string, ProfileComment>();
     for (const comment of comments) map.set(comment.id, comment);
@@ -610,6 +626,31 @@ export default function ProfileScreen() {
     setCommentSheetPost(null);
   }
 
+  useEffect(() => {
+    if (!deepLinkKey || !deepLinkPostId) return;
+    if (handledDeepLinkKeyRef.current === deepLinkKey) return;
+    if (loading || feedLoading) return;
+    const post = posts.find((p) => p.id === deepLinkPostId);
+    if (!post) return;
+    const y = postYByIdRef.current.get(post.id);
+    if (typeof y !== "number") return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+    if (deepLinkCommentId || deepLinkReplyToCommentId) {
+      setTimeout(() => {
+        void openCommentSheet(post);
+      }, 260);
+    }
+    handledDeepLinkKeyRef.current = deepLinkKey;
+  }, [
+    deepLinkCommentId,
+    deepLinkKey,
+    deepLinkPostId,
+    deepLinkReplyToCommentId,
+    feedLoading,
+    loading,
+    posts,
+  ]);
+
   function beginReplyToComment(comment: ProfileComment) {
     const parentCommentId = comment.parentCommentId ?? comment.id;
     setReplyTarget({
@@ -803,31 +844,37 @@ export default function ProfileScreen() {
                           const post = item.post;
                           const postImages = resolvePostImages(post);
                           return (
-                            <SocialPostCard
+                            <View
                               key={item.id}
-                              user={post.user}
-                              body={post.body}
-                              images={postImages}
-                              createdAtLabel={new Date(post.createdAt).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })}
-                              isPinned={post.isPinned}
-                              likeCount={post.likeCount}
-                              commentCount={post.commentCount}
-                              viewerLiked={post.viewerLiked}
-                              showOverflow
-                              onPressOverflow={() => setOverflowPost(post)}
-                              onPressImage={(index) => {
-                                setViewerImages(postImages);
-                                setViewerIndex(index);
-                                setViewerVisible(true);
+                              onLayout={(event) => {
+                                postYByIdRef.current.set(post.id, event.nativeEvent.layout.y);
                               }}
-                              onToggleLike={() => void handleToggleLike(post)}
-                              onOpenComments={() => void openCommentSheet(post)}
-                              onDoubleTapLike={() => handleDoubleTapLike(post)}
-                            />
+                            >
+                              <SocialPostCard
+                                user={post.user}
+                                body={post.body}
+                                images={postImages}
+                                createdAtLabel={new Date(post.createdAt).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
+                                isPinned={post.isPinned}
+                                likeCount={post.likeCount}
+                                commentCount={post.commentCount}
+                                viewerLiked={post.viewerLiked}
+                                showOverflow
+                                onPressOverflow={() => setOverflowPost(post)}
+                                onPressImage={(index) => {
+                                  setViewerImages(postImages);
+                                  setViewerIndex(index);
+                                  setViewerVisible(true);
+                                }}
+                                onToggleLike={() => void handleToggleLike(post)}
+                                onOpenComments={() => void openCommentSheet(post)}
+                                onDoubleTapLike={() => handleDoubleTapLike(post)}
+                              />
+                            </View>
                           );
                         })()
                       ) : (

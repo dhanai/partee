@@ -330,6 +330,7 @@ export async function GET(req: Request) {
         })),
       ),
     );
+    const pendingInvitesCount = invitedPayload.filter((round) => round.spotStatus === "invited").length;
 
     if (tab === "hosting" || tab === "joined" || tab === "invited") {
       const source =
@@ -341,6 +342,7 @@ export async function GET(req: Request) {
         rounds: roundsPage,
         nextCursor,
         hasMore: nextCursor !== null,
+        ...(tab === "invited" ? { pendingInvitesCount } : {}),
       });
     }
 
@@ -359,6 +361,7 @@ export async function GET(req: Request) {
       invited: {
         upcoming: invitedPayload,
         past: addTimeWindowCompat(sortByEffectiveDate(invitedOnly.filter((r) => effectiveRoundTimeMs(r) < nowMs))),
+        pendingCount: pendingInvitesCount,
       },
     });
   } catch (error) {

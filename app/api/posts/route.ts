@@ -17,15 +17,28 @@ import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
 import { withPerfTimer } from "@/lib/profile-activity-perf";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
-const createSchema = z.object({
-  body: z.string().min(1).max(2000),
-  imageUrl: z.string().url().optional(),
-  imageUrls: z.array(z.string().url()).max(10).optional(),
-  isPinned: z.boolean().default(true),
-  groupId: z.string().uuid().optional(),
-  profileUserId: z.string().uuid().optional(),
-  scope: z.enum(["group", "profile"]).default("group"),
-});
+const createSchema = z
+  .object({
+    body: z.string().max(2000).optional().default(""),
+    imageUrl: z.string().url().optional(),
+    imageUrls: z.array(z.string().url()).max(10).optional(),
+    isPinned: z.boolean().default(true),
+    groupId: z.string().uuid().optional(),
+    profileUserId: z.string().uuid().optional(),
+    scope: z.enum(["group", "profile"]).default("group"),
+  })
+  .superRefine((value, ctx) => {
+    const hasText = (value.body ?? "").trim().length > 0;
+    const hasImages =
+      (value.imageUrls?.length ?? 0) > 0 || (typeof value.imageUrl === "string" && value.imageUrl.length > 0);
+    if (!hasText && !hasImages) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Post must include text or at least one image.",
+        path: ["body"],
+      });
+    }
+  });
 
 function normalizePostImages(input: { imageUrl?: string; imageUrls?: string[] }) {
   const urls = (input.imageUrls ?? []).map((url) => url.trim()).filter((url) => url.length > 0);
@@ -170,6 +183,7 @@ export async function POST(req: Request) {
     if (!postLimiter.success) return rateLimitResponse();
     const body = await req.json();
     const input = createSchema.parse(body);
+    const normalizedBody = input.body.trim();
     const normalizedImages = normalizePostImages(input);
 
     if (input.scope === "group") {
@@ -197,7 +211,7 @@ export async function POST(req: Request) {
           groupId: input.groupId,
           userId: viewer.id,
           scope: "group",
-          body: input.body,
+          body: normalizedBody,
           imageUrl: normalizedImages.imageUrl,
           imageUrls: normalizedImages.imageUrls,
           isPinned: canPin && input.isPinned,
@@ -222,7 +236,7 @@ export async function POST(req: Request) {
           senderUserId: viewer.id,
           senderName: viewer.name,
           postId: post.id,
-          body: input.body,
+          body: normalizedBody,
           memberUserIds: memberRows.map((m) => m.userId),
         }),
         publishGroupActivityUpdated(input.groupId, "post").catch((e) =>
@@ -287,7 +301,7 @@ export async function POST(req: Request) {
         userId: viewer.id,
         profileUserId,
         scope: "profile",
-        body: input.body,
+        body: normalizedBody,
         imageUrl: normalizedImages.imageUrl,
         imageUrls: normalizedImages.imageUrls,
         isPinned: false,
@@ -301,7 +315,7 @@ export async function POST(req: Request) {
         senderUserId: viewer.id,
         senderName: viewer.name,
         postId: post.id,
-        previewBody: input.body,
+        previewBody: normalizedBody,
       });
     }
 

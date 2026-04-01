@@ -192,10 +192,20 @@ function computeBootstrapProfile(
 }
 
 export default function PublicProfileScreen() {
-  const { userId, userName, userAvatar } = useLocalSearchParams<{
+  const {
+    userId,
+    userName,
+    userAvatar,
+    postId: rawPostId,
+    commentId: rawCommentId,
+    replyToCommentId: rawReplyToCommentId,
+  } = useLocalSearchParams<{
     userId: string;
     userName?: string;
     userAvatar?: string;
+    postId?: string;
+    commentId?: string;
+    replyToCommentId?: string;
   }>();
   const navigation = useNavigation();
   const router = useRouter();
@@ -234,6 +244,8 @@ export default function PublicProfileScreen() {
   const meId = getCachedMeProfile()?.id ?? null;
   const scrollRef = useRef<ScrollView>(null);
   const restoredScrollRef = useRef(false);
+  const postYByIdRef = useRef<Map<string, number>>(new Map());
+  const handledDeepLinkKeyRef = useRef<string | null>(null);
 
   const [prevUserId, setPrevUserId] = useState(userId);
   if (userId !== prevUserId) {
@@ -434,6 +446,14 @@ export default function PublicProfileScreen() {
       return b.ts - a.ts;
     });
   }, [rounds, posts]);
+  const deepLinkPostId = typeof rawPostId === "string" ? rawPostId.trim() : "";
+  const deepLinkCommentId = typeof rawCommentId === "string" ? rawCommentId.trim() : "";
+  const deepLinkReplyToCommentId =
+    typeof rawReplyToCommentId === "string" ? rawReplyToCommentId.trim() : "";
+  const deepLinkKey =
+    deepLinkPostId.length > 0
+      ? `${deepLinkPostId}:${deepLinkCommentId}:${deepLinkReplyToCommentId}`
+      : "";
   const commentsById = useMemo(() => {
     const map = new Map<string, ProfileComment>();
     for (const comment of comments) map.set(comment.id, comment);
@@ -630,6 +650,31 @@ export default function PublicProfileScreen() {
     setReplyTarget(null);
     setCommentSheetPost(null);
   }
+
+  useEffect(() => {
+    if (!deepLinkKey || !deepLinkPostId) return;
+    if (handledDeepLinkKeyRef.current === deepLinkKey) return;
+    if (loading || feedLoading) return;
+    const post = posts.find((p) => p.id === deepLinkPostId);
+    if (!post) return;
+    const y = postYByIdRef.current.get(post.id);
+    if (typeof y !== "number") return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+    if (deepLinkCommentId || deepLinkReplyToCommentId) {
+      setTimeout(() => {
+        void openCommentSheet(post);
+      }, 260);
+    }
+    handledDeepLinkKeyRef.current = deepLinkKey;
+  }, [
+    deepLinkCommentId,
+    deepLinkKey,
+    deepLinkPostId,
+    deepLinkReplyToCommentId,
+    feedLoading,
+    loading,
+    posts,
+  ]);
 
   function beginReplyToComment(comment: ProfileComment) {
     const parentCommentId = comment.parentCommentId ?? comment.id;
@@ -960,31 +1005,37 @@ export default function PublicProfileScreen() {
                     const post = item.post;
                     const postImages = resolvePostImages(post);
                     return (
-                      <SocialPostCard
+                      <View
                         key={item.id}
-                        user={post.user}
-                        body={post.body}
-                        images={postImages}
-                        createdAtLabel={new Date(post.createdAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                        isPinned={post.isPinned}
-                        likeCount={post.likeCount}
-                        commentCount={post.commentCount}
-                        viewerLiked={post.viewerLiked}
-                        showOverflow={Boolean(meId && (isSelfProfile || post.user.id === meId))}
-                        onPressOverflow={() => setOverflowPost(post)}
-                        onPressImage={(index) => {
-                          setViewerImages(postImages);
-                          setViewerVisible(true);
-                          setViewerStartIndex(index);
+                        onLayout={(event) => {
+                          postYByIdRef.current.set(post.id, event.nativeEvent.layout.y);
                         }}
-                        onToggleLike={() => void handleToggleLike(post)}
-                        onOpenComments={() => void openCommentSheet(post)}
-                        onDoubleTapLike={() => handleDoubleTapLike(post)}
-                      />
+                      >
+                        <SocialPostCard
+                          user={post.user}
+                          body={post.body}
+                          images={postImages}
+                          createdAtLabel={new Date(post.createdAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                          isPinned={post.isPinned}
+                          likeCount={post.likeCount}
+                          commentCount={post.commentCount}
+                          viewerLiked={post.viewerLiked}
+                          showOverflow={Boolean(meId && (isSelfProfile || post.user.id === meId))}
+                          onPressOverflow={() => setOverflowPost(post)}
+                          onPressImage={(index) => {
+                            setViewerImages(postImages);
+                            setViewerVisible(true);
+                            setViewerStartIndex(index);
+                          }}
+                          onToggleLike={() => void handleToggleLike(post)}
+                          onOpenComments={() => void openCommentSheet(post)}
+                          onDoubleTapLike={() => handleDoubleTapLike(post)}
+                        />
+                      </View>
                     );
                   })()
                 ) : (

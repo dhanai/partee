@@ -52,12 +52,25 @@ export async function GET(req: Request, { params }: Ctx) {
   }
 }
 
-const createSchema = z.object({
-  body: z.string().min(1).max(2000),
-  imageUrl: z.string().url().optional(),
-  imageUrls: z.array(z.string().url()).max(10).optional(),
-  isPinned: z.boolean().default(true),
-});
+const createSchema = z
+  .object({
+    body: z.string().max(2000).optional().default(""),
+    imageUrl: z.string().url().optional(),
+    imageUrls: z.array(z.string().url()).max(10).optional(),
+    isPinned: z.boolean().default(true),
+  })
+  .superRefine((value, ctx) => {
+    const hasText = (value.body ?? "").trim().length > 0;
+    const hasImages =
+      (value.imageUrls?.length ?? 0) > 0 || (typeof value.imageUrl === "string" && value.imageUrl.length > 0);
+    if (!hasText && !hasImages) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Post must include text or at least one image.",
+        path: ["body"],
+      });
+    }
+  });
 
 export async function POST(req: Request, { params }: Ctx) {
   try {
@@ -78,6 +91,7 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const body = await req.json();
     const input = createSchema.parse(body);
+    const normalizedBody = input.body.trim();
     const normalizedImages = normalizePostImages(input);
 
     const canPin = membership.role === "owner" || membership.role === "admin";
@@ -88,7 +102,7 @@ export async function POST(req: Request, { params }: Ctx) {
         groupId,
         userId: viewer.id,
         scope: "group",
-        body: input.body,
+        body: normalizedBody,
         imageUrl: normalizedImages.imageUrl,
         imageUrls: normalizedImages.imageUrls,
         isPinned: canPin && input.isPinned,
@@ -113,7 +127,7 @@ export async function POST(req: Request, { params }: Ctx) {
         senderUserId: viewer.id,
         senderName: viewer.name,
         postId: post.id,
-        body: input.body,
+        body: normalizedBody,
         memberUserIds: memberRows.map((m) => m.userId),
       }),
       publishGroupActivityUpdated(groupId, "post").catch((e) =>

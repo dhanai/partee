@@ -50,6 +50,7 @@ type MineTabResponse = {
   rounds: MineRound[];
   nextCursor: string | null;
   hasMore: boolean;
+  pendingInvitesCount?: number;
 };
 
 type InviteSpotResponse = "confirmed" | "requested" | "declined";
@@ -123,6 +124,7 @@ export default function MyRoundsScreen() {
   const [hostingHasMore, setHostingHasMore] = useState(true);
   const [joinedHasMore, setJoinedHasMore] = useState(true);
   const [invitedHasMore, setInvitedHasMore] = useState(true);
+  const [pendingInvitesCount, setPendingInvitesCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -376,6 +378,7 @@ export default function MyRoundsScreen() {
           params.set("limit", "20");
           if (!reset && invitedCursor) params.set("cursor", invitedCursor);
           const data = await apiGet<MineTabResponse>(`/api/rounds/mine?${params.toString()}`, authToken);
+          setPendingInvitesCount(Math.max(0, data.pendingInvitesCount ?? 0));
           setInvited((prev) => {
             if (!reset) {
               return appendUniqueMineRounds(prev, data.rounds);
@@ -426,6 +429,7 @@ export default function MyRoundsScreen() {
 
   useEffect(() => {
     void loadTabRoundsRef.current("rounds", { reset: true });
+    void loadTabRoundsRef.current("invites", { reset: true, silent: true });
   }, []);
 
   useEffect(() => {
@@ -502,10 +506,12 @@ export default function MyRoundsScreen() {
       });
 
       if (json.status === "declined") {
+        setPendingInvitesCount((prev) => Math.max(0, prev - (round.spotStatus === "invited" ? 1 : 0)));
         setInvited((prev) =>
           prev.map((r) => (r.id === round.id ? { ...r, spotStatus: "declined" } : r)),
         );
       } else {
+        setPendingInvitesCount((prev) => Math.max(0, prev - (round.spotStatus === "invited" ? 1 : 0)));
         setInvited((prev) => prev.filter((r) => r.id !== round.id));
         if (json.me) {
           if (json.status === "confirmed" || json.status === "requested") {
@@ -584,9 +590,18 @@ export default function MyRoundsScreen() {
           }}
           onPress={() => setActiveTab("invites")}
         >
-          <Text style={[styles.tabText, activeTab === "invites" && styles.tabTextActive]}>
-            Invites
-          </Text>
+          <View style={styles.tabWithCount}>
+            <Text style={[styles.tabText, activeTab === "invites" && styles.tabTextActive]}>
+              Invites
+            </Text>
+            {pendingInvitesCount > 0 ? (
+              <View style={styles.invitesCountBubble}>
+                <Text style={styles.invitesCountBubbleText}>
+                  {pendingInvitesCount > 99 ? "99+" : String(pendingInvitesCount)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </Pressable>
         <Animated.View
           style={[
@@ -847,8 +862,27 @@ const styles = StyleSheet.create({
   tabLink: {
     paddingVertical: 2,
   },
+  tabWithCount: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   tabText: { color: colors.muted, fontWeight: "700", fontSize: 15 },
   tabTextActive: { color: colors.text },
+  invitesCountBubble: {
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 999,
+    backgroundColor: colors.danger,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  invitesCountBubbleText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 11,
+  },
   tabUnderline: {
     position: "absolute",
     left: 0,

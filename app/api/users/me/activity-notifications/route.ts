@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { courses, groupJoinRequests, inAppNotifications, rounds, users } from "@/db/schema";
+import { courses, groupJoinRequests, inAppNotifications, posts, rounds, users } from "@/db/schema";
 import { buildRoundNavHintJson } from "@/lib/activity-notification-round-hint";
 import { requireDbUser } from "@/lib/auth";
 import { formatVenueLabel } from "@/lib/round-invite-push-message";
@@ -92,6 +92,12 @@ export async function GET(req: Request) {
     const roundRsvpRows = rows.filter(
       (r) => r.type === "round_rsvp_accepted" || r.type === "round_rsvp_declined",
     );
+    const roundHintRows = rows.filter(
+      (r) =>
+        r.type === "round_rsvp_accepted" ||
+        r.type === "round_rsvp_declined" ||
+        r.type === "round_invite",
+    );
     const roundIdsForJoin = [
       ...new Set(
         roundRsvpRows
@@ -101,11 +107,35 @@ export async function GET(req: Request) {
     ];
     const inviteTokensForJoin = [
       ...new Set(
-        roundRsvpRows
+        roundHintRows
           .map((r) => (r.data as { inviteToken?: string }).inviteToken)
           .filter((t): t is string => Boolean(t)),
       ),
     ];
+
+    const postIds = [
+      ...new Set(
+        rows
+          .map((r) => (r.data as { postId?: string }).postId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const postPreviewById = new Map<string, string | null>();
+    if (postIds.length > 0) {
+      const postRows = await db
+        .select({
+          id: posts.id,
+          imageUrl: posts.imageUrl,
+          imageUrls: posts.imageUrls,
+        })
+        .from(posts)
+        .where(inArray(posts.id, postIds));
+      for (const post of postRows) {
+        const firstFromArray =
+          Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls[0] : null;
+        postPreviewById.set(post.id, firstFromArray ?? post.imageUrl ?? null);
+      }
+    }
 
     type LiveRoundRow = {
       id: string;
@@ -204,6 +234,10 @@ export async function GET(req: Request) {
         const parentCommentId = typeof d.parentCommentId === "string" ? d.parentCommentId : "";
         const replyToCommentId = typeof d.replyToCommentId === "string" ? d.replyToCommentId : "";
         const actorUserId = typeof d.actorUserId === "string" ? d.actorUserId : "";
+        const previewImageUrlFromData =
+          typeof (d as { previewImageUrl?: string }).previewImageUrl === "string"
+            ? (d as { previewImageUrl?: string }).previewImageUrl!.trim()
+            : "";
 
         const actorProfile = actorUserId ? actorProfileMap.get(actorUserId) : undefined;
 
@@ -226,7 +260,11 @@ export async function GET(req: Request) {
 
         let roundHint: string | undefined;
 
-        if (r.type === "round_rsvp_accepted" || r.type === "round_rsvp_declined") {
+        if (
+          r.type === "round_rsvp_accepted" ||
+          r.type === "round_rsvp_declined" ||
+          r.type === "round_invite"
+        ) {
           const spotStatus = inferRoundRsvpSpotStatus({
             type: r.type,
             stored: d.spotStatus,
@@ -236,17 +274,19 @@ export async function GET(req: Request) {
             (typeof d.roundId === "string" ? roundById.get(d.roundId) : undefined) ??
             (typeof d.inviteToken === "string" ? roundByInviteToken.get(d.inviteToken) : undefined);
           if (live) {
-            roundRsvpMeta = {
-              mode: live.mode,
-              teeTimeIso: live.teeTime?.toISOString() ?? null,
-              targetDateIso: live.targetDate.toISOString(),
-              venueLabel: formatVenueLabel({
-                courseName: live.courseName,
-                planningLocation: live.planningLocation,
-              }),
-              spotStatus,
-              preferredTimeWindows: live.preferredTimeWindow,
-            };
+            if (r.type === "round_rsvp_accepted" || r.type === "round_rsvp_declined") {
+              roundRsvpMeta = {
+                mode: live.mode,
+                teeTimeIso: live.teeTime?.toISOString() ?? null,
+                targetDateIso: live.targetDate.toISOString(),
+                venueLabel: formatVenueLabel({
+                  courseName: live.courseName,
+                  planningLocation: live.planningLocation,
+                }),
+                spotStatus,
+                preferredTimeWindows: live.preferredTimeWindow,
+              };
+            }
             roundHint = buildRoundNavHintJson({
               id: live.id,
               inviteToken: live.inviteToken,
@@ -296,6 +336,9 @@ export async function GET(req: Request) {
             actorUserId,
             actorName: actorProfile?.name ?? "",
             actorAvatar: actorProfile?.avatar ?? null,
+            previewImageUrl:
+              previewImageUrlFromData ||
+              (postId ? (postPreviewById.get(postId) ?? "") : ""),
             stillPending: requestEntry?.pending ?? false,
             joinRequestId: requestEntry?.requestId ?? null,
             createdAt: toIsoTimestamp(r.createdAt),

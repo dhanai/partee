@@ -74,6 +74,7 @@ export function SocialPostCard({
     transform: [{ scale: heartScale.value }],
     opacity: heartOpacity.value,
   }));
+  const hasBody = body.trim().length > 0;
 
   return (
     <GestureDetector gesture={doubleTap}>
@@ -98,7 +99,7 @@ export function SocialPostCard({
               </Pressable>
             ) : null}
           </View>
-          <Text style={styles.postBody}>{body}</Text>
+          {hasBody ? <Text style={styles.postBody}>{body}</Text> : null}
           {images.length > 0 ? (
             <View style={styles.mediaBleed}>
               <PostImageCarousel images={images} onPressImage={onPressImage} />

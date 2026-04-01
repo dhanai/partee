@@ -88,7 +88,13 @@ function openNotificationData(
     return;
   }
   if (type === "profile_post") {
-    router.push("/(tabs)/profile");
+    const postId = typeof data.postId === "string" ? data.postId.trim() : "";
+    router.push({
+      pathname: "/(tabs)/profile",
+      params: {
+        ...(postId ? { postId } : {}),
+      },
+    });
     return;
   }
 }

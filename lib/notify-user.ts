@@ -186,7 +186,13 @@ export async function notifyGroupPost(input: {
   const recipientIds = input.memberUserIds.filter((id) => id !== input.senderUserId);
   if (recipientIds.length === 0) return;
 
-  const preview = input.body.length > 120 ? `${input.body.slice(0, 117)}…` : input.body;
+  const normalizedBody = input.body.trim();
+  const preview =
+    normalizedBody.length === 0
+      ? "Shared new photos."
+      : normalizedBody.length > 120
+        ? `${normalizedBody.slice(0, 117)}…`
+        : normalizedBody;
   const title = `${input.groupName} — New post`;
   const body = `${input.senderName}: ${preview}`;
 
@@ -288,7 +294,7 @@ export async function notifyProfilePost(input: {
       sound: "default",
       title,
       body,
-      data: { type: "profile_post" },
+      data: { type: "profile_post", postId: input.postId },
     },
   ]);
 }

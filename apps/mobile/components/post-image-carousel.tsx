@@ -26,10 +26,15 @@ export function PostImageCarousel({ images, onPressImage }: Props) {
   if (normalized.length === 0) return null;
   if (normalized.length === 1) {
     const singleUri = normalized[0]!;
-    const singleWidth = resolvedContainerWidth;
+    const singleHorizontalInset = 12;
+    const singleWidth = Math.max(160, resolvedContainerWidth - singleHorizontalInset * 2);
     const singleHeight = singleAspectRatio ? singleWidth / singleAspectRatio : singleWidth;
     return (
-      <Pressable onPress={() => onPressImage(0)} onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}>
+      <Pressable
+        onPress={() => onPressImage(0)}
+        onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
+        style={{ paddingHorizontal: singleHorizontalInset }}
+      >
         <Image
           source={singleUri}
           style={[styles.image, { width: singleWidth, height: singleHeight, marginRight: 0 }]}
