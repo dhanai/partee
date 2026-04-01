@@ -1,6 +1,6 @@
 import { and, asc, eq, exists, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { courses, rounds, spots, users } from "@/db/schema";
+import { courses, groupMembers, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 import { timeWindowResponseFields } from "@/lib/round-time-window-compat";
@@ -90,23 +90,38 @@ export async function getHostedOpenRoundsForProfile(
 
   const conditions = [
     eq(rounds.hostId, hostUserId),
-    isNull(rounds.groupId),
     inArray(rounds.status, ["forming", "confirmed"]),
     futureCond,
   ];
   if (viewerUserId !== hostUserId) {
     conditions.push(
       or(
-        eq(rounds.visibility, "public"),
+        and(
+          isNull(rounds.groupId),
+          or(
+            eq(rounds.visibility, "public"),
+            exists(
+              db
+                .select()
+                .from(spots)
+                .where(
+                  and(
+                    eq(spots.roundId, rounds.id),
+                    eq(spots.userId, viewerUserId),
+                    inArray(spots.status, ["invited", "declined", "requested", "confirmed"]),
+                  ),
+                ),
+            ),
+          ),
+        ),
         exists(
           db
             .select()
-            .from(spots)
+            .from(groupMembers)
             .where(
               and(
-                eq(spots.roundId, rounds.id),
-                eq(spots.userId, viewerUserId),
-                inArray(spots.status, ["invited", "declined", "requested", "confirmed"]),
+                eq(groupMembers.groupId, rounds.groupId),
+                eq(groupMembers.userId, viewerUserId),
               ),
             ),
         ),
@@ -221,24 +236,39 @@ export async function getOpenRoundsForProfile(
     eq(spots.userId, profileUserId),
     inArray(spots.status, ["confirmed", "requested"]),
     ne(rounds.hostId, profileUserId),
-    isNull(rounds.groupId),
     inArray(rounds.status, ["forming", "confirmed"]),
     futureCond,
   ];
   if (viewerUserId !== profileUserId) {
     joinedConditions.push(
       or(
-        eq(rounds.visibility, "public"),
-        eq(rounds.hostId, viewerUserId),
+        and(
+          isNull(rounds.groupId),
+          or(
+            eq(rounds.visibility, "public"),
+            eq(rounds.hostId, viewerUserId),
+            exists(
+              db
+                .select()
+                .from(spots)
+                .where(
+                  and(
+                    eq(spots.roundId, rounds.id),
+                    eq(spots.userId, viewerUserId),
+                    inArray(spots.status, ["invited", "declined", "requested", "confirmed"]),
+                  ),
+                ),
+            ),
+          ),
+        ),
         exists(
           db
             .select()
-            .from(spots)
+            .from(groupMembers)
             .where(
               and(
-                eq(spots.roundId, rounds.id),
-                eq(spots.userId, viewerUserId),
-                inArray(spots.status, ["invited", "declined", "requested", "confirmed"]),
+                eq(groupMembers.groupId, rounds.groupId),
+                eq(groupMembers.userId, viewerUserId),
               ),
             ),
         ),
