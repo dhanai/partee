@@ -99,7 +99,11 @@ export function SocialPostCard({
             ) : null}
           </View>
           <Text style={styles.postBody}>{body}</Text>
-          {images.length > 0 ? <PostImageCarousel images={images} onPressImage={onPressImage} /> : null}
+          {images.length > 0 ? (
+            <View style={styles.mediaBleed}>
+              <PostImageCarousel images={images} onPressImage={onPressImage} />
+            </View>
+          ) : null}
           <View style={styles.postFooter}>
             <Pressable style={styles.postLikeBtn} onPress={onToggleLike}>
               <Ionicons name={viewerLiked ? "heart" : "heart-outline"} size={18} color={viewerLiked ? colors.danger : colors.muted} />
@@ -138,6 +142,9 @@ const styles = StyleSheet.create({
   postDate: { color: colors.muted, fontSize: 12 },
   postOverflow: { marginLeft: "auto", padding: 2 },
   postBody: { color: colors.text, lineHeight: 20, fontSize: 15 },
+  mediaBleed: {
+    marginHorizontal: -12,
+  },
   postFooter: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 2 },
   postLikeBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   postLikeCount: { color: colors.muted, fontWeight: "700", fontSize: 13 },

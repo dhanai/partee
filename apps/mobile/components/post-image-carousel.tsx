@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { toAbsoluteUrl } from "../lib/api";
-import { colors } from "../lib/theme";
 
 type Props = {
   images: string[];
@@ -11,9 +10,14 @@ type Props = {
 
 export function PostImageCarousel({ images, onPressImage }: Props) {
   const { width } = useWindowDimensions();
-  const [activeIndex, setActiveIndex] = useState(0);
-  const itemWidth = useMemo(() => Math.max(220, width - 56), [width]);
+  const [containerWidth, setContainerWidth] = useState(0);
   const [singleAspectRatio, setSingleAspectRatio] = useState<number | null>(null);
+  const resolvedContainerWidth = containerWidth > 0 ? containerWidth : Math.max(280, width - 48);
+  const itemWidth = useMemo(
+    () => Math.max(180, Math.round(resolvedContainerWidth * 0.6)),
+    [resolvedContainerWidth],
+  );
+  const itemGap = 8;
   const normalized = useMemo(
     () => images.map((image) => toAbsoluteUrl(image)).filter((image) => image.length > 0),
     [images],
@@ -22,12 +26,13 @@ export function PostImageCarousel({ images, onPressImage }: Props) {
   if (normalized.length === 0) return null;
   if (normalized.length === 1) {
     const singleUri = normalized[0]!;
-    const singleHeight = singleAspectRatio ? itemWidth / singleAspectRatio : itemWidth;
+    const singleWidth = resolvedContainerWidth;
+    const singleHeight = singleAspectRatio ? singleWidth / singleAspectRatio : singleWidth;
     return (
-      <Pressable onPress={() => onPressImage(0)}>
+      <Pressable onPress={() => onPressImage(0)} onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}>
         <Image
           source={singleUri}
-          style={[styles.image, { width: itemWidth, height: singleHeight, marginRight: 0 }]}
+          style={[styles.image, { width: singleWidth, height: singleHeight, marginRight: 0 }]}
           contentFit="cover"
           transition={0}
           onLoad={(event) => {
@@ -42,19 +47,14 @@ export function PostImageCarousel({ images, onPressImage }: Props) {
   }
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}>
       <FlatList
         data={normalized}
         horizontal
-        pagingEnabled
         keyExtractor={(item, index) => `${item}-${index}`}
         showsHorizontalScrollIndicator={false}
-        snapToInterval={itemWidth}
-        decelerationRate="fast"
-        onMomentumScrollEnd={(event) => {
-          const index = Math.round(event.nativeEvent.contentOffset.x / itemWidth);
-          setActiveIndex(Math.max(0, Math.min(normalized.length - 1, index)));
-        }}
+        decelerationRate="normal"
+        contentContainerStyle={styles.scrollContent}
         renderItem={({ item, index }) => (
           <Pressable onPress={() => onPressImage(index)}>
             <Image
@@ -66,13 +66,6 @@ export function PostImageCarousel({ images, onPressImage }: Props) {
           </Pressable>
         )}
       />
-      {normalized.length > 1 ? (
-        <View style={styles.dotsRow}>
-          {normalized.map((_, index) => (
-            <View key={`dot-${index}`} style={[styles.dot, activeIndex === index && styles.dotActive]} />
-          ))}
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -81,27 +74,13 @@ const styles = StyleSheet.create({
   wrap: {
     gap: 8,
   },
+  scrollContent: {
+    paddingLeft: 12,
+    paddingRight: 12,
+  },
   image: {
-    height: 220,
     borderRadius: 10,
-    backgroundColor: colors.fairwaySoft,
+    backgroundColor: "#e6efe8",
     marginRight: 8,
-  },
-  dotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: "#d6d2cb",
-  },
-  dotActive: {
-    backgroundColor: colors.text,
-    width: 7,
-    height: 7,
   },
 });
