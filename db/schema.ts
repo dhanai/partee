@@ -621,10 +621,14 @@ export const posts = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    profileUserId: uuid("profile_user_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
     scope: text("scope").notNull().default("group"),
     body: text("body").notNull(),
     imageUrl: text("image_url"),
     isPinned: boolean("is_pinned").notNull().default(true),
+    hiddenOnProfile: boolean("hidden_on_profile").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -637,6 +641,11 @@ export const posts = pgTable(
     ),
     userCreatedIdx: index("posts_user_created_idx").on(
       table.userId,
+      table.createdAt,
+    ),
+    profileUserIdx: index("posts_profile_user_idx").on(table.profileUserId),
+    profileUserCreatedIdx: index("posts_profile_user_created_idx").on(
+      table.profileUserId,
       table.createdAt,
     ),
   }),

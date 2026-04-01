@@ -11,6 +11,7 @@ const editSchema = z.object({
   body: z.string().min(1).max(2000).optional(),
   imageUrl: z.string().url().nullable().optional(),
   isPinned: z.boolean().optional(),
+  hideFromProfile: z.boolean().optional(),
 });
 
 export async function PATCH(req: Request, { params }: Ctx) {
@@ -19,7 +20,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const { postId } = params;
 
     const [existing] = await db
-      .select({ userId: posts.userId, groupId: posts.groupId })
+      .select({
+        userId: posts.userId,
+        groupId: posts.groupId,
+        scope: posts.scope,
+        profileUserId: posts.profileUserId,
+      })
       .from(posts)
       .where(eq(posts.id, postId))
       .limit(1);
@@ -29,6 +35,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
     }
 
     const isAuthor = existing.userId === viewer.id;
+    const profileOwnerId = existing.profileUserId ?? existing.userId;
+    const isProfileOwner = existing.scope === "profile" && profileOwnerId === viewer.id;
     let isAdminOrOwner = false;
 
     if (existing.groupId) {
@@ -43,7 +51,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       isAdminOrOwner = membership?.role === "owner" || membership?.role === "admin";
     }
 
-    if (!isAuthor && !isAdminOrOwner) {
+    if (!isAuthor && !isAdminOrOwner && !isProfileOwner) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
@@ -51,10 +59,15 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const input = editSchema.parse(json);
 
     const updates: Record<string, unknown> = {};
-    if (input.body !== undefined) updates.body = input.body;
-    if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
-    const canPin = existing.groupId ? isAdminOrOwner : isAuthor;
+    if (input.body !== undefined && (isAuthor || isAdminOrOwner)) updates.body = input.body;
+    if (input.imageUrl !== undefined && (isAuthor || isAdminOrOwner)) {
+      updates.imageUrl = input.imageUrl;
+    }
+    const canPin = existing.groupId ? isAdminOrOwner : isAuthor || isProfileOwner;
     if (input.isPinned !== undefined && canPin) updates.isPinned = input.isPinned;
+    if (input.hideFromProfile !== undefined && isProfileOwner) {
+      updates.hiddenOnProfile = input.hideFromProfile;
+    }
 
     if (Object.keys(updates).length > 0) {
       await db
@@ -82,7 +95,12 @@ export async function DELETE(req: Request, { params }: Ctx) {
     const { postId } = params;
 
     const [existing] = await db
-      .select({ userId: posts.userId, groupId: posts.groupId })
+      .select({
+        userId: posts.userId,
+        groupId: posts.groupId,
+        scope: posts.scope,
+        profileUserId: posts.profileUserId,
+      })
       .from(posts)
       .where(eq(posts.id, postId))
       .limit(1);
@@ -92,6 +110,8 @@ export async function DELETE(req: Request, { params }: Ctx) {
     }
 
     const isAuthor = existing.userId === viewer.id;
+    const profileOwnerId = existing.profileUserId ?? existing.userId;
+    const isProfileOwner = existing.scope === "profile" && profileOwnerId === viewer.id;
     let isAdminOrOwner = false;
 
     if (existing.groupId) {
@@ -106,7 +126,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
       isAdminOrOwner = membership?.role === "owner" || membership?.role === "admin";
     }
 
-    if (!isAuthor && !isAdminOrOwner) {
+    if (!isAuthor && !isAdminOrOwner && !isProfileOwner) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 

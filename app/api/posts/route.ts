@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { postComments, postLikes, posts, groupMembers, groups, users } from "@/db/schema";
+import {
+  postComments,
+  postLikes,
+  posts,
+  groupMembers,
+  groups,
+  userFollows,
+  users,
+} from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyGroupPost } from "@/lib/notify-user";
 import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
@@ -12,6 +20,7 @@ const createSchema = z.object({
   imageUrl: z.string().url().optional(),
   isPinned: z.boolean().default(true),
   groupId: z.string().uuid().optional(),
+  profileUserId: z.string().uuid().optional(),
   scope: z.enum(["group", "profile"]).default("group"),
 });
 
@@ -30,7 +39,14 @@ export async function GET(req: Request) {
         ? and(eq(posts.groupId, groupId), eq(posts.scope, "group"))
         : and(eq(posts.groupId, groupId), eq(posts.scope, "group"));
     } else if (userId) {
-      where = and(eq(posts.userId, userId), eq(posts.scope, "profile"));
+      where = and(
+        eq(posts.scope, "profile"),
+        eq(posts.hiddenOnProfile, false),
+        or(
+          eq(posts.profileUserId, userId),
+          and(isNull(posts.profileUserId), eq(posts.userId, userId)),
+        ),
+      );
     } else {
       return NextResponse.json({ error: "Provide groupId or userId." }, { status: 400 });
     }
@@ -42,6 +58,7 @@ export async function GET(req: Request) {
         imageUrl: posts.imageUrl,
         isPinned: posts.isPinned,
         groupId: posts.groupId,
+        profileUserId: posts.profileUserId,
         scope: posts.scope,
         createdAt: posts.createdAt,
         userId: posts.userId,
@@ -97,6 +114,7 @@ export async function GET(req: Request) {
         isPinned: r.isPinned,
         groupId: r.groupId,
         scope: r.scope,
+        profileUserId: r.profileUserId,
         createdAt: r.createdAt.toISOString(),
         likeCount: likeCountMap.get(r.id) ?? 0,
         commentCount: commentCountMap.get(r.id) ?? 0,
@@ -190,15 +208,51 @@ export async function POST(req: Request) {
     }
 
     // scope === "profile"
+    const profileUserId = input.profileUserId ?? viewer.id;
+    if (profileUserId !== viewer.id) {
+      const [viewerToTarget, targetToViewer] = await Promise.all([
+        db
+          .select({ status: userFollows.status })
+          .from(userFollows)
+          .where(
+            and(
+              eq(userFollows.followerId, viewer.id),
+              eq(userFollows.followedId, profileUserId),
+              eq(userFollows.status, "accepted"),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ status: userFollows.status })
+          .from(userFollows)
+          .where(
+            and(
+              eq(userFollows.followerId, profileUserId),
+              eq(userFollows.followedId, viewer.id),
+              eq(userFollows.status, "accepted"),
+            ),
+          )
+          .limit(1),
+      ]);
+      if (!viewerToTarget || !targetToViewer) {
+        return NextResponse.json(
+          { error: "Only mutual friends can post to this profile." },
+          { status: 403 },
+        );
+      }
+    }
+
     const [post] = await db
       .insert(posts)
       .values({
         groupId: null,
         userId: viewer.id,
+        profileUserId,
         scope: "profile",
         body: input.body,
         imageUrl: input.imageUrl ?? null,
         isPinned: false,
+        hiddenOnProfile: false,
       })
       .returning();
 
@@ -208,6 +262,7 @@ export async function POST(req: Request) {
         body: post.body,
         imageUrl: post.imageUrl,
         isPinned: post.isPinned,
+        profileUserId: post.profileUserId,
         groupId: null,
         scope: post.scope,
         createdAt: post.createdAt.toISOString(),
