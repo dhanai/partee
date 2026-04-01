@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:profile-activity-baseline": "tsx db/profile-activity-baseline.ts",
     "db:ensure-user-columns": "tsx db/ensure-user-columns.ts",
     "db:fix-notifications-column": "tsx db/ensure-notifications-column.ts",
     "seed:dev-users": "tsx db/seed-dev-users.ts",

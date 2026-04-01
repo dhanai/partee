@@ -76,7 +76,7 @@ export async function POST(req: Request, { params }: Ctx) {
     const input = createSchema.parse(await req.json());
 
     const [post] = await db
-      .select({ id: posts.id, groupId: posts.groupId })
+      .select({ id: posts.id, groupId: posts.groupId, userId: posts.userId })
       .from(posts)
       .where(eq(posts.id, postId))
       .limit(1);

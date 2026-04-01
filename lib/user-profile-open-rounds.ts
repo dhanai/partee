@@ -1,4 +1,4 @@
-import { and, asc, eq, exists, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { courses, groupMembers, rounds, spots, users } from "@/db/schema";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
@@ -77,6 +77,12 @@ export type ProfileOpenRoundsListsJson = {
   joined: ProfileOpenRoundJson[];
 };
 
+export type OpenRoundsQueryOptions = {
+  createdBefore?: Date;
+  limit?: number;
+  orderByCreatedDesc?: boolean;
+};
+
 /**
  * Hosted rounds that are still "open" in time (effective tee/target strictly after now),
  * including when full. Others see public rounds, or private rounds where they have a spot
@@ -85,6 +91,7 @@ export type ProfileOpenRoundsListsJson = {
 export async function getHostedOpenRoundsForProfile(
   hostUserId: string,
   viewerUserId: string,
+  options?: OpenRoundsQueryOptions,
 ): Promise<ProfileOpenRoundJson[]> {
   const futureCond = sql`coalesce(${rounds.teeTime}, ${rounds.targetDate}) > NOW()`;
 
@@ -93,6 +100,9 @@ export async function getHostedOpenRoundsForProfile(
     inArray(rounds.status, ["forming", "confirmed"]),
     futureCond,
   ];
+  if (options?.createdBefore) {
+    conditions.push(lt(rounds.createdAt, options.createdBefore));
+  }
   if (viewerUserId !== hostUserId) {
     conditions.push(
       or(
@@ -129,7 +139,7 @@ export async function getHostedOpenRoundsForProfile(
     );
   }
 
-  const rawRows = await db
+  const baseHostedQuery = db
     .select({
       id: rounds.id,
       inviteToken: rounds.inviteToken,
@@ -155,7 +165,8 @@ export async function getHostedOpenRoundsForProfile(
     .leftJoin(spots, eq(spots.roundId, rounds.id))
     .where(and(...conditions))
     .groupBy(rounds.id)
-    .orderBy(asc(rounds.targetDate));
+    .orderBy(options?.orderByCreatedDesc ? desc(rounds.createdAt) : asc(rounds.targetDate));
+  const rawRows = await (options?.limit ? baseHostedQuery.limit(options.limit) : baseHostedQuery);
 
   const nowMs = Date.now();
   const upcoming = rawRows.filter((r) => effectiveRoundTimeMs(r) > nowMs);
@@ -228,8 +239,9 @@ export async function getHostedOpenRoundsForProfile(
 export async function getOpenRoundsForProfile(
   profileUserId: string,
   viewerUserId: string,
+  options?: OpenRoundsQueryOptions,
 ): Promise<ProfileOpenRoundsListsJson> {
-  const hosting = await getHostedOpenRoundsForProfile(profileUserId, viewerUserId);
+  const hosting = await getHostedOpenRoundsForProfile(profileUserId, viewerUserId, options);
 
   const futureCond = sql`coalesce(${rounds.teeTime}, ${rounds.targetDate}) > NOW()`;
   const joinedConditions = [
@@ -239,6 +251,9 @@ export async function getOpenRoundsForProfile(
     inArray(rounds.status, ["forming", "confirmed"]),
     futureCond,
   ];
+  if (options?.createdBefore) {
+    joinedConditions.push(lt(rounds.createdAt, options.createdBefore));
+  }
   if (viewerUserId !== profileUserId) {
     joinedConditions.push(
       or(
@@ -276,7 +291,7 @@ export async function getOpenRoundsForProfile(
     );
   }
 
-  const joinedRawRows = await db
+  const baseJoinedQuery = db
     .select({
       id: rounds.id,
       inviteToken: rounds.inviteToken,
@@ -303,7 +318,8 @@ export async function getOpenRoundsForProfile(
     .innerJoin(rounds, eq(rounds.id, spots.roundId))
     .where(and(...joinedConditions))
     .groupBy(rounds.id)
-    .orderBy(asc(rounds.targetDate));
+    .orderBy(options?.orderByCreatedDesc ? desc(rounds.createdAt) : asc(rounds.targetDate));
+  const joinedRawRows = await (options?.limit ? baseJoinedQuery.limit(options.limit) : baseJoinedQuery);
 
   const joinedRoundIds = joinedRawRows.map((r) => r.id);
   if (joinedRoundIds.length === 0) {

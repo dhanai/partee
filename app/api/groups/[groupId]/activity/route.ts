@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { getViewerFollowedIds, scorePost } from "@/lib/feed-scoring";
+import { withPerfTimer } from "@/lib/profile-activity-perf";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 
 type Ctx = { params: { groupId: string } };
@@ -40,6 +41,10 @@ type ActivityItem =
   | { type: "member_joined"; id: string; joinedAt: string; user: { id: string; name: string; avatar: string | null } };
 
 export async function GET(req: Request, { params }: Ctx) {
+  const done = withPerfTimer("GET /api/groups/[groupId]/activity");
+  let perfCount = 0;
+  let perfNextCursor: string | null = null;
+  let perfViewerUserId: string | null = null;
   try {
     const viewer = await requireDbUser(req);
     const { groupId } = params;
@@ -295,6 +300,9 @@ export async function GET(req: Request, { params }: Ctx) {
 
     const hasMore = items.length > pageSize || (page.length === pageSize && page.length > 0);
 
+    perfViewerUserId = viewer.id;
+    perfCount = page.length;
+    perfNextCursor = hasMore ? oldestDate : null;
     return NextResponse.json({
       activity: page,
       nextCursor: hasMore ? oldestDate : null,
@@ -305,5 +313,12 @@ export async function GET(req: Request, { params }: Ctx) {
     }
     console.error("[GET /api/groups/[groupId]/activity]", error);
     return NextResponse.json({ error: "Unable to load activity." }, { status: 500 });
+  } finally {
+    done({
+      groupId: params.groupId,
+      viewerUserId: perfViewerUserId,
+      count: perfCount,
+      nextCursor: perfNextCursor,
+    });
   }
 }

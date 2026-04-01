@@ -89,6 +89,13 @@ type ProfileRoundsResponse = {
   hosting?: Omit<ProfileRound, "source">[];
   joined?: Omit<ProfileRound, "source">[];
 };
+type ProfileActivityResponse = {
+  items: Array<
+    | { kind: "post"; createdAt: string; post: ProfilePost }
+    | { kind: "round"; createdAt: string; round: ProfileRound }
+  >;
+  nextCursor: string | null;
+};
 type ProfileFeedItem =
   | { kind: "round"; id: string; ts: number; round: ProfileRound }
   | { kind: "post"; id: string; ts: number; post: ProfilePost };
@@ -101,6 +108,7 @@ type ProfileComment = {
 
 const COMMENT_SNAP_POINTS = ["55%"] as const;
 const savedPublicProfileScrollY = new Map<string, number>();
+const USE_UNIFIED_PROFILE_ACTIVITY = (process.env.EXPO_PUBLIC_PROFILE_ACTIVITY_UNIFIED ?? "1") !== "0";
 
 function toMineRoundForHint(r: ProfileRound): MineRound {
   return {
@@ -244,26 +252,40 @@ export default function PublicProfileScreen() {
       const token = await getTokenRef.current();
       const json = await fetchPublicProfileAndCache(userId, token);
       setProfile(json);
-      const [roundsData, postsData] = await Promise.all([
-        apiGet<ProfileRoundsResponse>(`/api/users/${encodeURIComponent(userId)}/open-rounds`, token)
-          .catch(() => ({ rounds: [], hosting: [], joined: [] })),
-        apiGet<{ posts: ProfilePost[] }>(
-          `/api/posts?userId=${encodeURIComponent(userId)}&limit=20`,
+      if (USE_UNIFIED_PROFILE_ACTIVITY) {
+        const activity = await apiGet<ProfileActivityResponse>(
+          `/api/users/${encodeURIComponent(userId)}/activity?limit=20`,
           token,
-        ).catch(() => ({ posts: [] })),
-      ]);
-
-      const fallbackRounds = roundsData.rounds ?? [];
-      const hosting = (roundsData.hosting ?? fallbackRounds).map((round) => ({
-        ...round,
-        source: "hosting" as const,
-      }));
-      const joined = (roundsData.joined ?? []).map((round) => ({
-        ...round,
-        source: "joined" as const,
-      }));
-      setRounds([...hosting, ...joined]);
-      setPosts((postsData.posts ?? []).filter((post) => post.profileUserId === userId));
+        ).catch(() => ({ items: [], nextCursor: null }));
+        const nextRounds: ProfileRound[] = [];
+        const nextPosts: ProfilePost[] = [];
+        for (const item of activity.items ?? []) {
+          if (item.kind === "round") nextRounds.push(item.round);
+          if (item.kind === "post") nextPosts.push(item.post);
+        }
+        setRounds(nextRounds);
+        setPosts(nextPosts.filter((post) => post.profileUserId === userId));
+      } else {
+        const [roundsData, postsData] = await Promise.all([
+          apiGet<ProfileRoundsResponse>(`/api/users/${encodeURIComponent(userId)}/open-rounds`, token)
+            .catch(() => ({ rounds: [], hosting: [], joined: [] })),
+          apiGet<{ posts: ProfilePost[] }>(
+            `/api/posts?userId=${encodeURIComponent(userId)}&limit=20`,
+            token,
+          ).catch(() => ({ posts: [] })),
+        ]);
+        const fallbackRounds = roundsData.rounds ?? [];
+        const hosting = (roundsData.hosting ?? fallbackRounds).map((round) => ({
+          ...round,
+          source: "hosting" as const,
+        }));
+        const joined = (roundsData.joined ?? []).map((round) => ({
+          ...round,
+          source: "joined" as const,
+        }));
+        setRounds([...hosting, ...joined]);
+        setPosts((postsData.posts ?? []).filter((post) => post.profileUserId === userId));
+      }
     } catch (profileError) {
       setError(profileError instanceof Error ? profileError.message : "Unable to load profile.");
       setRounds([]);

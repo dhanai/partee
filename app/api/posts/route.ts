@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -14,6 +14,7 @@ import {
 import { requireDbUser } from "@/lib/auth";
 import { notifyGroupPost, notifyProfilePost } from "@/lib/notify-user";
 import { publishGroupActivityUpdated } from "@/lib/parfade-ably-publish";
+import { withPerfTimer } from "@/lib/profile-activity-perf";
 
 const createSchema = z.object({
   body: z.string().min(1).max(2000),
@@ -25,6 +26,7 @@ const createSchema = z.object({
 });
 
 export async function GET(req: Request) {
+  const done = withPerfTimer("GET /api/posts");
   try {
     const viewer = await requireDbUser(req);
     const url = new URL(req.url);
@@ -32,18 +34,26 @@ export async function GET(req: Request) {
     const userId = url.searchParams.get("userId");
     const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") ?? "20")));
     const cursor = url.searchParams.get("cursor");
+    const cursorDate = cursor ? new Date(cursor) : null;
 
     let where;
     if (groupId) {
-      where = cursor
-        ? and(eq(posts.groupId, groupId), eq(posts.scope, "group"))
+      where = cursorDate
+        ? and(eq(posts.groupId, groupId), eq(posts.scope, "group"), lt(posts.createdAt, cursorDate))
         : and(eq(posts.groupId, groupId), eq(posts.scope, "group"));
     } else if (userId) {
-      where = and(
-        eq(posts.scope, "profile"),
-        eq(posts.hiddenOnProfile, false),
-        eq(posts.profileUserId, userId),
-      );
+      where = cursorDate
+        ? and(
+            eq(posts.scope, "profile"),
+            eq(posts.hiddenOnProfile, false),
+            eq(posts.profileUserId, userId),
+            lt(posts.createdAt, cursorDate),
+          )
+        : and(
+            eq(posts.scope, "profile"),
+            eq(posts.hiddenOnProfile, false),
+            eq(posts.profileUserId, userId),
+          );
     } else {
       return NextResponse.json({ error: "Provide groupId or userId." }, { status: 400 });
     }
@@ -125,6 +135,14 @@ export async function GET(req: Request) {
     }
     console.error("[GET /api/posts]", error);
     return NextResponse.json({ error: "Unable to load posts." }, { status: 500 });
+  } finally {
+    const url = new URL(req.url);
+    done({
+      groupId: url.searchParams.get("groupId"),
+      userId: url.searchParams.get("userId"),
+      limit: url.searchParams.get("limit"),
+      cursor: url.searchParams.get("cursor"),
+    });
   }
 }
 

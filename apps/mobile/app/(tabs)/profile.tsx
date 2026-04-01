@@ -88,6 +88,13 @@ type ProfileRoundsResponse = {
   hosting?: Omit<ProfileRound, "source">[];
   joined?: Omit<ProfileRound, "source">[];
 };
+type ProfileActivityResponse = {
+  items: Array<
+    | { kind: "post"; createdAt: string; post: ProfilePost }
+    | { kind: "round"; createdAt: string; round: ProfileRound }
+  >;
+  nextCursor: string | null;
+};
 type ProfileFeedItem =
   | { kind: "round"; id: string; ts: number; round: ProfileRound }
   | { kind: "post"; id: string; ts: number; post: ProfilePost };
@@ -122,6 +129,7 @@ function toMineRoundForHint(r: ProfileRound): MineRound {
 const AVATAR_RADIUS = 28;
 const COMMENT_SNAP_POINTS = ["55%"] as const;
 let savedSelfProfileScrollY = 0;
+const USE_UNIFIED_PROFILE_ACTIVITY = (process.env.EXPO_PUBLIC_PROFILE_ACTIVITY_UNIFIED ?? "1") !== "0";
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
@@ -263,7 +271,38 @@ export default function ProfileScreen() {
   }
 
   async function loadProfileFeed(targetUserId: string | null | undefined) {
-    await Promise.all([loadProfileRounds(targetUserId), loadProfilePosts(targetUserId)]);
+    if (!USE_UNIFIED_PROFILE_ACTIVITY) {
+      await Promise.all([loadProfileRounds(targetUserId), loadProfilePosts(targetUserId)]);
+      return;
+    }
+    if (!targetUserId) {
+      setRounds([]);
+      setPosts([]);
+      return;
+    }
+    setRoundsLoading(true);
+    setPostsLoading(true);
+    try {
+      const token = await getTokenRef.current();
+      const data = await apiGet<ProfileActivityResponse>(
+        `/api/users/${encodeURIComponent(targetUserId)}/activity?limit=20`,
+        token,
+      );
+      const nextRounds: ProfileRound[] = [];
+      const nextPosts: ProfilePost[] = [];
+      for (const item of data.items ?? []) {
+        if (item.kind === "round") nextRounds.push(item.round);
+        if (item.kind === "post") nextPosts.push(item.post);
+      }
+      setRounds(nextRounds);
+      setPosts(nextPosts);
+    } catch {
+      setRounds([]);
+      setPosts([]);
+    } finally {
+      setRoundsLoading(false);
+      setPostsLoading(false);
+    }
   }
 
   useEffect(() => {

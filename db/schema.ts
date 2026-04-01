@@ -181,7 +181,6 @@ export const inAppNotifications = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    recipientIdx: index("in_app_notifications_recipient_user_id_idx").on(table.recipientUserId),
     recipientCreatedIdx: index("in_app_notifications_recipient_created_idx").on(
       table.recipientUserId,
       table.createdAt,
@@ -246,8 +245,16 @@ export const rounds = pgTable(
       table.inviteToken,
     ),
     hostIdx: index("rounds_host_id_idx").on(table.hostId),
+    hostTargetDateIdx: index("rounds_host_target_date_idx").on(
+      table.hostId,
+      table.targetDate,
+    ),
     teeTimeIdx: index("rounds_tee_time_idx").on(table.teeTime),
     groupIdx: index("rounds_group_id_idx").on(table.groupId),
+    groupCreatedIdx: index("rounds_group_created_idx").on(
+      table.groupId,
+      table.createdAt,
+    ),
     totalSpotsCheck: check(
       "rounds_total_spots_check",
       sql`(
@@ -277,6 +284,7 @@ export const spots = pgTable(
   (table) => ({
     roundIdx: index("spots_round_id_idx").on(table.roundId),
     userIdx: index("spots_user_id_idx").on(table.userId),
+    userStatusIdx: index("spots_user_status_idx").on(table.userId, table.status),
     userRoundUnique: uniqueIndex("spots_round_id_user_id_unique").on(
       table.roundId,
       table.userId,
@@ -586,6 +594,10 @@ export const groupMembers = pgTable(
       table.userId,
     ),
     groupIdx: index("group_members_group_idx").on(table.groupId),
+    groupJoinedIdx: index("group_members_group_joined_idx").on(
+      table.groupId,
+      table.joinedAt,
+    ),
     userIdx: index("group_members_user_idx").on(table.userId),
   }),
 );
@@ -646,6 +658,12 @@ export const posts = pgTable(
       table.userId,
       table.createdAt,
     ),
+    profileScopeVisibilityCreatedIdx: index("posts_profile_scope_visibility_created_idx").on(
+      table.scope,
+      table.hiddenOnProfile,
+      table.profileUserId,
+      table.createdAt,
+    ),
     profileUserIdx: index("posts_profile_user_idx").on(table.profileUserId),
     profileUserCreatedIdx: index("posts_profile_user_created_idx").on(
       table.profileUserId,
@@ -693,7 +711,6 @@ export const postComments = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    postIdx: index("post_comments_post_idx").on(table.postId),
     createdIdx: index("post_comments_created_idx").on(
       table.postId,
       table.createdAt,
