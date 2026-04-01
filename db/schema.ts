@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   boolean,
   check,
   index,
@@ -706,6 +707,12 @@ export const postComments = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    parentCommentId: uuid("parent_comment_id").references((): AnyPgColumn => postComments.id, {
+      onDelete: "cascade",
+    }),
+    replyToCommentId: uuid("reply_to_comment_id").references((): AnyPgColumn => postComments.id, {
+      onDelete: "set null",
+    }),
     body: text("body").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -716,6 +723,34 @@ export const postComments = pgTable(
       table.postId,
       table.createdAt,
     ),
+    parentCreatedIdx: index("post_comments_parent_created_idx").on(
+      table.postId,
+      table.parentCommentId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const postCommentLikes = pgTable(
+  "post_comment_likes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => postComments.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    uniqueLike: uniqueIndex("post_comment_likes_unique").on(
+      table.commentId,
+      table.userId,
+    ),
+    commentIdx: index("post_comment_likes_comment_idx").on(table.commentId),
   }),
 );
 

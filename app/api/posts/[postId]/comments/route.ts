@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { groupMembers, postComments, posts, users } from "@/db/schema";
+import { groupMembers, postCommentLikes, postComments, posts, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { notifyPostInteraction } from "@/lib/notify-user";
 import { publishPostCommentAdded } from "@/lib/parfade-ably-publish";
@@ -39,6 +39,8 @@ export async function GET(req: Request, { params }: Ctx) {
         id: postComments.id,
         body: postComments.body,
         createdAt: postComments.createdAt,
+        parentCommentId: postComments.parentCommentId,
+        replyToCommentId: postComments.replyToCommentId,
         userId: postComments.userId,
         userName: users.name,
         userAvatar: users.avatar,
@@ -49,11 +51,44 @@ export async function GET(req: Request, { params }: Ctx) {
       .orderBy(asc(postComments.createdAt))
       .limit(100);
 
+    const commentIds = rows.map((row) => row.id);
+    const likeCountMap = new Map<string, number>();
+    const viewerLikedSet = new Set<string>();
+
+    if (commentIds.length > 0) {
+      const likeRows = await db
+        .select({
+          commentId: postCommentLikes.commentId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(postCommentLikes)
+        .where(inArray(postCommentLikes.commentId, commentIds))
+        .groupBy(postCommentLikes.commentId);
+      for (const row of likeRows) {
+        likeCountMap.set(row.commentId, Number(row.count) || 0);
+      }
+
+      const viewerLikeRows = await db
+        .select({ commentId: postCommentLikes.commentId })
+        .from(postCommentLikes)
+        .where(
+          and(
+            eq(postCommentLikes.userId, viewer.id),
+            inArray(postCommentLikes.commentId, commentIds),
+          ),
+        );
+      for (const row of viewerLikeRows) viewerLikedSet.add(row.commentId);
+    }
+
     return NextResponse.json({
       comments: rows.map((r) => ({
         id: r.id,
         body: r.body,
         createdAt: r.createdAt.toISOString(),
+        parentCommentId: r.parentCommentId,
+        replyToCommentId: r.replyToCommentId,
+        likeCount: likeCountMap.get(r.id) ?? 0,
+        viewerLiked: viewerLikedSet.has(r.id),
         user: { id: r.userId, name: r.userName, avatar: r.userAvatar },
       })),
     });
@@ -68,6 +103,8 @@ export async function GET(req: Request, { params }: Ctx) {
 
 const createSchema = z.object({
   body: z.string().min(1).max(2000),
+  parentCommentId: z.string().uuid().optional().nullable(),
+  replyToCommentId: z.string().uuid().optional().nullable(),
 });
 
 export async function POST(req: Request, { params }: Ctx) {
@@ -98,11 +135,71 @@ export async function POST(req: Request, { params }: Ctx) {
       }
     }
 
+    let parentCommentId: string | null = input.parentCommentId ?? null;
+    let replyToCommentId: string | null = input.replyToCommentId ?? null;
+
+    if (replyToCommentId && !parentCommentId) {
+      const [replyTarget] = await db
+        .select({
+          id: postComments.id,
+          postId: postComments.postId,
+          parentCommentId: postComments.parentCommentId,
+        })
+        .from(postComments)
+        .where(eq(postComments.id, replyToCommentId))
+        .limit(1);
+      if (!replyTarget || replyTarget.postId !== postId) {
+        return NextResponse.json({ error: "Reply target not found." }, { status: 400 });
+      }
+      parentCommentId = replyTarget.parentCommentId ?? replyTarget.id;
+      replyToCommentId = replyTarget.id;
+    }
+
+    if (parentCommentId) {
+      const [parentComment] = await db
+        .select({
+          id: postComments.id,
+          postId: postComments.postId,
+          parentCommentId: postComments.parentCommentId,
+        })
+        .from(postComments)
+        .where(eq(postComments.id, parentCommentId))
+        .limit(1);
+      if (!parentComment || parentComment.postId !== postId) {
+        return NextResponse.json({ error: "Parent comment not found." }, { status: 400 });
+      }
+      if (parentComment.parentCommentId) {
+        return NextResponse.json({ error: "Parent comment must be top-level." }, { status: 400 });
+      }
+    }
+
+    if (replyToCommentId && parentCommentId) {
+      const [replyTarget] = await db
+        .select({
+          id: postComments.id,
+          postId: postComments.postId,
+          parentCommentId: postComments.parentCommentId,
+        })
+        .from(postComments)
+        .where(eq(postComments.id, replyToCommentId))
+        .limit(1);
+      if (!replyTarget || replyTarget.postId !== postId) {
+        return NextResponse.json({ error: "Reply target not found." }, { status: 400 });
+      }
+      const inSameThread =
+        replyTarget.id === parentCommentId || replyTarget.parentCommentId === parentCommentId;
+      if (!inSameThread) {
+        return NextResponse.json({ error: "Reply target must be in same thread." }, { status: 400 });
+      }
+    }
+
     const [comment] = await db
       .insert(postComments)
       .values({
         postId,
         userId: viewer.id,
+        parentCommentId,
+        replyToCommentId,
         body: input.body,
       })
       .returning();
@@ -111,6 +208,10 @@ export async function POST(req: Request, { params }: Ctx) {
       id: comment.id,
       body: comment.body,
       createdAt: comment.createdAt.toISOString(),
+      parentCommentId: comment.parentCommentId,
+      replyToCommentId: comment.replyToCommentId,
+      likeCount: 0,
+      viewerLiked: false,
       user: { id: viewer.id, name: viewer.name, avatar: viewer.avatar },
     };
 

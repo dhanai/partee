@@ -16,6 +16,15 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Reanimated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import {
   AnimatedBottomSheetFrame,
   BottomSheetScrollView,
@@ -111,7 +120,16 @@ type ProfileComment = {
   id: string;
   body: string;
   createdAt: string;
+  parentCommentId?: string | null;
+  replyToCommentId?: string | null;
+  likeCount?: number;
+  viewerLiked?: boolean;
   user: { id: string; name: string; avatar: string | null };
+};
+type ReplyTarget = {
+  commentId: string;
+  parentCommentId: string;
+  userName: string;
 };
 
 function toMineRoundForHint(r: ProfileRound): MineRound {
@@ -164,6 +182,7 @@ export default function ProfileScreen() {
   const [commentSheetPost, setCommentSheetPost] = useState<ProfilePost | null>(null);
   const [comments, setComments] = useState<ProfileComment[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [loadingComments, setLoadingComments] = useState(false);
   const [postingComment, setPostingComment] = useState(false);
   const [overflowPost, setOverflowPost] = useState<ProfilePost | null>(null);
@@ -397,6 +416,25 @@ export default function ProfileScreen() {
       return b.ts - a.ts;
     });
   }, [rounds, posts]);
+  const commentsById = useMemo(() => {
+    const map = new Map<string, ProfileComment>();
+    for (const comment of comments) map.set(comment.id, comment);
+    return map;
+  }, [comments]);
+  const topLevelComments = useMemo(
+    () => comments.filter((comment) => !comment.parentCommentId),
+    [comments],
+  );
+  const repliesByParent = useMemo(() => {
+    const grouped = new Map<string, ProfileComment[]>();
+    for (const comment of comments) {
+      if (!comment.parentCommentId) continue;
+      const list = grouped.get(comment.parentCommentId) ?? [];
+      list.push(comment);
+      grouped.set(comment.parentCommentId, list);
+    }
+    return grouped;
+  }, [comments]);
 
   async function handleShareProfile() {
     const profileLabel = name.trim() || "Parfade golfer";
@@ -503,10 +541,16 @@ export default function ProfileScreen() {
     }
   }
 
+  function handleDoubleTapLike(post: ProfilePost) {
+    if (post.viewerLiked) return;
+    void handleToggleLike(post);
+  }
+
   async function openCommentSheet(post: ProfilePost) {
     setCommentSheetPost(post);
     setComments([]);
     setCommentDraft("");
+    setReplyTarget(null);
     setLoadingComments(true);
     try {
       const token = await getTokenRef.current();
@@ -531,18 +575,66 @@ export default function ProfileScreen() {
       const token = await getTokenRef.current();
       const data = await apiPost<{ comment: ProfileComment }>(
         `/api/posts/${commentSheetPost.id}/comments`,
-        { body },
+        {
+          body,
+          parentCommentId: replyTarget?.parentCommentId ?? null,
+          replyToCommentId: replyTarget?.commentId ?? null,
+        },
         token,
       );
       setComments((prev) => [...prev, data.comment]);
       setCommentDraft("");
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === commentSheetPost.id ? { ...p, commentCount: (p.commentCount ?? 0) + 1 } : p,
-        ),
-      );
+      setReplyTarget(null);
+      if (!data.comment.parentCommentId) {
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === commentSheetPost.id ? { ...p, commentCount: (p.commentCount ?? 0) + 1 } : p,
+          ),
+        );
+      }
     } finally {
       setPostingComment(false);
+    }
+  }
+
+  function beginReplyToComment(comment: ProfileComment) {
+    const parentCommentId = comment.parentCommentId ?? comment.id;
+    setReplyTarget({
+      commentId: comment.id,
+      parentCommentId,
+      userName: comment.user.name,
+    });
+  }
+
+  async function handleToggleCommentLike(comment: ProfileComment) {
+    if (!commentSheetPost) return;
+    const wasLiked = Boolean(comment.viewerLiked);
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === comment.id
+          ? {
+              ...c,
+              viewerLiked: !wasLiked,
+              likeCount: Math.max(0, (c.likeCount ?? 0) + (wasLiked ? -1 : 1)),
+            }
+          : c,
+      ),
+    );
+    try {
+      const token = await getTokenRef.current();
+      await apiPost(`/api/posts/${commentSheetPost.id}/comments/${comment.id}/like`, {}, token);
+    } catch {
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === comment.id
+            ? {
+                ...c,
+                viewerLiked: wasLiked,
+                likeCount: Math.max(0, (c.likeCount ?? 0) + (wasLiked ? 1 : -1)),
+              }
+            : c,
+        ),
+      );
     }
   }
 
@@ -697,8 +789,9 @@ export default function ProfileScreen() {
                         (() => {
                           const post = item.post;
                           return (
-                            <View key={item.id} style={styles.postCard}>
-                              <View style={styles.postHeader}>
+                            <DoubleTapLikeCard onDoubleTap={() => handleDoubleTapLike(post)}>
+                              <View key={item.id} style={styles.postCard}>
+                                <View style={styles.postHeader}>
                                 {post.user.avatar ? (
                                   <Image
                                     source={{ uri: toAbsoluteUrl(post.user.avatar) }}
@@ -728,42 +821,43 @@ export default function ProfileScreen() {
                                   <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
                                 </Pressable>
                               </View>
-                              <Text style={styles.postBody}>{post.body}</Text>
-                              {post.imageUrl ? (
-                                <Image source={{ uri: toAbsoluteUrl(post.imageUrl) }} style={styles.postImage} />
-                              ) : null}
-                              <View style={styles.postFooter}>
-                                <Pressable
-                                  style={styles.postLikeBtn}
-                                  onPress={() => void handleToggleLike(post)}
-                                >
-                                  <Ionicons
-                                    name={post.viewerLiked ? "heart" : "heart-outline"}
-                                    size={18}
-                                    color={post.viewerLiked ? colors.danger : colors.muted}
-                                  />
-                                  {(post.likeCount ?? 0) > 0 ? (
-                                    <Text
-                                      style={[
-                                        styles.postLikeCount,
-                                        post.viewerLiked && styles.postLikeCountActive,
-                                      ]}
-                                    >
-                                      {post.likeCount}
-                                    </Text>
-                                  ) : null}
-                                </Pressable>
-                                <Pressable
-                                  style={styles.postCommentBtn}
-                                  onPress={() => void openCommentSheet(post)}
-                                >
-                                  <Ionicons name="chatbubble-outline" size={17} color={colors.muted} />
-                                  {(post.commentCount ?? 0) > 0 ? (
-                                    <Text style={styles.postCommentCount}>{post.commentCount}</Text>
-                                  ) : null}
-                                </Pressable>
+                                <Text style={styles.postBody}>{post.body}</Text>
+                                {post.imageUrl ? (
+                                  <Image source={{ uri: toAbsoluteUrl(post.imageUrl) }} style={styles.postImage} />
+                                ) : null}
+                                <View style={styles.postFooter}>
+                                  <Pressable
+                                    style={styles.postLikeBtn}
+                                    onPress={() => void handleToggleLike(post)}
+                                  >
+                                    <Ionicons
+                                      name={post.viewerLiked ? "heart" : "heart-outline"}
+                                      size={18}
+                                      color={post.viewerLiked ? colors.danger : colors.muted}
+                                    />
+                                    {(post.likeCount ?? 0) > 0 ? (
+                                      <Text
+                                        style={[
+                                          styles.postLikeCount,
+                                          post.viewerLiked && styles.postLikeCountActive,
+                                        ]}
+                                      >
+                                        {post.likeCount}
+                                      </Text>
+                                    ) : null}
+                                  </Pressable>
+                                  <Pressable
+                                    style={styles.postCommentBtn}
+                                    onPress={() => void openCommentSheet(post)}
+                                  >
+                                    <Ionicons name="chatbubble-outline" size={17} color={colors.muted} />
+                                    {(post.commentCount ?? 0) > 0 ? (
+                                      <Text style={styles.postCommentCount}>{post.commentCount}</Text>
+                                    ) : null}
+                                  </Pressable>
+                                </View>
                               </View>
-                            </View>
+                            </DoubleTapLikeCard>
                           );
                         })()
                       ) : (
@@ -910,29 +1004,104 @@ export default function ProfileScreen() {
             <View style={styles.commentsLoadingWrap}>
               <ActivityIndicator color={colors.fairway} />
             </View>
-          ) : comments.length === 0 ? (
+          ) : topLevelComments.length === 0 ? (
             <Text style={styles.commentsEmpty}>No comments yet.</Text>
           ) : (
-            comments.map((c) => (
-              <View key={c.id} style={styles.commentRow}>
-                {c.user.avatar ? (
-                  <Image source={{ uri: toAbsoluteUrl(c.user.avatar) }} style={styles.commentAvatar} />
-                ) : (
-                  <InitialAvatar name={c.user.name} size={30} maxInitials={2} />
-                )}
-                <View style={styles.commentBodyWrap}>
-                  <Text style={styles.commentAuthor}>{c.user.name}</Text>
-                  <Text style={styles.commentBody}>{c.body}</Text>
+            topLevelComments.map((c) => {
+              const replies = repliesByParent.get(c.id) ?? [];
+              return (
+                <View key={c.id} style={styles.commentThread}>
+                  <View style={styles.commentRow}>
+                    {c.user.avatar ? (
+                      <Image source={{ uri: toAbsoluteUrl(c.user.avatar) }} style={styles.commentAvatar} />
+                    ) : (
+                      <InitialAvatar name={c.user.name} size={30} maxInitials={2} />
+                    )}
+                    <View style={styles.commentBodyWrap}>
+                      <Text style={styles.commentAuthor}>{c.user.name}</Text>
+                      <Text style={styles.commentBody}>{c.body}</Text>
+                    </View>
+                    <Pressable
+                      style={styles.commentLikeIconBtn}
+                      hitSlop={8}
+                      onPress={() => void handleToggleCommentLike(c)}
+                    >
+                      <Ionicons
+                        name={c.viewerLiked ? "heart" : "heart-outline"}
+                        size={16}
+                        color={c.viewerLiked ? colors.danger : colors.muted}
+                      />
+                      {(c.likeCount ?? 0) > 0 ? (
+                        <Text style={styles.commentLikeCount}>{c.likeCount}</Text>
+                      ) : null}
+                    </Pressable>
+                  </View>
+                  <View style={styles.commentMetaRow}>
+                    <Text style={styles.commentMetaText}>{formatCommentAge(c.createdAt)}</Text>
+                    <Pressable onPress={() => beginReplyToComment(c)}>
+                      <Text style={styles.commentMetaText}>Reply</Text>
+                    </Pressable>
+                  </View>
+                  {replies.length > 0 ? (
+                    <View style={styles.replyList}>
+                      {replies.map((reply) => {
+                        const replyTargetName = reply.replyToCommentId
+                          ? commentsById.get(reply.replyToCommentId)?.user.name
+                          : null;
+                        return (
+                          <View key={reply.id} style={styles.commentRow}>
+                            {reply.user.avatar ? (
+                              <Image
+                                source={{ uri: toAbsoluteUrl(reply.user.avatar) }}
+                                style={styles.commentAvatarSmall}
+                              />
+                            ) : (
+                              <InitialAvatar name={reply.user.name} size={24} maxInitials={2} />
+                            )}
+                            <View style={styles.replyBodyWrap}>
+                              <Text style={styles.commentAuthor}>{reply.user.name}</Text>
+                              <Text style={styles.commentBody}>
+                                {replyTargetName ? `@${replyTargetName} ` : ""}
+                                {reply.body}
+                              </Text>
+                            </View>
+                            <Pressable
+                              style={styles.commentLikeIconBtn}
+                              hitSlop={8}
+                              onPress={() => void handleToggleCommentLike(reply)}
+                            >
+                              <Ionicons
+                                name={reply.viewerLiked ? "heart" : "heart-outline"}
+                                size={14}
+                                color={reply.viewerLiked ? colors.danger : colors.muted}
+                              />
+                              {(reply.likeCount ?? 0) > 0 ? (
+                                <Text style={styles.commentLikeCount}>{reply.likeCount}</Text>
+                              ) : null}
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
                 </View>
-              </View>
-            ))
+              );
+            })
           )}
         </BottomSheetScrollView>
+        {replyTarget ? (
+          <View style={styles.replyingBanner}>
+            <Text style={styles.replyingText}>Replying to @{replyTarget.userName}</Text>
+            <Pressable onPress={() => setReplyTarget(null)}>
+              <Text style={styles.replyingCancel}>Cancel</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <View style={styles.commentComposerRow}>
           <BottomSheetTextInput
             value={commentDraft}
             onChangeText={setCommentDraft}
-            placeholder="Write a comment..."
+            placeholder={replyTarget ? `Reply to @${replyTarget.userName}...` : "Write a comment..."}
             placeholderTextColor={colors.muted}
             style={styles.commentInput}
           />
@@ -954,6 +1123,68 @@ export default function ProfileScreen() {
       </AnimatedBottomSheetFrame>
     </>
   );
+}
+
+function DoubleTapLikeCard({
+  children,
+  onDoubleTap,
+}: {
+  children: React.ReactNode;
+  onDoubleTap: () => void;
+}) {
+  const heartScale = useSharedValue(0);
+  const heartOpacity = useSharedValue(0);
+
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      runOnJS(onDoubleTap)();
+      heartScale.value = withSequence(
+        withTiming(1.2, { duration: 180 }),
+        withTiming(1, { duration: 100 }),
+      );
+      heartOpacity.value = withSequence(
+        withTiming(1, { duration: 120 }),
+        withDelay(400, withTiming(0, { duration: 280 })),
+      );
+    });
+
+  const heartAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: heartScale.value }],
+    opacity: heartOpacity.value,
+  }));
+
+  return (
+    <GestureDetector gesture={doubleTap}>
+      <View style={doubleTapStyles.wrapper}>
+        {children}
+        <Reanimated.View style={[doubleTapStyles.heartOverlay, heartAnimStyle]} pointerEvents="none">
+          <Ionicons name="heart" size={64} color={colors.danger} />
+        </Reanimated.View>
+      </View>
+    </GestureDetector>
+  );
+}
+
+const doubleTapStyles = StyleSheet.create({
+  wrapper: { position: "relative" },
+  heartOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+});
+
+function formatCommentAge(iso: string): string {
+  const ageMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.max(0, Math.floor(ageMs / 60000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(iso).toLocaleDateString();
 }
 
 const styles = StyleSheet.create({
@@ -1266,6 +1497,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: 14,
   },
+  commentThread: {
+    gap: 6,
+  },
   commentRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1293,6 +1527,64 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     lineHeight: 19,
+  },
+  commentMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginLeft: 40,
+  },
+  commentMetaText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  commentLikeIconBtn: {
+    minWidth: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    paddingTop: 2,
+  },
+  commentLikeCount: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  replyList: {
+    marginLeft: 22,
+    gap: 8,
+  },
+  commentAvatarSmall: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+  },
+  replyBodyWrap: {
+    flex: 1,
+    backgroundColor: "#f8f6f3",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 2,
+  },
+  replyingBanner: {
+    marginTop: 4,
+    marginBottom: 4,
+    paddingHorizontal: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  replyingText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  replyingCancel: {
+    color: colors.fairway,
+    fontSize: 12,
+    fontWeight: "700",
   },
   commentComposerRow: {
     flexDirection: "row",
