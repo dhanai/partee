@@ -1,6 +1,11 @@
-import { and, desc, eq, inArray, isNotNull, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/db";
-import { gameSessionPlayers, gameSessions, users } from "@/db/schema";
+import {
+  gameSessionPlayers,
+  gameSessions,
+  profileGameSessionSettings,
+  users,
+} from "@/db/schema";
 import { mergeDbPlayersWithGuests, parseGuestPlayersFromSettings } from "@/lib/games/guest-players";
 
 export type ProfileGameActivityPlayerJson = {
@@ -13,6 +18,7 @@ export type ProfileGameActivityJson = {
   sessionId: string;
   gameType: string;
   endedAt: string;
+  isPinned: boolean;
   subject: ProfileGameActivityPlayerJson;
   others: ProfileGameActivityPlayerJson[];
 };
@@ -47,10 +53,27 @@ export async function getCompletedGameActivityForProfile(
       gameType: gameSessions.gameType,
       endedAt: gameSessions.endedAt,
       settings: gameSessions.settings,
+      feedPinned: profileGameSessionSettings.isPinned,
+      settingsJoinId: profileGameSessionSettings.id,
     })
     .from(gameSessionPlayers)
     .innerJoin(gameSessions, eq(gameSessionPlayers.sessionId, gameSessions.id))
-    .where(sessionWhere)
+    .leftJoin(
+      profileGameSessionSettings,
+      and(
+        eq(profileGameSessionSettings.userId, profileUserId),
+        eq(profileGameSessionSettings.sessionId, gameSessions.id),
+      ),
+    )
+    .where(
+      and(
+        sessionWhere,
+        or(
+          isNull(profileGameSessionSettings.id),
+          eq(profileGameSessionSettings.hiddenOnProfile, false),
+        ),
+      ),
+    )
     .orderBy(desc(gameSessions.endedAt))
     .limit(limit);
 
@@ -117,6 +140,7 @@ export async function getCompletedGameActivityForProfile(
       sessionId: sid,
       gameType: meta.gameType,
       endedAt: meta.endedAt.toISOString(),
+      isPinned: meta.feedPinned === true,
       subject,
       others,
     });

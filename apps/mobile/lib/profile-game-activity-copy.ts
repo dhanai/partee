@@ -14,12 +14,50 @@ export function formatGameWithOthersList(others: ProfileGameOtherName[]): string
   return `${names[0]}, ${names[1]}, and ${rest} other${rest === 1 ? "" : "s"}`;
 }
 
+export type ProfileGameHeadlineSegment = { text: string; bold: boolean };
+
+/** Renders as nested `<Text>`: bold only for person names; connector copy stays regular weight. */
+export function buildProfileGameFinishedHeadlineSegments(
+  subjectName: string,
+  gameTitle: string,
+  others: ProfileGameOtherName[],
+): ProfileGameHeadlineSegment[] {
+  const segments: ProfileGameHeadlineSegment[] = [
+    { text: subjectName, bold: true },
+    { text: " just finished a game of ", bold: false },
+    { text: gameTitle, bold: false },
+  ];
+  if (others.length === 0) {
+    segments.push({ text: ".", bold: false });
+    return segments;
+  }
+  segments.push({ text: " with ", bold: false });
+  if (others.length === 1) {
+    segments.push({ text: displayName(others[0]!), bold: true });
+  } else if (others.length === 2) {
+    segments.push({ text: displayName(others[0]!), bold: true });
+    segments.push({ text: " and ", bold: false });
+    segments.push({ text: displayName(others[1]!), bold: true });
+  } else {
+    segments.push({ text: displayName(others[0]!), bold: true });
+    segments.push({ text: ", ", bold: false });
+    segments.push({ text: displayName(others[1]!), bold: true });
+    const rest = others.length - 2;
+    segments.push({
+      text: `, and ${rest} other${rest === 1 ? "" : "s"}`,
+      bold: false,
+    });
+  }
+  segments.push({ text: ".", bold: false });
+  return segments;
+}
+
 export function buildProfileGameFinishedHeadline(
   subjectName: string,
   gameTitle: string,
   others: ProfileGameOtherName[],
 ): string {
-  const list = formatGameWithOthersList(others);
-  const suffix = list.length > 0 ? ` with ${list}` : "";
-  return `${subjectName} just finished a game of ${gameTitle}${suffix}.`;
+  return buildProfileGameFinishedHeadlineSegments(subjectName, gameTitle, others)
+    .map((s) => s.text)
+    .join("");
 }

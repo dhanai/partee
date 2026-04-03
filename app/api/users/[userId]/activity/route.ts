@@ -179,8 +179,10 @@ export async function GET(req: Request, { params }: RouteContext) {
     }));
 
     const merged = [...postItems, ...roundItems, ...gameItems].sort((a, b) => {
-      const pinA = a.kind === "post" && a.post.isPinned ? 1 : 0;
-      const pinB = b.kind === "post" && b.post.isPinned ? 1 : 0;
+      const pinA =
+        (a.kind === "post" && a.post.isPinned) || (a.kind === "game" && a.game.isPinned) ? 1 : 0;
+      const pinB =
+        (b.kind === "post" && b.post.isPinned) || (b.kind === "game" && b.game.isPinned) ? 1 : 0;
       if (pinA !== pinB) return pinB - pinA;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });

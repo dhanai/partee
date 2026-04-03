@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -7,54 +7,75 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { GameSessionRecapStandings } from "./games/game-session-recap-standings";
 import { getGameSession } from "../lib/games-api";
 import type { ProfileGameActivityPayload } from "../lib/profile-game-feed-types";
-import { buildProfileGameFinishedHeadline } from "../lib/profile-game-activity-copy";
+import { buildProfileGameFinishedHeadlineSegments } from "../lib/profile-game-activity-copy";
 import { getGameDefinition, useGameTypesVersion } from "../lib/games-registry";
-import { refreshGameTypes } from "../lib/game-types-cache";
 import { colors } from "../lib/theme";
 
 type Props = {
   profileUserId: string;
   game: ProfileGameActivityPayload;
+  showOverflow?: boolean;
+  onPressOverflow?: () => void;
 };
 
-export function ProfileGameFeedCard({ profileUserId, game }: Props) {
+export function ProfileGameFeedCard({
+  profileUserId,
+  game,
+  showOverflow = false,
+  onPressOverflow,
+}: Props) {
   const { getToken } = useAuth();
   const router = useRouter();
   const gameTypesVersion = useGameTypesVersion();
+  const getTokenRef = useRef(getToken);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<Awaited<ReturnType<typeof getGameSession>> | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      const data = await getGameSession(token, game.sessionId, { profileUserId });
-      setPayload(data);
-    } catch (e) {
-      setPayload(null);
-      setError(e instanceof Error ? e.message : "Could not load game");
-    } finally {
-      setLoading(false);
-    }
-  }, [getToken, game.sessionId, profileUserId]);
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
 
   useEffect(() => {
-    void refreshGameTypes();
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    const sessionId = game.sessionId;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = await getTokenRef.current();
+        const data = await getGameSession(token, sessionId, { profileUserId });
+        if (!cancelled) {
+          setPayload(data);
+          setError(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setPayload(null);
+          setError(e instanceof Error ? e.message : "Could not load game");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [game.sessionId, profileUserId]);
 
   const def = getGameDefinition(game.gameType);
   const gameTitle = def?.title ?? game.gameType;
-  const headline = buildProfileGameFinishedHeadline(game.subject.name, gameTitle, game.others);
+  const headlineSegments = buildProfileGameFinishedHeadlineSegments(
+    game.subject.name,
+    gameTitle,
+    game.others,
+  );
+  const headlinePlain = headlineSegments.map((s) => s.text).join("");
 
   const openRecap = () => {
     router.push({
@@ -64,41 +85,62 @@ export function ProfileGameFeedCard({ profileUserId, game }: Props) {
   };
 
   return (
-    <Pressable
-      onPress={openRecap}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open game recap: ${headline}`}
-    >
-      <Text style={styles.badge}>Game</Text>
-      <Text style={styles.headline}>{headline}</Text>
-      <Text style={styles.meta}>
-        {new Date(game.endedAt).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })}
-      </Text>
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.fairway} />
-        </View>
-      ) : error ? (
-        <Text style={styles.errorText}>{error}</Text>
-      ) : payload?.session ? (
-        <View style={styles.recapInner} pointerEvents="none">
-          <GameSessionRecapStandings
-            session={payload.session}
-            players={payload.players}
-            holes={payload.holes}
-            gameTypesVersion={gameTypesVersion}
-            includeRecapExtras
-            holesLogged={payload.holes.length}
-          />
-        </View>
-      ) : null}
-      <Text style={styles.hint}>Tap for full recap</Text>
-    </Pressable>
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.badge}>Game</Text>
+        <View style={styles.cardHeaderSpacer} />
+        {game.isPinned ? <Ionicons name="pin" size={14} color={colors.muted} /> : null}
+        {showOverflow && onPressOverflow ? (
+          <Pressable
+            style={styles.overflowBtn}
+            onPress={onPressOverflow}
+            hitSlop={8}
+            accessibilityLabel="Game options"
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
+          </Pressable>
+        ) : null}
+      </View>
+      <Pressable
+        onPress={openRecap}
+        style={({ pressed }) => [styles.cardBody, pressed && styles.cardBodyPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Open game recap: ${headlinePlain}`}
+      >
+        <Text style={styles.headline}>
+          {headlineSegments.map((s, i) => (
+            <Text key={i} style={s.bold ? styles.headlineName : undefined}>
+              {s.text}
+            </Text>
+          ))}
+        </Text>
+        <Text style={styles.meta}>
+          {new Date(game.endedAt).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </Text>
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={colors.fairway} />
+          </View>
+        ) : error ? (
+          <Text style={styles.errorText}>{error}</Text>
+        ) : payload?.session ? (
+          <View style={styles.recapInner} pointerEvents="none">
+            <GameSessionRecapStandings
+              session={payload.session}
+              players={payload.players}
+              holes={payload.holes}
+              gameTypesVersion={gameTypesVersion}
+              includeRecapExtras={false}
+              holesLogged={payload.holes.length}
+            />
+          </View>
+        ) : null}
+      </Pressable>
+    </View>
   );
 }
 
@@ -111,7 +153,16 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 14,
   },
-  cardPressed: { opacity: 0.92 },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 8,
+  },
+  cardHeaderSpacer: { flex: 1 },
+  overflowBtn: { padding: 2 },
+  cardBody: { borderRadius: 0 },
+  cardBodyPressed: { opacity: 0.92 },
   badge: {
     alignSelf: "flex-start",
     fontSize: 11,
@@ -119,14 +170,16 @@ const styles = StyleSheet.create({
     color: colors.fairway,
     textTransform: "uppercase",
     letterSpacing: 0.6,
-    marginBottom: 8,
   },
   headline: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "400",
     color: colors.text,
     lineHeight: 22,
     marginBottom: 4,
+  },
+  headlineName: {
+    fontWeight: "700",
   },
   meta: {
     fontSize: 13,
@@ -137,10 +190,4 @@ const styles = StyleSheet.create({
   recapInner: { marginTop: 4 },
   center: { paddingVertical: 24, alignItems: "center" },
   errorText: { fontSize: 14, color: colors.danger, paddingVertical: 8 },
-  hint: {
-    marginTop: 10,
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.fairway,
-  },
 });

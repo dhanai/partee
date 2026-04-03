@@ -199,6 +199,7 @@ export default function ProfileScreen() {
   const [loadingComments, setLoadingComments] = useState(false);
   const [postingComment, setPostingComment] = useState(false);
   const [overflowPost, setOverflowPost] = useState<ProfilePost | null>(null);
+  const [overflowGame, setOverflowGame] = useState<ProfileGameActivityPayload | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const restoredScrollRef = useRef(false);
   const postYByIdRef = useRef<Map<string, number>>(new Map());
@@ -440,8 +441,12 @@ export default function ProfileScreen() {
       game,
     }));
     return [...roundItems, ...postItems, ...gameItems].sort((a, b) => {
-      const aPinned = a.kind === "post" && Boolean(a.post.isPinned);
-      const bPinned = b.kind === "post" && Boolean(b.post.isPinned);
+      const aPinned =
+        (a.kind === "post" && Boolean(a.post.isPinned)) ||
+        (a.kind === "game" && Boolean(a.game.isPinned));
+      const bPinned =
+        (b.kind === "post" && Boolean(b.post.isPinned)) ||
+        (b.kind === "game" && Boolean(b.game.isPinned));
       if (aPinned !== bPinned) return aPinned ? -1 : 1;
       return b.ts - a.ts;
     });
@@ -583,6 +588,43 @@ export default function ProfileScreen() {
       await apiPatch(`/api/posts/${post.id}`, { hideFromProfile: true }, token);
     } catch {
       void loadProfilePosts(myUserId);
+    }
+  }
+
+  async function handleTogglePinGame(game: ProfileGameActivityPayload) {
+    const nextPinned = !Boolean(game.isPinned);
+    setOverflowGame(null);
+    setGames((prev) =>
+      prev.map((g) => (g.sessionId === game.sessionId ? { ...g, isPinned: nextPinned } : g)),
+    );
+    try {
+      const token = await getTokenRef.current();
+      await apiPatch(
+        `/api/users/me/profile-game-sessions/${encodeURIComponent(game.sessionId)}`,
+        { isPinned: nextPinned },
+        token,
+      );
+    } catch {
+      setGames((prev) =>
+        prev.map((g) =>
+          g.sessionId === game.sessionId ? { ...g, isPinned: game.isPinned } : g,
+        ),
+      );
+    }
+  }
+
+  async function handleHideGameFromProfile(game: ProfileGameActivityPayload) {
+    setOverflowGame(null);
+    setGames((prev) => prev.filter((g) => g.sessionId !== game.sessionId));
+    try {
+      const token = await getTokenRef.current();
+      await apiPatch(
+        `/api/users/me/profile-game-sessions/${encodeURIComponent(game.sessionId)}`,
+        { hideFromProfile: true },
+        token,
+      );
+    } catch {
+      void loadProfileFeed(myUserId);
     }
   }
 
@@ -951,7 +993,12 @@ export default function ProfileScreen() {
                               );
                             }}
                           >
-                            <ProfileGameFeedCard profileUserId={myUserId} game={item.game} />
+                            <ProfileGameFeedCard
+                              profileUserId={myUserId}
+                              game={item.game}
+                              showOverflow
+                              onPressOverflow={() => setOverflowGame(item.game)}
+                            />
                           </View>
                         ) : null
                       ) : (
@@ -1074,6 +1121,39 @@ export default function ProfileScreen() {
                       },
                     ]
                   : []),
+              ]
+            : []
+        }
+      />
+      <OverflowMenuSheet
+        visible={!!overflowGame}
+        onClose={() => setOverflowGame(null)}
+        items={
+          overflowGame
+            ? [
+                ...(overflowGame.isPinned
+                  ? [
+                      {
+                        key: "pin",
+                        label: "Unpin from top",
+                        icon: "pin-outline" as const,
+                        onPress: () => void handleTogglePinGame(overflowGame),
+                      },
+                    ]
+                  : [
+                      {
+                        key: "pin",
+                        label: "Pin to top",
+                        icon: "pin" as const,
+                        onPress: () => void handleTogglePinGame(overflowGame),
+                      },
+                    ]),
+                {
+                  key: "hide",
+                  label: "Hide from my profile",
+                  icon: "eye-off-outline" as const,
+                  onPress: () => void handleHideGameFromProfile(overflowGame),
+                },
               ]
             : []
         }

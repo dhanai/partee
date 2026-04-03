@@ -353,6 +353,30 @@ export const gameSessionPlayers = pgTable(
   }),
 );
 
+/** Pin / hide completed games on a user's own profile activity feed. */
+export const profileGameSessionSettings = pgTable(
+  "profile_game_session_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => gameSessions.id, { onDelete: "cascade" }),
+    hiddenOnProfile: boolean("hidden_on_profile").notNull().default(false),
+    isPinned: boolean("is_pinned").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userSessionUnique: uniqueIndex("profile_game_session_settings_user_session_uq").on(
+      table.userId,
+      table.sessionId,
+    ),
+    userIdx: index("profile_game_session_settings_user_idx").on(table.userId),
+  }),
+);
+
 /** Latest row per (session, hole_number) — upsert with version for optimistic locking. */
 export const gameHoleEvents = pgTable(
   "game_hole_events",
@@ -818,6 +842,7 @@ export type UserFollow = typeof userFollows.$inferSelect;
 export type InAppNotification = typeof inAppNotifications.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
 export type GameSessionPlayer = typeof gameSessionPlayers.$inferSelect;
+export type ProfileGameSessionSetting = typeof profileGameSessionSettings.$inferSelect;
 export type GameHoleEvent = typeof gameHoleEvents.$inferSelect;
 export type HousePromoConfigRow = typeof housePromoConfig.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;

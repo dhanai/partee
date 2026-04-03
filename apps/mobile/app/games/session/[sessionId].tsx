@@ -75,6 +75,9 @@ const SCROLL_PAD = 16;
 const HOLE_GRID_GAP = 10;
 const HOLE_COLS = 3;
 
+/** Completed games already appear on profile activity; optional jump to self profile. */
+const SHOW_GAME_RECAP_SHARE_TO_PROFILE = false;
+
 function chunkBy<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -138,7 +141,7 @@ export default function GameSessionScreen() {
 
   useEffect(() => {
     setSession(null);
-    setViewerUserId(null);
+    if (SHOW_GAME_RECAP_SHARE_TO_PROFILE) setViewerUserId(null);
     setPlayers([]);
     setHoles([]);
     setError(null);
@@ -166,7 +169,9 @@ export default function GameSessionScreen() {
       const token = await getToken();
       const data = await getGameSession(token, sessionId);
       setSession(data.session ?? null);
-      setViewerUserId(data.viewerUserId ?? null);
+      if (SHOW_GAME_RECAP_SHARE_TO_PROFILE) {
+        setViewerUserId(data.viewerUserId ?? null);
+      }
       setPlayers(data.players ?? []);
       setHoles(data.holes ?? []);
       setError(null);
@@ -574,26 +579,28 @@ export default function GameSessionScreen() {
               >
                 <Text style={styles.completeBtnText}>Hole-by-hole breakdown</Text>
               </Pressable>
-              <Pressable
-                style={styles.shareProfileBtn}
-                onPress={() => {
-                  if (!sessionId || !viewerUserId) return;
-                  const row = players.find((p) => p.userId === viewerUserId);
-                  if (!row || row.isGuest) {
-                    Alert.alert(
-                      "Profile activity",
-                      "Only registered players see completed games on their Parfade profile.",
-                    );
-                    return;
-                  }
-                  router.push({
-                    pathname: "/(tabs)/profile",
-                    params: { highlightGameSessionId: sessionId },
-                  });
-                }}
-              >
-                <Text style={styles.shareProfileBtnText}>Share to profile</Text>
-              </Pressable>
+              {SHOW_GAME_RECAP_SHARE_TO_PROFILE ? (
+                <Pressable
+                  style={styles.shareProfileBtn}
+                  onPress={() => {
+                    if (!sessionId || !viewerUserId) return;
+                    const row = players.find((p) => p.userId === viewerUserId);
+                    if (!row || row.isGuest) {
+                      Alert.alert(
+                        "Profile activity",
+                        "Only registered players see completed games on their Parfade profile.",
+                      );
+                      return;
+                    }
+                    router.push({
+                      pathname: "/(tabs)/profile",
+                      params: { highlightGameSessionId: sessionId },
+                    });
+                  }}
+                >
+                  <Text style={styles.shareProfileBtnText}>Share to profile</Text>
+                </Pressable>
+              ) : null}
             </>
           ) : null}
 
