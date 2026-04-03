@@ -1,8 +1,20 @@
 -- Groups feature: new tables + extend rounds and conversations
 
-CREATE TYPE "group_join_policy" AS ENUM ('public', 'approval', 'invite_only');
-CREATE TYPE "group_member_role" AS ENUM ('owner', 'admin', 'member');
-CREATE TYPE "group_join_request_status" AS ENUM ('pending', 'accepted', 'declined');
+DO $$ BEGIN
+  CREATE TYPE "group_join_policy" AS ENUM ('public', 'approval', 'invite_only');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE "group_member_role" AS ENUM ('owner', 'admin', 'member');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE "group_join_request_status" AS ENUM ('pending', 'accepted', 'declined');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 ALTER TYPE "conversation_type" ADD VALUE IF NOT EXISTS 'group';
 

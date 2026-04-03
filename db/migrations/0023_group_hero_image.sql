@@ -1,1 +1,1 @@
-ALTER TABLE "groups" ADD COLUMN "hero_image_url" text;
+ALTER TABLE "groups" ADD COLUMN IF NOT EXISTS "hero_image_url" text;

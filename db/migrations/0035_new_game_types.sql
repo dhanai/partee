@@ -53,7 +53,8 @@ VALUES
   'enter_targets', 'targets_count', false, null,
   '[{"key":"targetCategory","label":"Target category","type":"select","options":["fairways","greens","pars","birdies"],"default":"pars"}]'::jsonb,
   '{"targetCategory":"pars"}'::jsonb
-);
+)
+ON CONFLICT (slug) DO NOTHING;
 
 -- Update nassau: enable it, add description and proper standings mode
 UPDATE game_types
