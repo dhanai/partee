@@ -5,6 +5,10 @@ import { postComments, postLikes, posts, users } from "@/db/schema";
 import { ensureDbUser } from "@/lib/auth";
 import { withPerfTimer } from "@/lib/profile-activity-perf";
 import {
+  getCompletedGameActivityForProfile,
+  type ProfileGameActivityJson,
+} from "@/lib/games/profile-activity-games";
+import {
   getOpenRoundsForProfile,
   type ProfileOpenRoundJson,
 } from "@/lib/user-profile-open-rounds";
@@ -39,6 +43,12 @@ type ProfileRoundActivity = {
   round: ProfileOpenRoundJson & { source: "hosting" | "joined" };
 };
 
+type ProfileGameActivity = {
+  kind: "game";
+  createdAt: string;
+  game: ProfileGameActivityJson;
+};
+
 export async function GET(req: Request, { params }: RouteContext) {
   const done = withPerfTimer("GET /api/users/[userId]/activity");
   try {
@@ -70,7 +80,7 @@ export async function GET(req: Request, { params }: RouteContext) {
           eq(posts.profileUserId, profileUserId),
         );
 
-    const [postRows, openRounds] = await Promise.all([
+    const [postRows, openRounds, gameRows] = await Promise.all([
       db
         .select({
           id: posts.id,
@@ -95,6 +105,10 @@ export async function GET(req: Request, { params }: RouteContext) {
         createdBefore: cursorDate ?? undefined,
         limit: limit * 2,
         orderByCreatedDesc: true,
+      }),
+      getCompletedGameActivityForProfile(profileUserId, {
+        endedBefore: cursorDate ?? undefined,
+        limit: limit * 2,
       }),
     ]);
 
@@ -158,7 +172,13 @@ export async function GET(req: Request, { params }: RouteContext) {
       })),
     ];
 
-    const merged = [...postItems, ...roundItems].sort((a, b) => {
+    const gameItems: ProfileGameActivity[] = gameRows.map((game) => ({
+      kind: "game" as const,
+      createdAt: game.endedAt,
+      game,
+    }));
+
+    const merged = [...postItems, ...roundItems, ...gameItems].sort((a, b) => {
       const pinA = a.kind === "post" && a.post.isPinned ? 1 : 0;
       const pinB = b.kind === "post" && b.post.isPinned ? 1 : 0;
       if (pinA !== pinB) return pinB - pinA;

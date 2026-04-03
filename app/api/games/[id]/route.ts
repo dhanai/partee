@@ -11,6 +11,33 @@ import { publishGameSessionUpdated } from "@/lib/parfade-ably-publish";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+function gameSessionGetPayload(
+  data: NonNullable<Awaited<ReturnType<typeof loadSessionWithPlayers>>>,
+  viewerUserId: string,
+  roundInviteToken: string | null,
+) {
+  return {
+    viewerIsCreator: data.session.createdBy === viewerUserId,
+    viewerUserId,
+    session: serializeGameSessionForApi(data.session, { roundInviteToken }),
+    players: data.players.map((p) => ({
+      userId: p.userId,
+      sortOrder: p.sortOrder,
+      teamId: p.teamId,
+      name: p.name,
+      avatar: p.avatar,
+      isGuest: p.isGuest,
+    })),
+    holes: data.holes.map((h) => ({
+      holeNumber: h.holeNumber,
+      version: h.version,
+      recordedBy: h.recordedBy,
+      payload: h.payload,
+      updatedAt: toIso(h.updatedAt),
+    })),
+  };
+}
+
 export async function GET(req: Request, context: RouteContext) {
   try {
     const user = await requireDbUser(req);
@@ -19,14 +46,27 @@ export async function GET(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Invalid session id" }, { status: 400 });
     }
 
-    const allowed = await userIsGameParticipant(id, user.id);
-    if (!allowed) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     const data = await loadSessionWithPlayers(id);
     if (!data) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    const participant = await userIsGameParticipant(id, user.id);
+    let allowed = participant;
+
+    if (!allowed) {
+      if (data.session.status === "completed") {
+        const url = new URL(req.url);
+        const profileUserId = url.searchParams.get("profileUserId");
+        if (profileUserId && z.string().uuid().safeParse(profileUserId).success) {
+          const anchorOk = data.players.some((p) => p.userId === profileUserId);
+          if (anchorOk) allowed = true;
+        }
+      }
+    }
+
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     let roundInviteToken: string | null = null;
@@ -38,29 +78,7 @@ export async function GET(req: Request, context: RouteContext) {
       roundInviteToken = rr?.inviteToken ?? null;
     }
 
-    const createdBy = data.session.createdBy;
-    const viewerUserId = user.id;
-    return NextResponse.json({
-      viewerIsCreator: createdBy === viewerUserId,
-      /** DB user id for the authenticated viewer (for client host checks without relying on /me cache). */
-      viewerUserId,
-      session: serializeGameSessionForApi(data.session, { roundInviteToken }),
-      players: data.players.map((p) => ({
-        userId: p.userId,
-        sortOrder: p.sortOrder,
-        teamId: p.teamId,
-        name: p.name,
-        avatar: p.avatar,
-        isGuest: p.isGuest,
-      })),
-      holes: data.holes.map((h) => ({
-        holeNumber: h.holeNumber,
-        version: h.version,
-        recordedBy: h.recordedBy,
-        payload: h.payload,
-        updatedAt: toIso(h.updatedAt),
-      })),
-    });
+    return NextResponse.json(gameSessionGetPayload(data, user.id, roundInviteToken));
   } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

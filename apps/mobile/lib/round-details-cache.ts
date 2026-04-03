@@ -58,11 +58,14 @@ function notifyRoundDetailCache(inviteToken: string) {
   if (!t) return;
   const set = detailCacheListeners.get(t);
   if (!set) return;
-  set.forEach((fn) => {
-    try {
-      fn();
-    } catch {
-      /* ignore */
+  const callbacks = [...set];
+  queueMicrotask(() => {
+    for (const fn of callbacks) {
+      try {
+        fn();
+      } catch {
+        /* ignore */
+      }
     }
   });
 }

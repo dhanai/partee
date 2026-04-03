@@ -25,6 +25,7 @@ import { FullscreenImageViewer } from "../../components/fullscreen-image-viewer"
 import { InitialAvatar } from "../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { ParfadeProfileLiveRefresh } from "../../components/parfade-profile-live-refresh";
+import { ProfileGameFeedCard } from "../../components/profile-game-feed-card";
 import { RoundListCard } from "../../components/round-list-card";
 import { SocialPostCard } from "../../components/social-post-card";
 import { useAblyChatMounted } from "../../lib/ably-chat-context";
@@ -45,6 +46,7 @@ import {
   subscribeMeProfile,
   type MeProfile,
 } from "../../lib/me-profile-cache";
+import type { ProfileGameActivityPayload } from "../../lib/profile-game-feed-types";
 import { subscribeProfileActivityEvents } from "../../lib/profile-activity-events";
 import { subscribeRoundListsRefresh } from "../../lib/round-lists-refresh";
 import { colors } from "../../lib/theme";
@@ -104,12 +106,14 @@ type ProfileActivityResponse = {
   items: Array<
     | { kind: "post"; createdAt: string; post: ProfilePost }
     | { kind: "round"; createdAt: string; round: ProfileRound }
+    | { kind: "game"; createdAt: string; game: ProfileGameActivityPayload }
   >;
   nextCursor: string | null;
 };
 type ProfileFeedItem =
   | { kind: "round"; id: string; ts: number; round: ProfileRound }
-  | { kind: "post"; id: string; ts: number; post: ProfilePost };
+  | { kind: "post"; id: string; ts: number; post: ProfilePost }
+  | { kind: "game"; id: string; ts: number; game: ProfileGameActivityPayload };
 type ProfileComment = {
   id: string;
   body: string;
@@ -179,6 +183,7 @@ export default function ProfileScreen() {
   const [roundsLoading, setRoundsLoading] = useState(false);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
+  const [games, setGames] = useState<ProfileGameActivityPayload[]>([]);
   const [commentSheetPost, setCommentSheetPost] = useState<ProfilePost | null>(null);
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerImages, setViewerImages] = useState<string[]>([]);
@@ -308,12 +313,14 @@ export default function ProfileScreen() {
 
   async function loadProfileFeed(targetUserId: string | null | undefined) {
     if (!USE_UNIFIED_PROFILE_ACTIVITY) {
+      setGames([]);
       await Promise.all([loadProfileRounds(targetUserId), loadProfilePosts(targetUserId)]);
       return;
     }
     if (!targetUserId) {
       setRounds([]);
       setPosts([]);
+      setGames([]);
       return;
     }
     setRoundsLoading(true);
@@ -326,15 +333,19 @@ export default function ProfileScreen() {
       );
       const nextRounds: ProfileRound[] = [];
       const nextPosts: ProfilePost[] = [];
+      const nextGames: ProfileGameActivityPayload[] = [];
       for (const item of data.items ?? []) {
         if (item.kind === "round") nextRounds.push(item.round);
         if (item.kind === "post") nextPosts.push(item.post);
+        if (item.kind === "game") nextGames.push(item.game);
       }
       setRounds(nextRounds);
       setPosts(nextPosts);
+      setGames(nextGames);
     } catch {
       setRounds([]);
       setPosts([]);
+      setGames([]);
     } finally {
       setRoundsLoading(false);
       setPostsLoading(false);
@@ -414,13 +425,19 @@ export default function ProfileScreen() {
       ts: new Date(post.createdAt).getTime(),
       post,
     }));
-    return [...roundItems, ...postItems].sort((a, b) => {
+    const gameItems: ProfileFeedItem[] = games.map((game) => ({
+      kind: "game",
+      id: `game-${game.sessionId}`,
+      ts: new Date(game.endedAt).getTime(),
+      game,
+    }));
+    return [...roundItems, ...postItems, ...gameItems].sort((a, b) => {
       const aPinned = a.kind === "post" && Boolean(a.post.isPinned);
       const bPinned = b.kind === "post" && Boolean(b.post.isPinned);
       if (aPinned !== bPinned) return aPinned ? -1 : 1;
       return b.ts - a.ts;
     });
-  }, [rounds, posts]);
+  }, [rounds, posts, games]);
   const deepLinkPostId = typeof rawPostId === "string" ? rawPostId.trim() : "";
   const deepLinkCommentId = typeof rawCommentId === "string" ? rawCommentId.trim() : "";
   const deepLinkReplyToCommentId =
@@ -831,9 +848,10 @@ export default function ProfileScreen() {
                     <View style={styles.profileEmptyIconWrap}>
                       <Ionicons name="golf-outline" size={26} color={colors.fairway} />
                     </View>
-                    <Text style={styles.profileEmptyTitle}>No rounds or posts yet</Text>
+                    <Text style={styles.profileEmptyTitle}>No activity yet</Text>
                     <Text style={styles.profileEmptyBody}>
-                      You have not created a round yet. Start one and invite friends to get this feed going.
+                      Rounds, games, and posts you share will show up here. Start a round or finish a side game with
+                      friends to fill your feed.
                     </Text>
                   </View>
                 ) : (
@@ -877,6 +895,14 @@ export default function ProfileScreen() {
                             </View>
                           );
                         })()
+                      ) : item.kind === "game" ? (
+                        myUserId ? (
+                          <ProfileGameFeedCard
+                            key={item.id}
+                            profileUserId={myUserId}
+                            game={item.game}
+                          />
+                        ) : null
                       ) : (
                         (() => {
                           const round = item.round;

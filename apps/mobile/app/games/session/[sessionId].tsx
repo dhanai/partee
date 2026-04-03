@@ -27,33 +27,14 @@ import {
 } from "../../../components/animated-bottom-sheet-frame";
 import { GameSettingsSheetContent, gameSettingsSheetStyles } from "../../../components/game-settings-sheet-content";
 import { GameEndHousePromoModal } from "../../../components/game-end-house-promo-modal";
-import {
-  HoleCompletionAvatars,
-  StandingAvatar,
-} from "../../../components/games/hole-completion-avatars";
+import { HoleCompletionAvatars } from "../../../components/games/hole-completion-avatars";
+import { GameSessionRecapStandings } from "../../../components/games/game-session-recap-standings";
 import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { SkinsHoleEditor, type SkinsPayload } from "../../../components/games/skins-hole-editor";
-import { WolfRecapFunBlock } from "../../../components/games/wolf-recap-fun-block";
 import { WolfHoleEditor, type WolfPayload } from "../../../components/games/wolf-hole-editor";
 import { EnterStrokesEditor, type EnterStrokesPayload } from "../../../components/games/enter-strokes-editor";
 import { DotsHoleEditor, type DotsPayload } from "../../../components/games/dots-hole-editor";
 import { TargetsHoleEditor, type TargetsPayload } from "../../../components/games/targets-hole-editor";
-import {
-  GenericStandingsBlock,
-  NassauStandingsBlock,
-  SixesStandingsBlock,
-  VegasStandingsBlock,
-} from "../../../components/games/standings-block";
-import {
-  calcLowTotal,
-  calcStableford,
-  calcMatchPlay,
-  calcNassauMatch,
-  calcSixesSegments,
-  calcVegasCombined,
-  calcDotsTotal,
-  calcTargetsCount,
-} from "../../../lib/standings-calc";
 import {
   deleteGameSession,
   getGameSession,
@@ -67,11 +48,9 @@ import {
 import { holeCompletionAvatarUserIds } from "../../../lib/game-hole-display";
 import { getGameDefinition, useGameTypesVersion } from "../../../lib/games-registry";
 import { refreshGameTypes } from "../../../lib/game-types-cache";
-import { letterLabelForUser } from "../../../lib/wolf-rotation";
 import type { WolfTeeOff } from "../../../lib/wolf-rotation";
-import { computeSkinsTotals, type SkinsTieHandling } from "../../../lib/skins-scoring";
-import { computeWolfTotals, type WolfTieHandling } from "../../../lib/wolf-scoring";
-import { buildWolfSessionRecapHighlights } from "../../../lib/wolf-session-recap-copy";
+import type { SkinsTieHandling } from "../../../lib/skins-scoring";
+import type { WolfTieHandling } from "../../../lib/wolf-scoring";
 import { getHousePromosCached, isGameEndHousePromoReady, type HousePromoSlotClient } from "../../../lib/house-promo-api";
 import { showGameFinishedInterstitialAd } from "../../../lib/parfade-admob";
 import { useAbly } from "ably/react";
@@ -261,22 +240,6 @@ export default function GameSessionScreen() {
     session?.settings?.wolfTieHandling === "wash" ? "wash" : "carry";
   const skinsTieHandling: SkinsTieHandling =
     session?.settings?.skinsTieHandling === "wash" ? "wash" : "carry";
-  const wolfTotals = useMemo(() => {
-    if (!session || session.gameType !== "wolf") return null;
-    const ids = players.map((p) => p.userId);
-    return computeWolfTotals(holes, ids, wolfTieHandling);
-  }, [session, holes, players, wolfTieHandling]);
-
-  const wolfRecapHighlightLines = useMemo(() => {
-    if (!session || session.gameType !== "wolf" || wolfTotals == null) return [];
-    return buildWolfSessionRecapHighlights(holes, players, wolfTotals);
-  }, [session, holes, players, wolfTotals]);
-
-  const skinsTotals = useMemo(() => {
-    if (!session || session.gameType !== "skins") return null;
-    const ids = players.map((p) => p.userId);
-    return computeSkinsTotals(holes, ids, skinsTieHandling, session.holesCount);
-  }, [session, holes, players, skinsTieHandling]);
 
   const priorWolfHoles = useMemo(() => {
     if (editorHole == null) return [];
@@ -493,7 +456,6 @@ export default function GameSessionScreen() {
   }
 
   const scoringMode = def?.scoringMode ?? session.gameType;
-  const standingsMode = def?.standingsMode ?? session.gameType;
   const holesCount = session.holesCount;
   const holeNumbers = Array.from({ length: holesCount }, (_, i) => i + 1);
   const wolfLetterOrder =
@@ -585,169 +547,14 @@ export default function GameSessionScreen() {
 
           {error ? <Text style={styles.banner}>{error}</Text> : null}
 
-          {standingsMode === "wolf_points" && wolfTotals ? (
-            <View style={styles.standingsBlock}>
-            <View style={styles.scoreCard}>
-              <View style={styles.scoreCardHead}>
-                <Ionicons name="trophy-outline" size={20} color={colors.fairway} />
-                <Text style={styles.scoreTitle}>Standings</Text>
-              </View>
-              {players
-                .map((p) => ({
-                  p,
-                  pts: wolfTotals[p.userId] ?? 0,
-                  letter:
-                    wolfLetterOrder.length > 0
-                      ? letterLabelForUser(wolfLetterOrder, p.userId)
-                      : null,
-                }))
-                .sort((a, b) => b.pts - a.pts)
-                .map(({ p, pts, letter }, index) => {
-                  const rank = index + 1;
-                  return (
-                    <View
-                      key={p.userId}
-                      style={[
-                        styles.scoreRow,
-                        rank === 1 && styles.scoreRowFirst,
-                        rank === 2 && styles.scoreRowSecond,
-                        rank === 3 && styles.scoreRowThird,
-                      ]}
-                    >
-                      <View style={styles.scoreRowLeft}>
-                        <Text style={[styles.scoreRank, rank <= 3 && styles.scoreRankTop]}>
-                          {rank}
-                        </Text>
-                        <StandingAvatar player={p} size={34} />
-                        <Text style={styles.scoreName} numberOfLines={1}>
-                          {letter ? (
-                            <Text style={styles.scoreLetter}>{letter} · </Text>
-                          ) : null}
-                          {p.isGuest ? `${p.name} (guest)` : p.name}
-                        </Text>
-                      </View>
-                      <Text style={styles.scorePts}>{pts > 0 ? `+${pts}` : pts}</Text>
-                    </View>
-                  );
-                })}
-            </View>
-            </View>
-          ) : null}
-
-          {recapOnly && standingsMode === "wolf_points" ? (
-            <WolfRecapFunBlock highlights={wolfRecapHighlightLines} />
-          ) : null}
-
-          {standingsMode === "skins_count" && skinsTotals ? (
-            <View style={styles.standingsBlock}>
-            <View style={styles.scoreCard}>
-              <View style={styles.scoreCardHead}>
-                <Ionicons name="trophy-outline" size={20} color={colors.fairway} />
-                <Text style={styles.scoreTitle}>Skins won</Text>
-              </View>
-              {players
-                .map((p) => ({ p, n: skinsTotals[p.userId] ?? 0 }))
-                .sort((a, b) => b.n - a.n)
-                .map(({ p, n }, index) => {
-                  const rank = index + 1;
-                  return (
-                    <View
-                      key={p.userId}
-                      style={[
-                        styles.scoreRow,
-                        rank === 1 && styles.scoreRowFirst,
-                        rank === 2 && styles.scoreRowSecond,
-                        rank === 3 && styles.scoreRowThird,
-                      ]}
-                    >
-                      <View style={styles.scoreRowLeft}>
-                        <Text style={[styles.scoreRank, rank <= 3 && styles.scoreRankTop]}>
-                          {rank}
-                        </Text>
-                        <StandingAvatar player={p} size={34} />
-                        <Text style={styles.scoreName} numberOfLines={1}>
-                          {p.isGuest ? `${p.name} (guest)` : p.name}
-                        </Text>
-                      </View>
-                      <Text style={styles.scorePts}>{n}</Text>
-                    </View>
-                  );
-                })}
-            </View>
-            </View>
-          ) : null}
-
-          {standingsMode === "low_total" ? (
-            <View style={styles.standingsBlock}>
-              <GenericStandingsBlock title="Standings" entries={calcLowTotal(players, holeMap, holesCount)} />
-            </View>
-          ) : null}
-
-          {standingsMode === "stableford_points" ? (
-            <View style={styles.standingsBlock}>
-              <GenericStandingsBlock
-                title="Points (Stableford)"
-                entries={calcStableford(players, holeMap, holesCount, Number(session.settings?.coursePar) || 4)}
-              />
-            </View>
-          ) : null}
-
-          {standingsMode === "match_play" ? (
-            <View style={styles.standingsBlock}>
-              <GenericStandingsBlock title="Match Play" entries={calcMatchPlay(players, holeMap, holesCount)} />
-            </View>
-          ) : null}
-
-          {standingsMode === "nassau_match" ? (() => {
-            const nassau = calcNassauMatch(players, holeMap, holesCount);
-            return (
-              <View style={styles.standingsBlock}>
-                <NassauStandingsBlock front={nassau.front} back={nassau.back} overall={nassau.overall} />
-              </View>
-            );
-          })() : null}
-
-          {standingsMode === "sixes_segments" ? (() => {
-            const sixes = calcSixesSegments(players, holeMap);
-            return (
-              <View style={styles.standingsBlock}>
-                <SixesStandingsBlock segments={sixes.segments} playerWins={sixes.playerWins} players={players} />
-              </View>
-            );
-          })() : null}
-
-          {standingsMode === "vegas_combined" ? (
-            <View style={styles.standingsBlock}>
-              <VegasStandingsBlock
-                teams={calcVegasCombined(
-                  players, holeMap, holesCount,
-                  session.settings?.vegasBirdieFlip !== false,
-                  Number(session.settings?.coursePar) || 4,
-                )}
-              />
-            </View>
-          ) : null}
-
-          {standingsMode === "dots_total" ? (
-            <View style={styles.standingsBlock}>
-              <GenericStandingsBlock title="Dots" entries={calcDotsTotal(players, holeMap, holesCount)} />
-            </View>
-          ) : null}
-
-          {standingsMode === "targets_count" ? (
-            <View style={styles.standingsBlock}>
-              <GenericStandingsBlock title="Targets" entries={calcTargetsCount(players, holeMap, holesCount)} />
-            </View>
-          ) : null}
-
-          {recapOnly && session.gameType !== "wolf" ? (
-            <View style={styles.recapBlurb}>
-              <Text style={styles.sub}>
-                Game finished — {holesLogged} of {holesCount} holes logged. Use hole-by-hole to review
-                or tweak scores.
-              </Text>
-            </View>
-          ) : null}
+          <GameSessionRecapStandings
+            session={session}
+            players={players}
+            holes={holes}
+            gameTypesVersion={gameTypesVersion}
+            includeRecapExtras={recapOnly}
+            holesLogged={holesLogged}
+          />
 
           {recapOnly ? (
             <Pressable
@@ -1098,64 +905,6 @@ const styles = StyleSheet.create({
   },
   head: { fontSize: 22, fontWeight: "800", color: colors.text },
   sub: { fontSize: 14, color: colors.muted, marginTop: 4, marginBottom: 16 },
-  scoreCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: 14,
-    gap: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  scoreCardHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
-  scoreTitle: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: colors.text,
-    letterSpacing: 0.3,
-  },
-  scoreRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: colors.background,
-  },
-  scoreRowFirst: {
-    backgroundColor: "#f7f2e4",
-    borderWidth: 1,
-    borderColor: "#e8d9b8",
-  },
-  scoreRowSecond: {
-    backgroundColor: "#f0f1f3",
-    borderWidth: 1,
-    borderColor: "#e0e2e6",
-  },
-  scoreRowThird: {
-    backgroundColor: "#faf0e8",
-    borderWidth: 1,
-    borderColor: "#edd9cc",
-  },
-  scoreRowLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, minWidth: 0 },
-  scoreRank: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: colors.muted,
-    width: 22,
-    textAlign: "center",
-  },
-  scoreRankTop: { color: colors.fairway },
-  scoreLetter: { fontWeight: "800", color: colors.muted },
-  scoreName: { flex: 1, fontSize: 15, fontWeight: "600", color: colors.text },
-  scorePts: { fontSize: 17, fontWeight: "800", color: colors.fairway, minWidth: 40, textAlign: "right" },
-  standingsBlock: { marginBottom: 16 },
   holesSection: { marginTop: 8, marginBottom: 8 },
   holesSectionHead: {
     flexDirection: "row",
@@ -1188,7 +937,6 @@ const styles = StyleSheet.create({
   banner: { color: colors.danger, marginBottom: 8 },
   error: { color: colors.danger },
   muted: { fontSize: 14, color: colors.muted },
-  recapBlurb: { marginBottom: 4 },
   completeBtnDisabled: {
     opacity: 0.75,
   },

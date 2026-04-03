@@ -457,10 +457,6 @@ export default function RoundDetailsScreen() {
       );
       hapticSuccess();
       showSnackbar("Join request canceled");
-      setRound((current) => {
-        if (current) setCachedRoundDetails(current);
-        return current;
-      });
       emitRoundListsShouldRefresh();
       void loadRound({ silent: true });
     } catch (cancelError) {
@@ -547,11 +543,6 @@ export default function RoundDetailsScreen() {
       } else {
         showSnackbar("Spot claimed");
       }
-
-      setRound((current) => {
-        if (current) setCachedRoundDetails(current);
-        return current;
-      });
     } catch (submitError) {
       setRound(prevRound);
       setError(submitError instanceof Error ? submitError.message : "Unable to RSVP.");

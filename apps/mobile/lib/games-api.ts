@@ -59,6 +59,7 @@ export async function listMyGameSessions(
 export async function getGameSession(
   token: string | null,
   sessionId: string,
+  options?: { profileUserId?: string },
 ): Promise<{
   viewerIsCreator: boolean;
   viewerUserId: string;
@@ -66,7 +67,11 @@ export async function getGameSession(
   players: GamePlayerRow[];
   holes: GameHoleRow[];
 }> {
-  return apiGet(`/api/games/${sessionId}`, token);
+  const q =
+    options?.profileUserId != null && options.profileUserId.length > 0
+      ? `?profileUserId=${encodeURIComponent(options.profileUserId)}`
+      : "";
+  return apiGet(`/api/games/${sessionId}${q}`, token);
 }
 
 export async function deleteGameSession(

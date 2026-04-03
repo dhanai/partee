@@ -26,6 +26,7 @@ import { FullscreenImageViewer } from "../../../components/fullscreen-image-view
 import { InitialAvatar } from "../../../components/initial-avatar";
 import { OverflowMenuSheet } from "../../../components/overflow-menu-sheet";
 import { ParfadeProfileLiveRefresh } from "../../../components/parfade-profile-live-refresh";
+import { ProfileGameFeedCard } from "../../../components/profile-game-feed-card";
 import { RoundListCard } from "../../../components/round-list-card";
 import { ReportSheet } from "../../../components/report-sheet";
 import { SocialPostCard } from "../../../components/social-post-card";
@@ -49,6 +50,7 @@ import {
   setCachedPublicProfile,
 } from "../../../lib/public-profile-cache";
 import { getCachedMeProfile } from "../../../lib/me-profile-cache";
+import type { ProfileGameActivityPayload } from "../../../lib/profile-game-feed-types";
 import { subscribeProfileActivityEvents } from "../../../lib/profile-activity-events";
 import { subscribeRoundListsRefresh } from "../../../lib/round-lists-refresh";
 import { colors } from "../../../lib/theme";
@@ -96,12 +98,14 @@ type ProfileActivityResponse = {
   items: Array<
     | { kind: "post"; createdAt: string; post: ProfilePost }
     | { kind: "round"; createdAt: string; round: ProfileRound }
+    | { kind: "game"; createdAt: string; game: ProfileGameActivityPayload }
   >;
   nextCursor: string | null;
 };
 type ProfileFeedItem =
   | { kind: "round"; id: string; ts: number; round: ProfileRound }
-  | { kind: "post"; id: string; ts: number; post: ProfilePost };
+  | { kind: "post"; id: string; ts: number; post: ProfilePost }
+  | { kind: "game"; id: string; ts: number; game: ProfileGameActivityPayload };
 type ProfileComment = {
   id: string;
   body: string;
@@ -230,6 +234,7 @@ export default function PublicProfileScreen() {
   const [roundsLoading, setRoundsLoading] = useState(false);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
+  const [games, setGames] = useState<ProfileGameActivityPayload[]>([]);
   const [commentSheetPost, setCommentSheetPost] = useState<ProfilePost | null>(null);
   const [comments, setComments] = useState<ProfileComment[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
@@ -255,6 +260,7 @@ export default function PublicProfileScreen() {
     setLoading(!next);
     setRounds([]);
     setPosts([]);
+    setGames([]);
     setError(null);
     restoredScrollRef.current = false;
   }
@@ -285,13 +291,17 @@ export default function PublicProfileScreen() {
         ).catch(() => ({ items: [], nextCursor: null }));
         const nextRounds: ProfileRound[] = [];
         const nextPosts: ProfilePost[] = [];
+        const nextGames: ProfileGameActivityPayload[] = [];
         for (const item of activity.items ?? []) {
           if (item.kind === "round") nextRounds.push(item.round);
           if (item.kind === "post") nextPosts.push(item.post);
+          if (item.kind === "game") nextGames.push(item.game);
         }
         setRounds(nextRounds);
         setPosts(nextPosts.filter((post) => post.profileUserId === userId));
+        setGames(nextGames);
       } else {
+        setGames([]);
         const [roundsData, postsData] = await Promise.all([
           apiGet<ProfileRoundsResponse>(`/api/users/${encodeURIComponent(userId)}/open-rounds`, token)
             .catch(() => ({ rounds: [], hosting: [], joined: [] })),
@@ -316,6 +326,7 @@ export default function PublicProfileScreen() {
       setError(profileError instanceof Error ? profileError.message : "Unable to load profile.");
       setRounds([]);
       setPosts([]);
+      setGames([]);
     } finally {
       if (!silent) {
         setLoading(false);
@@ -439,13 +450,19 @@ export default function PublicProfileScreen() {
       ts: new Date(post.createdAt).getTime(),
       post,
     }));
-    return [...roundItems, ...postItems].sort((a, b) => {
+    const gameItems: ProfileFeedItem[] = games.map((game) => ({
+      kind: "game",
+      id: `game-${game.sessionId}`,
+      ts: new Date(game.endedAt).getTime(),
+      game,
+    }));
+    return [...roundItems, ...postItems, ...gameItems].sort((a, b) => {
       const aPinned = a.kind === "post" && Boolean(a.post.isPinned);
       const bPinned = b.kind === "post" && Boolean(b.post.isPinned);
       if (aPinned !== bPinned) return aPinned ? -1 : 1;
       return b.ts - a.ts;
     });
-  }, [rounds, posts]);
+  }, [rounds, posts, games]);
   const deepLinkPostId = typeof rawPostId === "string" ? rawPostId.trim() : "";
   const deepLinkCommentId = typeof rawCommentId === "string" ? rawCommentId.trim() : "";
   const deepLinkReplyToCommentId =
@@ -1021,9 +1038,9 @@ export default function PublicProfileScreen() {
               <View style={styles.profileEmptyIconWrap}>
                 <Ionicons name="golf-outline" size={26} color={colors.fairway} />
               </View>
-              <Text style={styles.profileEmptyTitle}>No rounds or posts yet</Text>
+              <Text style={styles.profileEmptyTitle}>No activity yet</Text>
               <Text style={styles.profileEmptyBody}>
-                This user has not created a round yet. Invite them to one of yours and get a match going.
+                When they host or join rounds, finish games, or post here, it will show up in this feed.
               </Text>
             </View>
           ) : (
@@ -1067,6 +1084,10 @@ export default function PublicProfileScreen() {
                       </View>
                     );
                   })()
+                ) : item.kind === "game" ? (
+                  userId ? (
+                    <ProfileGameFeedCard key={item.id} profileUserId={userId} game={item.game} />
+                  ) : null
                 ) : (
                   (() => {
                     const round = item.round;

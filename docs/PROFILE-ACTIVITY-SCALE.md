@@ -1,9 +1,10 @@
 # Profile Activity Scale Ownership
 
 ## Scope
-- User profile activity feed combines two domains:
+- User profile activity feed combines:
   - Profile posts
   - Open rounds (hosting + joined)
+  - Completed game sessions (player was in `game_session_players`; sort by `ended_at`)
 
 ## Ownership
 - Posts domain query path:
@@ -13,6 +14,9 @@
 - Open rounds domain query path:
   - `app/api/users/[userId]/open-rounds/route.ts`
   - `lib/user-profile-open-rounds.ts`
+- Completed games (profile activity slice):
+  - `lib/games/profile-activity-games.ts`
+  - `GET /api/games/[id]?profileUserId=` for recap payload when viewer is not a participant (completed sessions only)
 - Mobile consumers:
   - `apps/mobile/app/(tabs)/profile.tsx`
   - `apps/mobile/app/profile/[userId]/index.tsx`
