@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,6 +8,7 @@ import {
   Alert,
   Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -47,6 +48,7 @@ import {
   type MeProfile,
 } from "../../lib/me-profile-cache";
 import type { ProfileGameActivityPayload } from "../../lib/profile-game-feed-types";
+import { profileActivityFeedTypography } from "../../lib/profile-activity-feed-typography";
 import { subscribeProfileActivityEvents } from "../../lib/profile-activity-events";
 import { subscribeRoundListsRefresh } from "../../lib/round-lists-refresh";
 import { colors } from "../../lib/theme";
@@ -200,6 +202,8 @@ export default function ProfileScreen() {
   const [postingComment, setPostingComment] = useState(false);
   const [overflowPost, setOverflowPost] = useState<ProfilePost | null>(null);
   const [overflowGame, setOverflowGame] = useState<ProfileGameActivityPayload | null>(null);
+  const [feedRefreshing, setFeedRefreshing] = useState(false);
+  const profileTabFocusCountRef = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
   const restoredScrollRef = useRef(false);
   const postYByIdRef = useRef<Map<string, number>>(new Map());
@@ -263,7 +267,7 @@ export default function ProfileScreen() {
       const token = await getTokenRef.current();
       const json = await apiGet<MeResponse>("/api/users/me", token);
       applyMeUser(json.user);
-      await loadProfileFeed(json.user.id);
+      await loadProfileFeed(json.user.id, { silent });
     } catch (profileError) {
       setError(profileError instanceof Error ? profileError.message : "Unable to load profile.");
     } finally {
@@ -320,7 +324,11 @@ export default function ProfileScreen() {
     }
   }
 
-  async function loadProfileFeed(targetUserId: string | null | undefined) {
+  async function loadProfileFeed(
+    targetUserId: string | null | undefined,
+    options?: { silent?: boolean },
+  ) {
+    const silent = Boolean(options?.silent);
     if (!USE_UNIFIED_PROFILE_ACTIVITY) {
       setGames([]);
       await Promise.all([loadProfileRounds(targetUserId), loadProfilePosts(targetUserId)]);
@@ -332,8 +340,10 @@ export default function ProfileScreen() {
       setGames([]);
       return;
     }
-    setRoundsLoading(true);
-    setPostsLoading(true);
+    if (!silent) {
+      setRoundsLoading(true);
+      setPostsLoading(true);
+    }
     try {
       const token = await getTokenRef.current();
       const data = await apiGet<ProfileActivityResponse>(
@@ -356,10 +366,15 @@ export default function ProfileScreen() {
       setPosts([]);
       setGames([]);
     } finally {
-      setRoundsLoading(false);
-      setPostsLoading(false);
+      if (!silent) {
+        setRoundsLoading(false);
+        setPostsLoading(false);
+      }
     }
   }
+
+  const loadProfileFeedRef = useRef(loadProfileFeed);
+  loadProfileFeedRef.current = loadProfileFeed;
 
   useEffect(() => {
     const cached = getCachedMeProfile();
@@ -412,11 +427,24 @@ export default function ProfileScreen() {
   }, [myUserId]);
 
   useEffect(() => {
+    profileTabFocusCountRef.current = 0;
+  }, [myUserId]);
+
+  useEffect(() => {
     return subscribeRoundListsRefresh(() => {
       if (!myUserId) return;
-      void loadProfileFeed(myUserId);
+      void loadProfileFeedRef.current(myUserId, { silent: true });
     });
   }, [myUserId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!myUserId) return;
+      profileTabFocusCountRef.current += 1;
+      if (profileTabFocusCountRef.current === 1) return;
+      void loadProfileFeedRef.current(myUserId, { silent: true });
+    }, [myUserId]),
+  );
 
   const handicapDisplay = handicap.trim();
   const locationDisplay = location.trim();
@@ -624,7 +652,7 @@ export default function ProfileScreen() {
         token,
       );
     } catch {
-      void loadProfileFeed(myUserId);
+      void loadProfileFeedRef.current(myUserId, { silent: true });
     }
   }
 
@@ -811,6 +839,19 @@ export default function ProfileScreen() {
         style={styles.container}
         contentContainerStyle={styles.content}
         scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={feedRefreshing}
+            onRefresh={() => {
+              if (!myUserId) return;
+              setFeedRefreshing(true);
+              void loadProfileFeedRef
+                .current(myUserId, { silent: true })
+                .finally(() => setFeedRefreshing(false));
+            }}
+            tintColor={colors.fairway}
+          />
+        }
         onScroll={(event) => {
           savedSelfProfileScrollY = event.nativeEvent.contentOffset.y;
         }}
@@ -1007,7 +1048,9 @@ export default function ProfileScreen() {
                           const effectiveIso = round.teeTime ?? round.targetDate;
                           return (
                             <View key={item.id} style={styles.cardWrap}>
-                              <Text style={styles.feedBadge}>
+                              <Text
+                                style={[profileActivityFeedTypography.badge, styles.feedBadgeMuted]}
+                              >
                                 {round.source === "hosting" ? "Hosting" : "Joined"}
                               </Text>
                               <RoundListCard
@@ -1493,13 +1536,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cardWrap: { gap: 8 },
-  feedBadge: {
-    alignSelf: "flex-start",
-    fontSize: 11,
-    fontWeight: "700",
+  feedBadgeMuted: {
     color: colors.muted,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
     paddingHorizontal: 2,
   },
   profileEmptyCard: {
@@ -1535,79 +1573,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     textAlign: "center",
     maxWidth: 320,
-  },
-  postCard: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    backgroundColor: colors.surface,
-    padding: 12,
-    gap: 10,
-  },
-  postHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  postAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-  },
-  postHeaderText: {
-    flex: 1,
-    gap: 2,
-  },
-  postOverflow: {
-    padding: 2,
-  },
-  postAuthor: {
-    color: colors.text,
-    fontWeight: "700",
-  },
-  postDate: {
-    color: colors.muted,
-    fontSize: 12,
-  },
-  postBody: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  postImage: {
-    width: "100%",
-    height: 220,
-    borderRadius: 10,
-    backgroundColor: colors.fairwaySoft,
-  },
-  postFooter: {
-    flexDirection: "row",
-    gap: 14,
-    alignItems: "center",
-    paddingTop: 2,
-  },
-  postLikeBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  postLikeCount: {
-    color: colors.muted,
-    fontWeight: "600",
-    fontSize: 13,
-  },
-  postLikeCountActive: {
-    color: colors.danger,
-  },
-  postCommentBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  postCommentCount: {
-    color: colors.muted,
-    fontWeight: "600",
-    fontSize: 13,
   },
   commentsSheet: {
     paddingHorizontal: 16,

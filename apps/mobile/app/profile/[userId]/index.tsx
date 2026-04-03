@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -51,6 +51,7 @@ import {
 } from "../../../lib/public-profile-cache";
 import { getCachedMeProfile } from "../../../lib/me-profile-cache";
 import type { ProfileGameActivityPayload } from "../../../lib/profile-game-feed-types";
+import { profileActivityFeedTypography } from "../../../lib/profile-activity-feed-typography";
 import { subscribeProfileActivityEvents } from "../../../lib/profile-activity-events";
 import { subscribeRoundListsRefresh } from "../../../lib/round-lists-refresh";
 import { colors } from "../../../lib/theme";
@@ -248,6 +249,7 @@ export default function PublicProfileScreen() {
   const [blocked, setBlocked] = useState(false);
   const [dmBusy, setDmBusy] = useState(false);
   const meId = getCachedMeProfile()?.id ?? null;
+  const profileScreenFocusCountRef = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
   const restoredScrollRef = useRef(false);
   const postYByIdRef = useRef<Map<string, number>>(new Map());
@@ -349,6 +351,21 @@ export default function PublicProfileScreen() {
     const hasBootstrap = Boolean(computeBootstrapProfile(userId, userName, userAvatar));
     void loadProfile({ silent: hasBootstrap });
   }, [userId, userName, userAvatar, loadProfile]);
+
+  useEffect(() => {
+    profileScreenFocusCountRef.current = 0;
+  }, [userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+      profileScreenFocusCountRef.current += 1;
+      if (profileScreenFocusCountRef.current === 1) {
+        return;
+      }
+      void loadProfile({ silent: true });
+    }, [userId, loadProfile]),
+  );
 
   useEffect(() => {
     return subscribeProfileActivityEvents((event) => {
@@ -1142,7 +1159,9 @@ export default function PublicProfileScreen() {
                     const effectiveIso = round.teeTime ?? round.targetDate;
                     return (
                       <View key={item.id} style={styles.cardWrap}>
-                        <Text style={styles.feedBadge}>
+                        <Text
+                          style={[profileActivityFeedTypography.badge, styles.feedBadgeMuted]}
+                        >
                           {round.source === "hosting" ? "Hosting" : "Joined"}
                         </Text>
                         <RoundListCard
@@ -1694,13 +1713,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cardWrap: { gap: 8 },
-  feedBadge: {
-    alignSelf: "flex-start",
-    fontSize: 11,
-    fontWeight: "700",
+  feedBadgeMuted: {
     color: colors.muted,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
     paddingHorizontal: 2,
   },
   profileEmptyCard: {
@@ -1736,79 +1750,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     textAlign: "center",
     maxWidth: 320,
-  },
-  postCard: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    backgroundColor: colors.surface,
-    padding: 12,
-    gap: 10,
-  },
-  postHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  postAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-  },
-  postHeaderText: {
-    flex: 1,
-    gap: 2,
-  },
-  postOverflow: {
-    padding: 2,
-  },
-  postAuthor: {
-    color: colors.text,
-    fontWeight: "700",
-  },
-  postDate: {
-    color: colors.muted,
-    fontSize: 12,
-  },
-  postBody: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  postImage: {
-    width: "100%",
-    height: 220,
-    borderRadius: 10,
-    backgroundColor: colors.fairwaySoft,
-  },
-  postFooter: {
-    flexDirection: "row",
-    gap: 14,
-    alignItems: "center",
-    paddingTop: 2,
-  },
-  postLikeBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  postLikeCount: {
-    color: colors.muted,
-    fontWeight: "600",
-    fontSize: 13,
-  },
-  postLikeCountActive: {
-    color: colors.danger,
-  },
-  postCommentBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  postCommentCount: {
-    color: colors.muted,
-    fontWeight: "600",
-    fontSize: 13,
   },
   commentsSheet: {
     paddingHorizontal: 16,

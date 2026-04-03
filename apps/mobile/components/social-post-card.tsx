@@ -11,6 +11,7 @@ import Reanimated, {
   withTiming,
 } from "react-native-reanimated";
 import { toAbsoluteUrl } from "../lib/api";
+import { profileActivityFeedTypography } from "../lib/profile-activity-feed-typography";
 import { colors } from "../lib/theme";
 import { InitialAvatar } from "./initial-avatar";
 import { PostImageCarousel } from "./post-image-carousel";
@@ -88,8 +89,8 @@ export function SocialPostCard({
                 <InitialAvatar name={user.name} size={36} maxInitials={2} />
               )}
               <View style={styles.postHeaderText}>
-                <Text style={styles.postAuthor}>{user.name}</Text>
-                <Text style={styles.postDate}>{createdAtLabel}</Text>
+                <Text style={profileActivityFeedTypography.authorName}>{user.name}</Text>
+                <Text style={profileActivityFeedTypography.date}>{createdAtLabel}</Text>
               </View>
             </Pressable>
             {isPinned ? <Ionicons name="pin" size={14} color={colors.muted} /> : null}
@@ -99,7 +100,7 @@ export function SocialPostCard({
               </Pressable>
             ) : null}
           </View>
-          {hasBody ? <Text style={styles.postBody}>{body}</Text> : null}
+          {hasBody ? <Text style={profileActivityFeedTypography.primaryBody}>{body}</Text> : null}
           {images.length > 0 ? (
             <View style={styles.mediaBleed}>
               <PostImageCarousel images={images} onPressImage={onPressImage} />
@@ -138,11 +139,8 @@ const styles = StyleSheet.create({
   postHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
   postAuthorTap: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
   postAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#d9e8dc" },
-  postHeaderText: { flex: 1, minWidth: 0 },
-  postAuthor: { color: colors.text, fontWeight: "700", fontSize: 14 },
-  postDate: { color: colors.muted, fontSize: 12 },
+  postHeaderText: { flex: 1, minWidth: 0, gap: 2 },
   postOverflow: { marginLeft: "auto", padding: 2 },
-  postBody: { color: colors.text, lineHeight: 20, fontSize: 15 },
   mediaBleed: {
     marginHorizontal: -12,
   },

@@ -57,6 +57,7 @@ import { useAbly } from "ably/react";
 import { parfadeGameSessionChannel } from "../../../lib/parfade-ably-channels";
 import { parseParfadeRealtimeMessage } from "../../../lib/parfade-ably-messages";
 import { emitGamesListShouldRefresh } from "../../../lib/games-list-refresh";
+import { emitRoundListsShouldRefresh } from "../../../lib/round-lists-refresh";
 import { useKeyboardHeight } from "../../../lib/use-keyboard-height";
 import { colors } from "../../../lib/theme";
 
@@ -204,6 +205,9 @@ export default function GameSessionScreen() {
           void load();
         }
         emitGamesListShouldRefresh();
+        if (parsed.reason === "status") {
+          emitRoundListsShouldRefresh();
+        }
       }
     };
     void channel.subscribe("parfade", handler);
@@ -316,6 +320,7 @@ export default function GameSessionScreen() {
       );
       // Recap is painted under this full-screen Modal; when ad + Modal clear, recap is already there.
       setSession(nextSession);
+      emitRoundListsShouldRefresh();
       setPendingRecapAfterComplete(true);
       router.setParams({ recap: "1" });
       let promos: Awaited<ReturnType<typeof getHousePromosCached>> | null = null;

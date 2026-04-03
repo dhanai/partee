@@ -14,6 +14,7 @@ import { getGameSession } from "../lib/games-api";
 import type { ProfileGameActivityPayload } from "../lib/profile-game-feed-types";
 import { buildProfileGameFinishedHeadlineSegments } from "../lib/profile-game-activity-copy";
 import { getGameDefinition, useGameTypesVersion } from "../lib/games-registry";
+import { profileActivityFeedTypography } from "../lib/profile-activity-feed-typography";
 import { colors } from "../lib/theme";
 
 type Props = {
@@ -87,7 +88,7 @@ export function ProfileGameFeedCard({
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <Text style={styles.badge}>Game</Text>
+        <Text style={[profileActivityFeedTypography.badge, styles.badgeGame]}>Game</Text>
         <View style={styles.cardHeaderSpacer} />
         {game.isPinned ? <Ionicons name="pin" size={14} color={colors.muted} /> : null}
         {showOverflow && onPressOverflow ? (
@@ -107,14 +108,14 @@ export function ProfileGameFeedCard({
         accessibilityRole="button"
         accessibilityLabel={`Open game recap: ${headlinePlain}`}
       >
-        <Text style={styles.headline}>
+        <Text style={[profileActivityFeedTypography.primaryBody, styles.headline]}>
           {headlineSegments.map((s, i) => (
-            <Text key={i} style={s.bold ? styles.headlineName : undefined}>
+            <Text key={i} style={s.bold ? profileActivityFeedTypography.primaryBodyEmphasis : undefined}>
               {s.text}
             </Text>
           ))}
         </Text>
-        <Text style={styles.meta}>
+        <Text style={[profileActivityFeedTypography.date, styles.meta]}>
           {new Date(game.endedAt).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
@@ -163,28 +164,13 @@ const styles = StyleSheet.create({
   overflowBtn: { padding: 2 },
   cardBody: { borderRadius: 0 },
   cardBodyPressed: { opacity: 0.92 },
-  badge: {
-    alignSelf: "flex-start",
-    fontSize: 11,
-    fontWeight: "800",
+  badgeGame: {
     color: colors.fairway,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
   },
   headline: {
-    fontSize: 16,
-    fontWeight: "400",
-    color: colors.text,
-    lineHeight: 22,
     marginBottom: 4,
   },
-  headlineName: {
-    fontWeight: "700",
-  },
   meta: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.muted,
     marginBottom: 12,
   },
   recapInner: { marginTop: 4 },

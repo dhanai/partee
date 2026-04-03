@@ -19,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { apiGet, apiPost, toAbsoluteUrl } from "../../lib/api";
+import { emitRoundListsShouldRefresh } from "../../lib/round-lists-refresh";
 import { useSnackbar } from "../../lib/snackbar-context";
 import { hapticSuccess, hapticError } from "../../lib/haptics";
 import type { InviteSelectionUser } from "../../lib/invite-selection-store";
@@ -501,6 +502,7 @@ export default function CreateScreen() {
         token,
       );
       hapticSuccess();
+      emitRoundListsShouldRefresh();
       showSnackbar(
         json.invitedCount > 0
           ? `Round created — ${json.invitedCount} invited`
