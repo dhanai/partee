@@ -97,6 +97,7 @@ export default function GameSessionScreen() {
   const { getToken } = useAuth();
   const gameTypesVersion = useGameTypesVersion();
   const [session, setSession] = useState<GameSessionSummary | null>(null);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const gameTypeSlug = session?.gameType;
   const def = useMemo(
     () => (gameTypeSlug ? getGameDefinition(gameTypeSlug) : undefined),
@@ -137,6 +138,7 @@ export default function GameSessionScreen() {
 
   useEffect(() => {
     setSession(null);
+    setViewerUserId(null);
     setPlayers([]);
     setHoles([]);
     setError(null);
@@ -164,6 +166,7 @@ export default function GameSessionScreen() {
       const token = await getToken();
       const data = await getGameSession(token, sessionId);
       setSession(data.session ?? null);
+      setViewerUserId(data.viewerUserId ?? null);
       setPlayers(data.players ?? []);
       setHoles(data.holes ?? []);
       setError(null);
@@ -557,19 +560,41 @@ export default function GameSessionScreen() {
           />
 
           {recapOnly ? (
-            <Pressable
-              style={styles.completeBtn}
-              onPress={() => {
-                if (!sessionId) return;
-                setPendingRecapAfterComplete(false);
-                router.push({
-                  pathname: "/games/session/[sessionId]",
-                  params: { sessionId },
-                });
-              }}
-            >
-              <Text style={styles.completeBtnText}>Hole-by-hole breakdown</Text>
-            </Pressable>
+            <>
+              <Pressable
+                style={styles.completeBtn}
+                onPress={() => {
+                  if (!sessionId) return;
+                  setPendingRecapAfterComplete(false);
+                  router.push({
+                    pathname: "/games/session/[sessionId]",
+                    params: { sessionId },
+                  });
+                }}
+              >
+                <Text style={styles.completeBtnText}>Hole-by-hole breakdown</Text>
+              </Pressable>
+              <Pressable
+                style={styles.shareProfileBtn}
+                onPress={() => {
+                  if (!sessionId || !viewerUserId) return;
+                  const row = players.find((p) => p.userId === viewerUserId);
+                  if (!row || row.isGuest) {
+                    Alert.alert(
+                      "Profile activity",
+                      "Only registered players see completed games on their Parfade profile.",
+                    );
+                    return;
+                  }
+                  router.push({
+                    pathname: "/(tabs)/profile",
+                    params: { highlightGameSessionId: sessionId },
+                  });
+                }}
+              >
+                <Text style={styles.shareProfileBtnText}>Share to profile</Text>
+              </Pressable>
+            </>
           ) : null}
 
           {!recapOnly ? (
@@ -948,6 +973,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.fairway,
   },
   completeBtnText: { fontSize: 16, fontWeight: "800", color: "#fff" },
+  shareProfileBtn: {
+    marginTop: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.fairway,
+    backgroundColor: colors.surface,
+  },
+  shareProfileBtnText: { fontSize: 16, fontWeight: "800", color: colors.fairway },
   holeEditorSheet: {
     paddingHorizontal: 20,
     paddingTop: 8,

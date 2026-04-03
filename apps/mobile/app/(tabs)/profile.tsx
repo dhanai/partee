@@ -159,12 +159,17 @@ const USE_UNIFIED_PROFILE_ACTIVITY = (process.env.EXPO_PUBLIC_PROFILE_ACTIVITY_U
 export default function ProfileScreen() {
   const navigation = useNavigation();
   const router = useRouter();
-  const { postId: rawPostId, commentId: rawCommentId, replyToCommentId: rawReplyToCommentId } =
-    useLocalSearchParams<{
-      postId?: string;
-      commentId?: string;
-      replyToCommentId?: string;
-    }>();
+  const {
+    postId: rawPostId,
+    commentId: rawCommentId,
+    replyToCommentId: rawReplyToCommentId,
+    highlightGameSessionId: rawHighlightGameSessionId,
+  } = useLocalSearchParams<{
+    postId?: string;
+    commentId?: string;
+    replyToCommentId?: string;
+    highlightGameSessionId?: string | string[];
+  }>();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { getToken } = useAuth();
@@ -197,6 +202,9 @@ export default function ProfileScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const restoredScrollRef = useRef(false);
   const postYByIdRef = useRef<Map<string, number>>(new Map());
+  const gameCardYBySessionIdRef = useRef<Map<string, number>>(new Map());
+  const highlightGameScrollDoneRef = useRef(false);
+  const prevHighlightGameSessionIdRef = useRef("");
   const handledDeepLinkKeyRef = useRef<string | null>(null);
 
   const avatarSize = Math.round(Math.min(windowWidth - 48, 340) * 0.75);
@@ -438,6 +446,43 @@ export default function ProfileScreen() {
       return b.ts - a.ts;
     });
   }, [rounds, posts, games]);
+
+  const highlightGameSessionId = useMemo(() => {
+    const raw = rawHighlightGameSessionId;
+    if (raw == null) return "";
+    const s = Array.isArray(raw) ? raw[0] : raw;
+    return typeof s === "string" ? s.trim() : "";
+  }, [rawHighlightGameSessionId]);
+
+  useEffect(() => {
+    if (prevHighlightGameSessionIdRef.current !== highlightGameSessionId) {
+      highlightGameScrollDoneRef.current = false;
+      prevHighlightGameSessionIdRef.current = highlightGameSessionId;
+    }
+  }, [highlightGameSessionId]);
+
+  useEffect(() => {
+    if (!highlightGameSessionId || feedLoading) return;
+    let cancelled = false;
+    const tryScroll = () => {
+      if (cancelled || highlightGameScrollDoneRef.current) return;
+      const y = gameCardYBySessionIdRef.current.get(highlightGameSessionId);
+      if (y == null) return;
+      highlightGameScrollDoneRef.current = true;
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+      });
+    };
+    tryScroll();
+    const t = setTimeout(tryScroll, 400);
+    const t2 = setTimeout(tryScroll, 900);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      clearTimeout(t2);
+    };
+  }, [highlightGameSessionId, feedLoading, feedItems]);
+
   const deepLinkPostId = typeof rawPostId === "string" ? rawPostId.trim() : "";
   const deepLinkCommentId = typeof rawCommentId === "string" ? rawCommentId.trim() : "";
   const deepLinkReplyToCommentId =
@@ -897,11 +942,17 @@ export default function ProfileScreen() {
                         })()
                       ) : item.kind === "game" ? (
                         myUserId ? (
-                          <ProfileGameFeedCard
+                          <View
                             key={item.id}
-                            profileUserId={myUserId}
-                            game={item.game}
-                          />
+                            onLayout={(event) => {
+                              gameCardYBySessionIdRef.current.set(
+                                item.game.sessionId,
+                                event.nativeEvent.layout.y,
+                              );
+                            }}
+                          >
+                            <ProfileGameFeedCard profileUserId={myUserId} game={item.game} />
+                          </View>
                         ) : null
                       ) : (
                         (() => {
