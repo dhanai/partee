@@ -1,6 +1,13 @@
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { conversationParticipants, groupMembers, inAppNotifications, users } from "@/db/schema";
+import {
+  conversationParticipants,
+  conversations,
+  groupMembers,
+  inAppNotifications,
+  rounds,
+  users,
+} from "@/db/schema";
 import {
   buildHostRsvpNotificationCopy,
   formatInviterFirstLastInitial,
@@ -410,6 +417,14 @@ export async function notifyConversationMessage(input: {
 
   if (tokens.length === 0) return;
 
+  const [roundRow] = await db
+    .select({ inviteToken: rounds.inviteToken })
+    .from(conversations)
+    .innerJoin(rounds, eq(conversations.roundId, rounds.id))
+    .where(eq(conversations.id, input.conversationId))
+    .limit(1);
+  const roundInviteToken = roundRow?.inviteToken?.trim() ?? "";
+
   const who = formatInviterFirstLastInitial(input.senderName);
   const raw = input.messageBody.trim();
   const preview =
@@ -423,7 +438,8 @@ export async function notifyConversationMessage(input: {
       body: preview,
       data: {
         type: "conversation_message",
-        conversationId: input.conversationId,
+        conversationId: String(input.conversationId),
+        ...(roundInviteToken ? { inviteToken: roundInviteToken } : {}),
       },
     })),
   );

@@ -3,13 +3,28 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useEffect, useRef } from "react";
 
+/** Expo / FCM often deliver payload values as strings; some stacks use snake_case keys. */
+function payloadString(data: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const v = data[key];
+    if (v == null) continue;
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (t.length > 0) return t;
+    }
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return "";
+}
+
 function openNotificationData(
   router: ReturnType<typeof useRouter>,
   data: Record<string, unknown>,
 ) {
-  const type = data.type;
-  const inviteToken = typeof data.inviteToken === "string" ? data.inviteToken.trim() : "";
-  if (inviteToken.length > 0 && type === "round_chat") {
+  const type = payloadString(data, "type", "Type");
+  const typeNorm = type.toLowerCase();
+  const inviteToken = payloadString(data, "inviteToken", "invite_token");
+  if (inviteToken.length > 0 && typeNorm === "round_chat") {
     router.push({
       pathname: "/round/[token]/chat",
       params: { token: inviteToken },
@@ -18,10 +33,10 @@ function openNotificationData(
   }
   if (
     inviteToken.length > 0 &&
-    (type === "round_invite" || type === "round_rsvp")
+    (typeNorm === "round_invite" || typeNorm === "round_rsvp")
   ) {
     const hostJoinRequests =
-      type === "round_rsvp" &&
+      typeNorm === "round_rsvp" &&
       (data.spotStatus === "requested" ||
         data.hostJoinRequests === "1" ||
         data.hostJoinRequests === 1);
@@ -34,13 +49,12 @@ function openNotificationData(
     });
     return;
   }
-  if (type === "follow_request") {
+  if (typeNorm === "follow_request") {
     router.push("/notifications");
     return;
   }
-  if (type === "conversation_message") {
-    const conversationId =
-      typeof data.conversationId === "string" ? data.conversationId.trim() : "";
+  if (typeNorm === "conversation_message") {
+    const conversationId = payloadString(data, "conversationId", "conversation_id");
     if (conversationId.length > 0) {
       router.push({
         pathname: "/conversation/[id]/chat",
@@ -48,20 +62,27 @@ function openNotificationData(
       });
       return;
     }
+    if (inviteToken.length > 0) {
+      router.push({
+        pathname: "/round/[token]/chat",
+        params: { token: inviteToken },
+      });
+      return;
+    }
   }
-  if (type === "group_join_request") {
+  if (typeNorm === "group_join_request") {
     router.push("/notifications");
     return;
   }
-  if (type === "group_join_accepted") {
-    const groupId = typeof data.groupId === "string" ? data.groupId.trim() : "";
+  if (typeNorm === "group_join_accepted") {
+    const groupId = payloadString(data, "groupId", "group_id");
     if (groupId.length > 0) {
       router.push({ pathname: "/group/[groupId]", params: { groupId } });
       return;
     }
   }
-  if (type === "group_post" || type === "group_announcement") {
-    const groupId = typeof data.groupId === "string" ? data.groupId.trim() : "";
+  if (typeNorm === "group_post" || typeNorm === "group_announcement") {
+    const groupId = payloadString(data, "groupId", "group_id");
     if (groupId.length > 0) {
       router.push({
         pathname: "/group/[groupId]",
@@ -70,12 +91,15 @@ function openNotificationData(
       return;
     }
   }
-  if (type === "post_liked" || type === "post_commented") {
-    const groupId = typeof data.groupId === "string" ? data.groupId.trim() : "";
-    const postId = typeof data.postId === "string" ? data.postId.trim() : "";
-    const commentId = typeof data.commentId === "string" ? data.commentId.trim() : "";
-    const replyToCommentId =
-      typeof data.replyToCommentId === "string" ? data.replyToCommentId.trim() : "";
+  if (typeNorm === "post_liked" || typeNorm === "post_commented") {
+    const groupId = payloadString(data, "groupId", "group_id");
+    const postId = payloadString(data, "postId", "post_id");
+    const commentId = payloadString(data, "commentId", "comment_id");
+    const replyToCommentId = payloadString(
+      data,
+      "replyToCommentId",
+      "reply_to_comment_id",
+    );
     if (groupId.length > 0) {
       router.push({
         pathname: "/group/[groupId]",
@@ -98,8 +122,8 @@ function openNotificationData(
     });
     return;
   }
-  if (type === "profile_post") {
-    const postId = typeof data.postId === "string" ? data.postId.trim() : "";
+  if (typeNorm === "profile_post") {
+    const postId = payloadString(data, "postId", "post_id");
     router.push({
       pathname: "/(tabs)/profile",
       params: {
