@@ -17,6 +17,7 @@ import {
 type SessionRow = {
   id: string;
   gameType: string;
+  createdBy: string;
   roundInviteToken: string | null;
   status: string;
   holesCount: number;
@@ -49,10 +50,12 @@ export function GameSessionScreenWeb() {
   const params = useParams();
   const router = useRouter();
   const sessionId = typeof params.sessionId === "string" ? params.sessionId : "";
-  const { getToken, isLoaded, userId } = useAuth();
+  const { getToken, isLoaded } = useAuth();
   const { confirm, showAlert } = useAppAlert();
   const [browserUrl, setBrowserUrl] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [dismissBusy, setDismissBusy] = useState(false);
+  const [viewerIsCreator, setViewerIsCreator] = useState(false);
 
   const [session, setSession] = useState<SessionRow | null>(null);
   const [players, setPlayers] = useState<GamePlayerRow[]>([]);
@@ -99,12 +102,14 @@ export function GameSessionScreenWeb() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = (await res.json()) as {
+        viewerIsCreator?: boolean;
         session?: SessionRow;
         players?: GamePlayerRow[];
         holes?: GameHoleRow[];
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Could not load game.");
+      setViewerIsCreator(Boolean(json.viewerIsCreator));
       setSession(json.session ?? null);
       setPlayers(json.players ?? []);
       setHoles(json.holes ?? []);
@@ -121,14 +126,14 @@ export function GameSessionScreenWeb() {
     void load();
   }, [isLoaded, load]);
 
-  const handleDeleteGame = useCallback(async () => {
+  const handleCancelGameForEveryone = useCallback(async () => {
     if (deleteBusy || !sessionId) return;
     const accepted = await confirm(
-      "This removes the game and all recorded holes for everyone in the group.",
+      "This removes the active game and all recorded holes for the whole group.",
       {
-        title: "Delete game?",
+        title: "Cancel game for everyone?",
         variant: "destructive",
-        confirmLabel: "Delete",
+        confirmLabel: "Cancel for everyone",
       },
     );
     if (!accepted) return;
@@ -136,7 +141,7 @@ export function GameSessionScreenWeb() {
     try {
       const token = await getToken();
       if (!token) {
-        await showAlert("Sign in to delete this game.", { title: "Could not delete" });
+        await showAlert("Sign in to cancel this game.", { title: "Could not cancel" });
         return;
       }
       const res = await fetch(`/api/games/${sessionId}/delete`, {
@@ -145,8 +150,8 @@ export function GameSessionScreenWeb() {
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        await showAlert(json.error ?? "Could not delete game.", {
-          title: "Could not delete",
+        await showAlert(json.error ?? "Could not cancel game.", {
+          title: "Could not cancel",
         });
         return;
       }
@@ -156,6 +161,42 @@ export function GameSessionScreenWeb() {
       setDeleteBusy(false);
     }
   }, [confirm, deleteBusy, getToken, sessionId, router, showAlert]);
+
+  const handleRemoveFromMyGames = useCallback(async () => {
+    if (dismissBusy || !sessionId) return;
+    const accepted = await confirm(
+      "Others still keep this game and their history. You can hide it from your profile from the profile activity menu.",
+      {
+        title: "Remove from your games?",
+        variant: "default",
+        confirmLabel: "Remove",
+      },
+    );
+    if (!accepted) return;
+    setDismissBusy(true);
+    try {
+      const token = await getToken();
+      if (!token) {
+        await showAlert("Sign in to update your games list.", { title: "Could not remove" });
+        return;
+      }
+      const res = await fetch(`/api/users/me/game-sessions/${sessionId}/dismiss`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        await showAlert(json.error ?? "Could not remove from list.", {
+          title: "Could not remove",
+        });
+        return;
+      }
+      router.push("/games");
+      router.refresh();
+    } finally {
+      setDismissBusy(false);
+    }
+  }, [confirm, dismissBusy, getToken, sessionId, router, showAlert]);
 
   if (!sessionId) {
     return <p className="text-sm text-red-600">Missing session.</p>;
@@ -184,8 +225,8 @@ export function GameSessionScreenWeb() {
   const title = def?.title ?? session.gameType;
   const holesWithData = holes.length;
   const sortedPlayers = [...players].sort((a, b) => a.sortOrder - b.sortOrder);
-  const canDeleteGame =
-    Boolean(userId) && sortedPlayers.some((p) => p.userId === userId);
+  const showCancelForEveryone =
+    session.status === "active" && viewerIsCreator;
 
   return (
     <section className="space-y-5 pb-2">
@@ -249,28 +290,50 @@ export function GameSessionScreenWeb() {
         </ul>
       </div>
 
-      {canDeleteGame ? (
-        <div className="border-t border-[#ece8e1] pt-5">
+      <div className="space-y-3 border-t border-[#ece8e1] pt-5">
+        {showCancelForEveryone ? (
+          <div>
+            <button
+              type="button"
+              disabled={deleteBusy}
+              onClick={() => void handleCancelGameForEveryone()}
+              className="w-full rounded-xl border border-red-200 bg-red-50 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+            >
+              {deleteBusy ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <ParfadeSpinner size="sm" variant="muted" aria-label="Canceling" />
+                  Canceling…
+                </span>
+              ) : (
+                "Cancel game for everyone"
+              )}
+            </button>
+            <p className="mt-2 text-xs text-[#6e6e6e]">
+              Stops the active game and removes hole scores for the whole group.
+            </p>
+          </div>
+        ) : null}
+        <div>
           <button
             type="button"
-            disabled={deleteBusy}
-            onClick={() => void handleDeleteGame()}
-            className="w-full rounded-xl border border-red-200 bg-red-50 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+            disabled={dismissBusy}
+            onClick={() => void handleRemoveFromMyGames()}
+            className="w-full rounded-xl border border-[#ece8e1] bg-[#faf8f5] py-3 text-sm font-semibold text-[#1c1c1e] transition hover:bg-[#f3f1ed] disabled:opacity-50"
           >
-            {deleteBusy ? (
+            {dismissBusy ? (
               <span className="inline-flex items-center justify-center gap-2">
-                <ParfadeSpinner size="sm" variant="muted" aria-label="Deleting" />
-                Deleting…
+                <ParfadeSpinner size="sm" variant="muted" aria-label="Removing" />
+                Removing…
               </span>
             ) : (
-              "Delete game"
+              "Remove from my games"
             )}
           </button>
           <p className="mt-2 text-xs text-[#6e6e6e]">
-            Removes this session and all hole scores for everyone in the group.
+            Hides this session from your Games list only. Other players are unchanged.
           </p>
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }

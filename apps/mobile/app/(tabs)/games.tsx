@@ -15,7 +15,13 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useAbly } from "ably/react";
 import { Ionicons } from "@expo/vector-icons";
 import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
-import { deleteGameSession, listMyGameSessions, type GameSessionSummary } from "../../lib/games-api";
+import {
+  deleteGameSession,
+  dismissGameSessionFromMyList,
+  listMyGameSessions,
+  type GameSessionSummary,
+} from "../../lib/games-api";
+import { getCachedMeProfile, subscribeMeProfile } from "../../lib/me-profile-cache";
 import {
   getGameDefinitions,
   getGameDefinition,
@@ -53,6 +59,7 @@ export default function GamesScreen() {
   const { roundInviteToken } = useLocalSearchParams<{ roundInviteToken?: string }>();
   const { getToken } = useAuth();
   const { show: showSnackbar } = useSnackbar();
+  const [meDbUserId, setMeDbUserId] = useState<string | null>(() => getCachedMeProfile()?.id ?? null);
   const [sessions, setSessions] = useState<GameSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,23 +78,37 @@ export default function GamesScreen() {
         const token = await getToken();
         await deleteGameSession(token, sessionId);
         setSessions((prev) => prev.filter((x) => x.id !== sessionId));
-        showSnackbar("Game deleted");
+        showSnackbar("Game canceled for everyone");
       } catch (e) {
-        Alert.alert("Could not delete", e instanceof Error ? e.message : "Could not delete");
+        Alert.alert("Could not cancel", e instanceof Error ? e.message : "Could not cancel");
       }
     },
     [getToken, showSnackbar],
   );
 
-  const confirmDeleteSession = useCallback(
+  const performDismissSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        const token = await getToken();
+        await dismissGameSessionFromMyList(token, sessionId);
+        setSessions((prev) => prev.filter((x) => x.id !== sessionId));
+        showSnackbar("Removed from your games");
+      } catch (e) {
+        Alert.alert("Could not remove", e instanceof Error ? e.message : "Could not remove");
+      }
+    },
+    [getToken, showSnackbar],
+  );
+
+  const confirmCancelForEveryone = useCallback(
     (s: GameSessionSummary) => {
       Alert.alert(
-        "Delete game?",
-        "This removes the game and all recorded holes for everyone in the group.",
+        "Cancel game for everyone?",
+        "This removes the active game and all recorded holes for the whole group.",
         [
           { text: "Cancel", style: "cancel" },
           {
-            text: "Delete",
+            text: "Cancel for everyone",
             style: "destructive",
             onPress: () => {
               setTimeout(() => void performDeleteSession(s.id), 0);
@@ -97,6 +118,26 @@ export default function GamesScreen() {
       );
     },
     [performDeleteSession],
+  );
+
+  const confirmRemoveFromMyGames = useCallback(
+    (s: GameSessionSummary) => {
+      Alert.alert(
+        "Remove from your games?",
+        "Others still keep this game and their history. You can hide it from your profile separately from the activity menu.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Remove",
+            style: "default",
+            onPress: () => {
+              setTimeout(() => void performDismissSession(s.id), 0);
+            },
+          },
+        ],
+      );
+    },
+    [performDismissSession],
   );
 
   const load = useCallback(async () => {
@@ -120,6 +161,8 @@ export default function GamesScreen() {
       return undefined;
     }, [load]),
   );
+
+  useEffect(() => subscribeMeProfile((p) => setMeDbUserId(p.id)), []);
 
   useEffect(() => subscribeGamesListRefresh(() => void load()), [load]);
 
@@ -227,6 +270,10 @@ export default function GamesScreen() {
           const def = getGameDefinition(s.gameType);
           const swipeEnabled = Platform.OS !== "web";
           const isLive = s.status === "active";
+          const canCancelForEveryone =
+            s.status === "active" && meDbUserId != null && s.createdBy === meDbUserId;
+          const onRightSwipe = () =>
+            canCancelForEveryone ? confirmCancelForEveryone(s) : confirmRemoveFromMyGames(s);
           const openSession = () => {
             if (s.status === "completed") {
               const invite = s.roundInviteToken?.trim();
@@ -256,6 +303,10 @@ export default function GamesScreen() {
               compact
               hostLeftLabel="Settings"
               hostLeftIcon="options-outline"
+              hostRightLabel={canCancelForEveryone ? "Cancel" : "Remove"}
+              hostRightIcon={canCancelForEveryone ? "trash-outline" : "eye-off-outline"}
+              hostRightCircleColor={canCancelForEveryone ? colors.danger : "#ddd8cf"}
+              hostRightIconColor={canCancelForEveryone ? "#fff" : colors.text}
               onSwipeActiveChange={onGameRowSwipeActiveChange}
               onHostEdit={() => {
                 router.push({
@@ -263,7 +314,7 @@ export default function GamesScreen() {
                   params: { sessionId: s.id },
                 });
               }}
-              onHostDelete={() => confirmDeleteSession(s)}
+              onHostDelete={onRightSwipe}
             >
               <Pressable
                 style={({ pressed }) => [

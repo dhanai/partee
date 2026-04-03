@@ -34,6 +34,11 @@ type Props = {
   children: ReactNode;
   hostLeftLabel?: string;
   hostLeftIcon?: ComponentProps<typeof Ionicons>["name"];
+  /** Right swipe when variant is host (default: Delete + trash + danger). */
+  hostRightLabel?: string;
+  hostRightIcon?: ComponentProps<typeof Ionicons>["name"];
+  hostRightCircleColor?: string;
+  hostRightIconColor?: string;
   compact?: boolean;
   onHostDelete?: () => void;
   onHostEdit?: () => void;
@@ -148,6 +153,10 @@ function RightActions(
     variant: Variant;
     compact: boolean;
     onPress: () => void;
+    hostRightLabel?: string;
+    hostRightIcon?: ComponentProps<typeof Ionicons>["name"];
+    hostRightCircleColor?: string;
+    hostRightIconColor?: string;
   },
 ) {
   const revealW = props.compact ? COMPACT_REVEAL_W : REVEAL_W;
@@ -163,10 +172,16 @@ function RightActions(
     ),
   }));
 
-  const rightCircleColor = props.variant === "host" ? colors.danger : "#ddd8cf";
-  const rightIcon = props.variant === "host" ? "trash-outline" : "close-outline";
-  const rightIconColor = props.variant === "host" ? "#fff" : colors.text;
-  const rightLabel = props.variant === "host" ? "Delete" : "Decline";
+  const rightCircleColor =
+    props.variant === "host"
+      ? (props.hostRightCircleColor ?? colors.danger)
+      : "#ddd8cf";
+  const rightIcon =
+    props.variant === "host" ? (props.hostRightIcon ?? "trash-outline") : "close-outline";
+  const rightIconColor =
+    props.variant === "host" ? (props.hostRightIconColor ?? "#fff") : colors.text;
+  const rightLabel =
+    props.variant === "host" ? (props.hostRightLabel ?? "Delete") : "Decline";
 
   return (
     <Reanimated.View style={[styles.actionContainer, { width: revealW }]}>
@@ -192,6 +207,10 @@ export function SwipeableMineRoundRow({
   children,
   hostLeftLabel,
   hostLeftIcon,
+  hostRightLabel,
+  hostRightIcon,
+  hostRightCircleColor,
+  hostRightIconColor,
   compact = false,
   onHostDelete,
   onHostEdit,
@@ -263,6 +282,10 @@ export function SwipeableMineRoundRow({
             variant,
             compact,
             onPress: handleRightPress,
+            hostRightLabel,
+            hostRightIcon,
+            hostRightCircleColor,
+            hostRightIconColor,
           })
         }
         containerStyle={styles.foreground}

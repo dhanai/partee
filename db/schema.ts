@@ -377,6 +377,28 @@ export const profileGameSessionSettings = pgTable(
   }),
 );
 
+/** User hid a session from their own Games tab; session row remains for everyone else. */
+export const gameSessionUserListDismissals = pgTable(
+  "game_session_user_list_dismissals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => gameSessions.id, { onDelete: "cascade" }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userSessionUnique: uniqueIndex("game_session_user_list_dismissals_user_session_uq").on(
+      table.userId,
+      table.sessionId,
+    ),
+    userIdx: index("game_session_user_list_dismissals_user_idx").on(table.userId),
+  }),
+);
+
 /** Latest row per (session, hole_number) — upsert with version for optimistic locking. */
 export const gameHoleEvents = pgTable(
   "game_hole_events",
@@ -843,6 +865,7 @@ export type InAppNotification = typeof inAppNotifications.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
 export type GameSessionPlayer = typeof gameSessionPlayers.$inferSelect;
 export type ProfileGameSessionSetting = typeof profileGameSessionSettings.$inferSelect;
+export type GameSessionUserListDismissal = typeof gameSessionUserListDismissals.$inferSelect;
 export type GameHoleEvent = typeof gameHoleEvents.$inferSelect;
 export type HousePromoConfigRow = typeof housePromoConfig.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;

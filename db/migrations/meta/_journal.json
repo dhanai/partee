@@ -267,6 +267,90 @@
       "when": 1776800000000,
       "tag": "0037_round_tournament_title_details",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1776900000000,
+      "tag": "0038_profile_wall_posts",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1776910000000,
+      "tag": "0039_post_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1776920000000,
+      "tag": "0040_post_commented_notification",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1776930000000,
+      "tag": "0041_profile_activity_scale_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1776940000000,
+      "tag": "0042_profile_activity_cleanup_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1776950000000,
+      "tag": "0043_group_member_push_mute",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1776960000000,
+      "tag": "0044_post_comment_threads_and_likes",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1776970000000,
+      "tag": "0045_post_multi_image",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1776980000000,
+      "tag": "0046_round_invite_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1776990000000,
+      "tag": "0047_game_session_players_user_id_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1777000000000,
+      "tag": "0048_profile_game_session_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1777010000000,
+      "tag": "0049_game_session_user_list_dismissals",
+      "breakpoints": true
     }
   ]
 }

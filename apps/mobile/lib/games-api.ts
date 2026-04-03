@@ -82,6 +82,14 @@ export async function deleteGameSession(
   return apiPost(`/api/games/${sessionId}/delete`, {}, token);
 }
 
+/** Hides the session from the viewer's Games tab only; other players keep full history. */
+export async function dismissGameSessionFromMyList(
+  token: string | null,
+  sessionId: string,
+): Promise<{ ok: true }> {
+  return apiPost(`/api/users/me/game-sessions/${encodeURIComponent(sessionId)}/dismiss`, {}, token);
+}
+
 export async function updateGameSessionStatus(
   token: string | null,
   sessionId: string,

@@ -37,6 +37,7 @@ import { DotsHoleEditor, type DotsPayload } from "../../../components/games/dots
 import { TargetsHoleEditor, type TargetsPayload } from "../../../components/games/targets-hole-editor";
 import {
   deleteGameSession,
+  dismissGameSessionFromMyList,
   getGameSession,
   patchGameSession,
   putGameHole,
@@ -101,6 +102,7 @@ export default function GameSessionScreen() {
   const { getToken } = useAuth();
   const gameTypesVersion = useGameTypesVersion();
   const [session, setSession] = useState<GameSessionSummary | null>(null);
+  const [viewerIsCreator, setViewerIsCreator] = useState(false);
   const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const gameTypeSlug = session?.gameType;
   const def = useMemo(
@@ -127,6 +129,7 @@ export default function GameSessionScreen() {
   const [settingsValues, setSettingsValues] = useState<Record<string, unknown>>({});
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [dismissBusy, setDismissBusy] = useState(false);
   const [completing, setCompleting] = useState(false);
   /** True after interstitial closes until URL has `recap=1` (deep links / sync). */
   const [pendingRecapAfterComplete, setPendingRecapAfterComplete] = useState(false);
@@ -153,6 +156,7 @@ export default function GameSessionScreen() {
     setHouseGameEndPromo(null);
     housePromoResolveRef.current = null;
     suppressLoadErrorsRef.current = false;
+    setViewerIsCreator(false);
   }, [sessionId]);
 
   useEffect(() => {
@@ -170,6 +174,7 @@ export default function GameSessionScreen() {
       const token = await getToken();
       const data = await getGameSession(token, sessionId);
       setSession(data.session ?? null);
+      setViewerIsCreator(data.viewerIsCreator);
       if (SHOW_GAME_RECAP_SHARE_TO_PROFILE) {
         setViewerUserId(data.viewerUserId ?? null);
       }
@@ -426,18 +431,58 @@ export default function GameSessionScreen() {
     }
   }
 
-  function confirmDeleteGame() {
+  function confirmCancelGameForEveryone() {
     Alert.alert(
-      "Delete game?",
-      "This removes the game and all recorded holes for everyone in the group.",
+      "Cancel game for everyone?",
+      "This removes the active game and all recorded holes for the whole group.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete",
+          text: "Cancel for everyone",
           style: "destructive",
           onPress: () => {
-            // Defer past alert dismissal — otherwise iOS sometimes never runs the async work.
             setTimeout(() => void performDeleteGame(), 0);
+          },
+        },
+      ],
+    );
+  }
+
+  async function performDismissFromMyGames() {
+    if (!sessionId || dismissBusy) return;
+    setDismissBusy(true);
+    try {
+      const token = await getToken();
+      if (!token) {
+        Alert.alert("Could not remove", "Sign in to update your games list.");
+        return;
+      }
+      await dismissGameSessionFromMyList(token, sessionId);
+      emitGamesListShouldRefresh();
+      emitRoundListsShouldRefresh();
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/games");
+      }
+    } catch (e) {
+      Alert.alert("Could not remove", e instanceof Error ? e.message : "Could not remove");
+    } finally {
+      setDismissBusy(false);
+    }
+  }
+
+  function confirmRemoveFromMyGames() {
+    Alert.alert(
+      "Remove from your games?",
+      "Others still keep this game and their history. Hide it from your profile from the profile activity menu if you want.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "default",
+          onPress: () => {
+            setTimeout(() => void performDismissFromMyGames(), 0);
           },
         },
       ],
@@ -795,13 +840,25 @@ export default function GameSessionScreen() {
               icon: "help-circle-outline" as const,
               onPress: () => setHowToPlayOpen(true),
             },
+            ...(session.status === "active" && viewerIsCreator
+              ? [
+                  {
+                    key: "cancel-everyone",
+                    label: "Cancel game for everyone",
+                    icon: "trash-outline" as const,
+                    destructive: true as const,
+                    onPress: () => {
+                      if (!deleteBusy) confirmCancelGameForEveryone();
+                    },
+                  },
+                ]
+              : []),
             {
-              key: "delete",
-              label: "Delete game",
-              icon: "trash-outline" as const,
-              destructive: true,
+              key: "remove-mine",
+              label: "Remove from my games",
+              icon: "eye-off-outline" as const,
               onPress: () => {
-                if (!deleteBusy) confirmDeleteGame();
+                if (!dismissBusy) confirmRemoveFromMyGames();
               },
             },
           ]}

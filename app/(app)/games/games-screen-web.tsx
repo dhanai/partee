@@ -103,12 +103,19 @@ export function GamesScreenWeb() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [meDbUserId, setMeDbUserId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<{ sessionId: string; action: "remove" | "cancel" } | null>(
+    null,
+  );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = Boolean(opts?.silent);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
-      const res = await fetch("/api/games/mine");
+      const res = await fetch("/api/games/mine", { credentials: "include" });
       const json = (await res.json()) as {
         sessions?: SessionRow[];
         error?: string;
@@ -116,15 +123,89 @@ export function GamesScreenWeb() {
       if (!res.ok) throw new Error(json.error ?? "Could not load games.");
       setSessions(json.sessions ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load games.");
+      const msg = e instanceof Error ? e.message : "Could not load games.";
+      if (!silent) setError(msg);
+      else window.alert(msg);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/users/me", { credentials: "include" });
+        const json = (await res.json()) as { user?: { id?: string } };
+        if (!cancelled && res.ok && json.user?.id) setMeDbUserId(json.user.id);
+      } catch {
+        if (!cancelled) setMeDbUserId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleRemoveFromMyGames = useCallback(
+    async (sessionId: string) => {
+      if (
+        !window.confirm(
+          "Remove from your Games list only? Other players keep this game and their history.",
+        )
+      ) {
+        return;
+      }
+      setBusy({ sessionId, action: "remove" });
+      try {
+        const res = await fetch(`/api/users/me/game-sessions/${sessionId}/dismiss`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          window.alert(json.error ?? "Could not remove from list.");
+          return;
+        }
+        await load({ silent: true });
+      } finally {
+        setBusy(null);
+      }
+    },
+    [load],
+  );
+
+  const handleCancelForEveryone = useCallback(
+    async (sessionId: string) => {
+      if (
+        !window.confirm(
+          "Cancel this active game for the whole group? Hole scores will be removed for everyone.",
+        )
+      ) {
+        return;
+      }
+      setBusy({ sessionId, action: "cancel" });
+      try {
+        const res = await fetch(`/api/games/${sessionId}/delete`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          window.alert(json.error ?? "Could not cancel game.");
+          return;
+        }
+        await load({ silent: true });
+      } finally {
+        setBusy(null);
+      }
+    },
+    [load],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -202,7 +283,7 @@ export function GamesScreenWeb() {
               const def = gameTypes ? findGameTypeBySlug(gameTypes, s.gameType) : undefined;
               const meta = `${formatSessionListDate(s.startedAt || s.createdAt)} · ${s.holesCount} holes · ${statusLabel(s.status)}`;
               return (
-                <li key={s.id}>
+                <li key={s.id} className="space-y-1.5">
                   <Link
                     href={`/games/session/${s.id}` as Route}
                     className="flex w-full items-center gap-3 rounded-xl border border-[#ece8e1] bg-white px-3.5 py-3 text-left shadow-sm transition hover:bg-[#faf8f5] active:opacity-90"
@@ -217,8 +298,32 @@ export function GamesScreenWeb() {
                       &rsaquo;
                     </span>
                   </Link>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-1 text-xs">
+                    <button
+                      type="button"
+                      disabled={busy?.sessionId === s.id}
+                      onClick={() => void handleRemoveFromMyGames(s.id)}
+                      className="font-semibold text-[#1a3c2a] underline-offset-2 hover:underline disabled:opacity-50"
+                    >
+                      {busy?.sessionId === s.id && busy.action === "remove"
+                        ? "Removing…"
+                        : "Remove from my games"}
+                    </button>
+                    {meDbUserId && s.createdBy === meDbUserId && s.status === "active" ? (
+                      <button
+                        type="button"
+                        disabled={busy?.sessionId === s.id}
+                        onClick={() => void handleCancelForEveryone(s.id)}
+                        className="font-semibold text-red-700 underline-offset-2 hover:underline disabled:opacity-50"
+                      >
+                        {busy?.sessionId === s.id && busy.action === "cancel"
+                          ? "Canceling…"
+                          : "Cancel for everyone"}
+                      </button>
+                    ) : null}
+                  </div>
                   {s.roundInviteToken ? (
-                    <p className="mt-1 pl-1 text-xs text-[#6e6e6e]">
+                    <p className="pl-1 text-xs text-[#6e6e6e]">
                       Round:{" "}
                       <Link
                         href={`/round/${s.roundInviteToken}`}
