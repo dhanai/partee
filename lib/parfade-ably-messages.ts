@@ -1,3 +1,18 @@
+/** Shape of `MappedMessage` as serialized on Parfade inbox (avoids importing message helpers into this module). */
+export type ParfadeMappedMessageV1 = {
+  id: string;
+  body: string | null;
+  attachments?: unknown;
+  createdAt: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  isMine: boolean;
+  parentId?: string | null;
+  parentPreview?: { body: string; senderName: string } | null;
+  user: { id: string; name: string; avatar: string | null };
+  reactions: Record<string, { count: number; userIds: string[] }>;
+};
+
 /** Payloads published on Parfade Ably channels (event name `parfade`). */
 export type ParfadeRealtimeMessageV1 =
   | { v: 1; type: "discover-refresh"; reason?: string }
@@ -67,4 +82,20 @@ export type ParfadeRealtimeMessageV1 =
       type: "group-activity-updated";
       groupId: string;
       reason: string;
+    }
+  /** Full message row after edit or soft-delete; clients should recompute `isMine` from `message.user.id`. */
+  | {
+      v: 1;
+      type: "conversation-message-mutation";
+      conversationId: string;
+      mutation: "edit" | "delete";
+      message: ParfadeMappedMessageV1;
+    }
+  | {
+      v: 1;
+      type: "conversation-read-receipt-updated";
+      conversationId: string;
+      readerUserId: string;
+      readerAvatar?: string;
+      lastReadMessageId: string;
     };

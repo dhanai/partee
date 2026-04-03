@@ -3,7 +3,11 @@ import { z } from "zod";
 import { db } from "@/db";
 import { conversations, messages, messageReactions, rounds, users } from "@/db/schema";
 import { type MessageAttachment, getImageUrls } from "@/lib/attachment-types";
-import { publishChatRoomMessage, publishConversationInboxToasts } from "@/lib/conversation-ably";
+import {
+  publishChatRoomMessage,
+  publishConversationInboxToasts,
+  publishConversationMessageMutation,
+} from "@/lib/conversation-ably";
 import { notifyConversationMessage } from "@/lib/notify-user";
 import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
 
@@ -31,11 +35,17 @@ export const reactionPostSchema = z.object({
   emoji: z.enum(VALID_EMOJIS),
 });
 
+export const messagePatchSchema = z.object({
+  body: z.string().trim().min(1, "Message cannot be empty.").max(MAX_BODY, `Message must be ${MAX_BODY} characters or fewer.`),
+});
+
 export type MappedMessage = {
   id: string;
   body: string | null;
   attachments?: MessageAttachment[] | null;
   createdAt: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
   isMine: boolean;
   parentId?: string | null;
   parentPreview?: { body: string; senderName: string } | null;
@@ -43,10 +53,15 @@ export type MappedMessage = {
   reactions: Record<string, { count: number; userIds: string[] }>;
 };
 
+/** Max age (ms) after which a message can no longer be edited. */
+export const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+
 type MessageRow = {
   id: string;
   body: string | null;
   createdAt: Date;
+  editedAt: Date | null;
+  deletedAt: Date | null;
   userId: string | null;
   userName: string | null;
   userAvatar: string | null;
@@ -60,6 +75,8 @@ function mapRow(row: MessageRow, viewerId: string): MappedMessage {
     body: row.body,
     attachments: (row.attachments as MessageAttachment[] | null) ?? null,
     createdAt: row.createdAt.toISOString(),
+    editedAt: row.editedAt ? row.editedAt.toISOString() : null,
+    deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     isMine: row.userId != null && row.userId === viewerId,
     parentId: row.parentId ?? null,
     user: {
@@ -103,11 +120,24 @@ async function fetchReactions(messageIds: string[]) {
 async function fetchParentPreviews(parentIds: string[]) {
   if (parentIds.length === 0) return new Map<string, { body: string; userName: string }>();
   const rows = await db
-    .select({ id: messages.id, body: messages.body, userName: users.name })
+    .select({
+      id: messages.id,
+      body: messages.body,
+      userName: users.name,
+      deletedAt: messages.deletedAt,
+    })
     .from(messages)
     .leftJoin(users, eq(users.id, messages.userId))
     .where(sql`${messages.id} IN (${sql.join(parentIds.map((id) => sql`${id}`), sql`, `)})`);
-  return new Map(rows.map((p) => [p.id, { body: p.body ?? "", userName: p.userName ?? "Deleted User" }]));
+  return new Map(
+    rows.map((p) => [
+      p.id,
+      {
+        body: p.deletedAt ? "(Original message removed)" : p.body ?? "",
+        userName: p.userName ?? "Deleted User",
+      },
+    ]),
+  );
 }
 
 function truncatePreview(body: string, max = 80): string {
@@ -174,6 +204,8 @@ export async function getConversationMessages(
         parentId: messages.parentId,
         attachments: messages.attachments,
         createdAt: messages.createdAt,
+        editedAt: messages.editedAt,
+        deletedAt: messages.deletedAt,
         userId: messages.userId,
         userName: users.name,
         userAvatar: users.avatar,
@@ -203,6 +235,8 @@ export async function getConversationMessages(
       parentId: messages.parentId,
       attachments: messages.attachments,
       createdAt: messages.createdAt,
+      editedAt: messages.editedAt,
+      deletedAt: messages.deletedAt,
       userId: messages.userId,
       userName: users.name,
       userAvatar: users.avatar,
@@ -266,14 +300,20 @@ export async function sendConversationMessage(input: {
   let parentPreview: MappedMessage["parentPreview"] = null;
   if (inserted.parentId) {
     const [parent] = await db
-      .select({ body: messages.body, userName: users.name })
+      .select({
+        body: messages.body,
+        userName: users.name,
+        deletedAt: messages.deletedAt,
+      })
       .from(messages)
       .leftJoin(users, eq(users.id, messages.userId))
       .where(eq(messages.id, inserted.parentId))
       .limit(1);
     if (parent) {
       parentPreview = {
-        body: truncatePreview(parent.body ?? ""),
+        body: parent.deletedAt
+          ? "(Original message removed)"
+          : truncatePreview(parent.body ?? ""),
         senderName: parent.userName ?? "Deleted User",
       };
     }
@@ -284,6 +324,8 @@ export async function sendConversationMessage(input: {
     body: inserted.body,
     attachments: (inserted.attachments as MessageAttachment[] | null) ?? null,
     createdAt: inserted.createdAt.toISOString(),
+    editedAt: null,
+    deletedAt: null,
     isMine: true,
     parentId: inserted.parentId,
     parentPreview,
@@ -335,4 +377,119 @@ export async function sendConversationMessage(input: {
   }
 
   return mappedMessage;
+}
+
+async function loadMappedMessageWithExtras(
+  messageId: string,
+  conversationId: string,
+  viewerId: string,
+): Promise<MappedMessage | null> {
+  const [row] = await db
+    .select({
+      id: messages.id,
+      body: messages.body,
+      parentId: messages.parentId,
+      attachments: messages.attachments,
+      createdAt: messages.createdAt,
+      editedAt: messages.editedAt,
+      deletedAt: messages.deletedAt,
+      userId: messages.userId,
+      userName: users.name,
+      userAvatar: users.avatar,
+    })
+    .from(messages)
+    .leftJoin(users, eq(users.id, messages.userId))
+    .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
+    .limit(1);
+
+  if (!row) return null;
+
+  const mapped = mapRow(row, viewerId);
+  const parentIds = mapped.parentId ? [mapped.parentId] : [];
+  const [reactionsMap, parentMap] = await Promise.all([
+    fetchReactions([messageId]),
+    parentIds.length ? fetchParentPreviews(parentIds) : Promise.resolve(new Map()),
+  ]);
+  return attachExtras([mapped], reactionsMap, parentMap)[0] ?? null;
+}
+
+export async function editConversationMessage(input: {
+  conversationId: string;
+  messageId: string;
+  viewerId: string;
+  body: string;
+}): Promise<MappedMessage> {
+  const [row] = await db
+    .select({
+      id: messages.id,
+      userId: messages.userId,
+      createdAt: messages.createdAt,
+      deletedAt: messages.deletedAt,
+    })
+    .from(messages)
+    .where(and(eq(messages.id, input.messageId), eq(messages.conversationId, input.conversationId)))
+    .limit(1);
+
+  if (!row) throw new Error("NOT_FOUND");
+  if (row.userId !== input.viewerId) throw new Error("FORBIDDEN");
+  if (row.deletedAt) throw new Error("DELETED");
+
+  const age = Date.now() - row.createdAt.getTime();
+  if (age > MESSAGE_EDIT_WINDOW_MS) throw new Error("EDIT_EXPIRED");
+
+  await db
+    .update(messages)
+    .set({ body: input.body, editedAt: new Date() })
+    .where(eq(messages.id, input.messageId));
+
+  const full = await loadMappedMessageWithExtras(input.messageId, input.conversationId, input.viewerId);
+  if (!full) throw new Error("NOT_FOUND");
+
+  await publishConversationMessageMutation({
+    conversationId: input.conversationId,
+    mutation: "edit",
+    message: full,
+  }).catch((err) => console.error("[editConversationMessage] mutation pub", err));
+
+  return full;
+}
+
+export async function unsendConversationMessage(input: {
+  conversationId: string;
+  messageId: string;
+  viewerId: string;
+}): Promise<MappedMessage> {
+  const [row] = await db
+    .select({
+      id: messages.id,
+      userId: messages.userId,
+      deletedAt: messages.deletedAt,
+    })
+    .from(messages)
+    .where(and(eq(messages.id, input.messageId), eq(messages.conversationId, input.conversationId)))
+    .limit(1);
+
+  if (!row) throw new Error("NOT_FOUND");
+  if (row.userId !== input.viewerId) throw new Error("FORBIDDEN");
+  if (row.deletedAt) throw new Error("ALREADY_DELETED");
+
+  await db
+    .update(messages)
+    .set({
+      body: null,
+      attachments: null,
+      deletedAt: new Date(),
+    })
+    .where(eq(messages.id, input.messageId));
+
+  const full = await loadMappedMessageWithExtras(input.messageId, input.conversationId, input.viewerId);
+  if (!full) throw new Error("NOT_FOUND");
+
+  await publishConversationMessageMutation({
+    conversationId: input.conversationId,
+    mutation: "delete",
+    message: full,
+  }).catch((err) => console.error("[unsendConversationMessage] mutation pub", err));
+
+  return full;
 }

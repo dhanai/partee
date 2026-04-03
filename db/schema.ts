@@ -481,6 +481,8 @@ export const messages = pgTable(
     parentId: uuid("parent_id"),
     attachments: jsonb("attachments").$type<{ type: string; url: string }[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => ({
     convCreatedIdx: index("messages_conversation_id_created_at_idx").on(
@@ -527,6 +529,9 @@ export const conversationReadReceipts = pgTable(
     lastReadAt: timestamp("last_read_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    lastReadMessageId: uuid("last_read_message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => ({
     userConvUnique: uniqueIndex("conversation_read_receipts_user_conv_unique").on(

@@ -351,6 +351,13 @@
       "when": 1777010000000,
       "tag": "0049_game_session_user_list_dismissals",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1777020000000,
+      "tag": "0050_conversation_message_edit_read_receipts",
+      "breakpoints": true
     }
   ]
 }

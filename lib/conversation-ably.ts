@@ -16,6 +16,9 @@ function getChatRest(): Ably.Rest | null {
 }
 
 function chatTextPreview(message: MappedMessage): string {
+  if (message.deletedAt) {
+    return " ";
+  }
   if (message.body) {
     return message.body.length > 100 ? message.body.slice(0, 97) + "…" : message.body;
   }
@@ -44,6 +47,8 @@ export async function publishChatRoomMessage(
     reactions: message.reactions,
     createdAt: message.createdAt,
   };
+  if (message.editedAt) metadata.editedAt = message.editedAt;
+  if (message.deletedAt) metadata.deletedAt = message.deletedAt;
   if (message.attachments) metadata.attachments = message.attachments;
   if (message.parentId) metadata.parentId = message.parentId;
   if (message.parentPreview) metadata.parentPreview = message.parentPreview;
@@ -120,6 +125,59 @@ export async function publishConversationInboxToasts(input: {
         senderName: input.senderName,
         senderAvatar: input.senderAvatar ?? undefined,
         bodyPreview,
+      },
+    })),
+  );
+}
+
+/** Fan out message edit/unsend to every participant's inbox (including author, for multi-device sync). */
+export async function publishConversationMessageMutation(input: {
+  conversationId: string;
+  mutation: "edit" | "delete";
+  message: MappedMessage;
+}): Promise<void> {
+  const participants = await db
+    .select({ userId: conversationParticipants.userId })
+    .from(conversationParticipants)
+    .where(eq(conversationParticipants.conversationId, input.conversationId));
+
+  await batchPublishParfadeMessages(
+    participants.map((p) => ({
+      channel: parfadeUserInboxChannel(p.userId),
+      payload: {
+        v: 1 as const,
+        type: "conversation-message-mutation" as const,
+        conversationId: input.conversationId,
+        mutation: input.mutation,
+        message: input.message,
+      },
+    })),
+  );
+}
+
+/** Notify other participants that someone advanced their read pointer (for Messenger-style receipts). */
+export async function publishReadReceiptUpdate(input: {
+  conversationId: string;
+  readerUserId: string;
+  readerAvatar: string | null;
+  lastReadMessageId: string;
+}): Promise<void> {
+  const participants = await db
+    .select({ userId: conversationParticipants.userId })
+    .from(conversationParticipants)
+    .where(eq(conversationParticipants.conversationId, input.conversationId));
+
+  const others = participants.filter((p) => p.userId !== input.readerUserId);
+  await batchPublishParfadeMessages(
+    others.map((p) => ({
+      channel: parfadeUserInboxChannel(p.userId),
+      payload: {
+        v: 1 as const,
+        type: "conversation-read-receipt-updated" as const,
+        conversationId: input.conversationId,
+        readerUserId: input.readerUserId,
+        readerAvatar: input.readerAvatar ?? undefined,
+        lastReadMessageId: input.lastReadMessageId,
       },
     })),
   );

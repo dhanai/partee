@@ -7,6 +7,7 @@ import {
   conversationReadReceipts,
   courses,
   groups,
+  messages,
   rounds,
   users,
 } from "@/db/schema";
@@ -65,6 +66,38 @@ export async function GET(
     const otherParticipants = participantRows.filter(
       (p) => p.userId !== viewer.id,
     );
+
+    const receiptRows = await db
+      .select({
+        userId: conversationReadReceipts.userId,
+        lastReadMessageId: conversationReadReceipts.lastReadMessageId,
+        lastReadMessageCreatedAt: messages.createdAt,
+      })
+      .from(conversationReadReceipts)
+      .leftJoin(messages, eq(messages.id, conversationReadReceipts.lastReadMessageId))
+      .where(eq(conversationReadReceipts.conversationId, conversationId));
+
+    const receiptByUser = new Map(
+      receiptRows.map((r) => [
+        r.userId,
+        {
+          lastReadMessageId: r.lastReadMessageId,
+          lastReadMessageCreatedAt: r.lastReadMessageCreatedAt
+            ? r.lastReadMessageCreatedAt.toISOString()
+            : null,
+        },
+      ]),
+    );
+
+    const participantReadReceipts = otherParticipants.map((p) => {
+      const r = receiptByUser.get(p.userId);
+      return {
+        userId: p.userId,
+        avatar: p.avatar,
+        lastReadMessageId: r?.lastReadMessageId ?? null,
+        lastReadMessageCreatedAt: r?.lastReadMessageCreatedAt ?? null,
+      };
+    });
 
     let title: string;
     let imageUrl: string | null = null;
@@ -173,6 +206,7 @@ export async function GET(
         name: p.name,
         avatar: p.avatar,
       })),
+      participantReadReceipts,
       roundDetails,
     });
   } catch (error) {
