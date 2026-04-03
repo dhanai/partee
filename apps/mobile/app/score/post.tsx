@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
+import { ensureMediaLibraryPermissionForPicker } from "../../lib/media-library-permission";
 import { colors } from "../../lib/theme";
 
 export default function PostScoreScreen() {
@@ -18,11 +19,11 @@ export default function PostScoreScreen() {
   const [scorecardUri, setScorecardUri] = useState<string | null>(null);
 
   async function pickScorecard() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission required", "Photo access is needed to upload a scorecard.");
-      return;
-    }
+    const ok = await ensureMediaLibraryPermissionForPicker({
+      title: "Permission required",
+      message: "Photo library access is needed to upload a scorecard.",
+    });
+    if (!ok) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.85,

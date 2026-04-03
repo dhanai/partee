@@ -13,6 +13,7 @@ import { ParfadeAppRealtimeGate } from "../components/parfade-app-realtime";
 import { AblyChatProviders } from "../lib/ably-chat-context";
 import { InAppToastProvider } from "../lib/in-app-toast-context";
 import { ChatUnreadProvider } from "../lib/chat-unread-context";
+import { GameSessionActiveProvider } from "../lib/game-session-active-context";
 import { NotificationBadgeProvider } from "../lib/notification-badge-context";
 import { SnackbarProvider } from "../lib/snackbar-context";
 import { NotificationDeepLinkEffects } from "../lib/notification-deep-link";
@@ -149,6 +150,7 @@ export default function RootLayout() {
       <ApiAuthTokenBridge />
       <SessionHealthCheck />
       <NotificationBadgeProvider>
+        <GameSessionActiveProvider>
         <ChatUnreadProvider>
         <InAppToastProvider>
           <AblyChatProviders>
@@ -407,6 +409,7 @@ export default function RootLayout() {
           </AblyChatProviders>
         </InAppToastProvider>
         </ChatUnreadProvider>
+        </GameSessionActiveProvider>
       </NotificationBadgeProvider>
     </ClerkProvider>
   );

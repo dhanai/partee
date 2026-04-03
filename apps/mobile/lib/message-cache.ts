@@ -10,6 +10,8 @@ export type CachedMessage = {
   body: string | null;
   attachments?: MessageAttachment[] | null;
   createdAt: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
   isMine: boolean;
   parentId?: string | null;
   parentPreview?: { body: string; senderName: string } | null;

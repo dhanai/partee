@@ -8,7 +8,9 @@ import { useChatUnread } from "../lib/chat-unread-context";
 import { useInAppToast } from "../lib/in-app-toast-context";
 import { emitChatListsShouldRefresh } from "../lib/chat-lists-refresh";
 import { emitNotificationsListsShouldRefresh } from "../lib/notifications-list-refresh";
+import { emitMessageMutation } from "../lib/message-mutation-events";
 import { emitReactionUpdate } from "../lib/reaction-events";
+import { emitReadReceiptUpdate } from "../lib/read-receipt-events";
 import { emitRoundListsShouldRefresh } from "../lib/round-lists-refresh";
 import { useNotificationBadge } from "../lib/notification-badge-context";
 
@@ -82,6 +84,22 @@ export function ParfadeAppRealtime() {
           action: parsed.action,
         });
         emitChatListsShouldRefresh();
+      }
+      if (parsed.type === "conversation-message-mutation") {
+        emitMessageMutation({
+          conversationId: parsed.conversationId,
+          mutation: parsed.mutation,
+          message: parsed.message,
+        });
+        emitChatListsShouldRefresh();
+      }
+      if (parsed.type === "conversation-read-receipt-updated") {
+        emitReadReceiptUpdate({
+          conversationId: parsed.conversationId,
+          readerUserId: parsed.readerUserId,
+          readerAvatar: parsed.readerAvatar ?? null,
+          lastReadMessageId: parsed.lastReadMessageId,
+        });
       }
       if (parsed.type === "round-invite-toast") {
         emitRoundListsShouldRefresh();

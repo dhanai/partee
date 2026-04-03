@@ -11,6 +11,8 @@ type MessageMetadataPayload = {
   user?: { id: string; name: string; avatar: string | null };
   reactions?: Record<string, { count: number; userIds: string[] }>;
   createdAt?: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
 };
 
 export function ablyChatMessageToCached(
@@ -25,6 +27,8 @@ export function ablyChatMessageToCached(
     body: meta.body !== undefined ? meta.body : msg.text || null,
     attachments: meta.attachments ?? null,
     createdAt: meta.createdAt ?? msg.timestamp.toISOString(),
+    editedAt: meta.editedAt !== undefined ? meta.editedAt : undefined,
+    deletedAt: meta.deletedAt !== undefined ? meta.deletedAt : undefined,
     isMine: viewerId != null && userId === viewerId,
     parentId: meta.parentId ?? null,
     parentPreview: meta.parentPreview ?? null,

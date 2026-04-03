@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import { ensureMediaLibraryPermissionForPicker } from "../lib/media-library-permission";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -125,8 +126,11 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
 
   const handlePickImage = useCallback(async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") return;
+    const ok = await ensureMediaLibraryPermissionForPicker({
+      title: "Permission required",
+      message: "Photo library access is needed to send images in chat.",
+    });
+    if (!ok) return;
     const remaining = MAX_STAGED - stagedRef.current.length;
     if (remaining <= 0) return;
     const result = await ImagePicker.launchImageLibraryAsync({

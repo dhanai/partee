@@ -10,6 +10,7 @@ import { ParfadeLogo } from "../../components/parfade-logo";
 import { apiGet } from "../../lib/api";
 import { isMeProfileStale, setCachedMeProfile, type MeProfile } from "../../lib/me-profile-cache";
 import { useChatUnread } from "../../lib/chat-unread-context";
+import { useGameSessionActive } from "../../lib/game-session-active-context";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
 import { colors } from "../../lib/theme";
 
@@ -17,6 +18,7 @@ export default function TabsLayout() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { showBadge: showNotificationBadge } = useNotificationBadge();
   const { hasAnyUnreadChat } = useChatUnread();
+  const { hasActiveGameSession } = useGameSessionActive();
   const [createSheetOpen, setCreateSheetOpen] = useState(false);
   /** Event is experimental; tournament is a first-class create path. */
   const showEventCreateOption = false;
@@ -170,7 +172,12 @@ export default function TabsLayout() {
           options={{
             title: "Games",
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons name={focused ? "flag" : "flag-outline"} size={22} color={color} />
+              <View style={styles.tabIconWrap}>
+                <Ionicons name={focused ? "flag" : "flag-outline"} size={22} color={color} />
+                {hasActiveGameSession ? (
+                  <NotificationMustardDot style={styles.tabBarNotificationDot} />
+                ) : null}
+              </View>
             ),
             headerRight: () => <HeaderProfileIcon />,
             headerRightContainerStyle: { paddingRight: 12 },

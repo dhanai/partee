@@ -23,6 +23,7 @@ import { emitRoundListsShouldRefresh } from "../../lib/round-lists-refresh";
 import { useSnackbar } from "../../lib/snackbar-context";
 import { hapticSuccess, hapticError } from "../../lib/haptics";
 import type { InviteSelectionUser } from "../../lib/invite-selection-store";
+import { ensureMediaLibraryPermissionForPicker } from "../../lib/media-library-permission";
 import { colors } from "../../lib/theme";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { InviteFriendsSheet } from "../../components/invite-friends-sheet";
@@ -427,11 +428,11 @@ export default function CreateScreen() {
   }, [debouncedPlanningLocation, isPlanningRound, planningLocationIsValidated]);
 
   async function pickEventImage() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError("Photo permission is required to upload an event image.");
-      return;
-    }
+    const ok = await ensureMediaLibraryPermissionForPicker({
+      title: "Permission required",
+      message: "Photo library access is needed to upload an event image.",
+    });
+    if (!ok) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.8,

@@ -15,6 +15,7 @@ import {
 import { Image } from "expo-image";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ensureMediaLibraryPermissionForPicker } from "../lib/media-library-permission";
 import { uploadImage, POST_MAX_BYTES } from "../lib/upload-image";
 import { colors } from "../lib/theme";
 
@@ -57,11 +58,11 @@ export function SocialPostComposer({
   const stickyOffset = useMemo(() => ({ opened: insets.bottom - 8 }), [insets.bottom]);
 
   const pickImage = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission required", "Photo library access is needed to attach images.");
-      return;
-    }
+    const ok = await ensureMediaLibraryPermissionForPicker({
+      title: "Permission required",
+      message: "Photo library access is needed to attach images.",
+    });
+    if (!ok) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.8,

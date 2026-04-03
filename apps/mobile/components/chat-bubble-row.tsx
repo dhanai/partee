@@ -25,6 +25,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { toAbsoluteUrl } from "../lib/api";
 import { getImageUrls } from "../lib/attachment-types";
+import type { CachedMessage } from "../lib/message-cache";
 import type { GroupStyle } from "../lib/chat-group-styles";
 import { colors } from "../lib/theme";
 import { type ChatMessage, chatBubbleStyles as legacyStyles } from "../lib/chat-styles";
@@ -155,6 +156,8 @@ const mosaicStyles = StyleSheet.create({
   row: { flexDirection: "row" },
 });
 
+const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+
 const REACTION_EMOJIS = [
   { key: "heart", display: String.fromCodePoint(0x2764, 0xFE0F) },
   { key: "laugh", display: String.fromCodePoint(0x1F602) },
@@ -173,12 +176,15 @@ type EnhancedMessage = ChatMessage & {
   parentPreview?: { body: string; senderName: string } | null;
 };
 
+type ReadReceiptPeer = { userId: string; avatar: string | null };
+
 type Props = {
   message: EnhancedMessage;
   isMine: boolean;
   groupStyle?: GroupStyle;
   showStatus?: boolean;
   highlighted?: boolean;
+  readReceiptPeers?: ReadReceiptPeer[];
   onImagePress?: (images: string[], index: number) => void;
   userAvatarMap?: Record<string, string | null>;
   userInfoMap?: Record<string, { name: string; avatar: string | null }>;
@@ -186,6 +192,7 @@ type Props = {
   viewerId?: string | null;
   onReaction?: (messageId: string, emoji: string, action: "add" | "remove") => void;
   onReply?: (message: EnhancedMessage) => void;
+  onEdit?: (message: CachedMessage) => void;
   onDelete?: (messageId: string) => void;
   onAvatarPress?: (user: { id: string; name: string; avatar: string | null }) => void;
   onGoToMessage?: (messageId: string) => void;
@@ -194,6 +201,13 @@ type Props = {
   onContextMenuClose?: () => void;
   onlineUserIds?: Set<string>;
 };
+
+function readReceiptPeersEqual(a: ReadReceiptPeer[] | undefined, b: ReadReceiptPeer[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return !a && !b;
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => x.userId === b[i]?.userId && x.avatar === b[i]?.avatar);
+}
 
 function emojiDisplay(key: string): string {
   return REACTION_EMOJIS.find((e) => e.key === key)?.display ?? key;
@@ -280,6 +294,10 @@ function areBubblePropsEqual(prev: Props, next: Props): boolean {
   if (pm.parentId !== nm.parentId) return false;
   if (pm.parentPreview?.body !== nm.parentPreview?.body) return false;
   if (pm.parentPreview?.senderName !== nm.parentPreview?.senderName) return false;
+  if (pm.editedAt !== nm.editedAt) return false;
+  if (pm.deletedAt !== nm.deletedAt) return false;
+  if (!readReceiptPeersEqual(prev.readReceiptPeers, next.readReceiptPeers)) return false;
+  if (prev.onEdit !== next.onEdit) return false;
 
   const pr = pm.reactions;
   const nr = nm.reactions;
@@ -302,6 +320,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   groupStyle = "single",
   showStatus,
   highlighted,
+  readReceiptPeers,
   onImagePress,
   userAvatarMap,
   userInfoMap,
@@ -309,6 +328,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   viewerId,
   onReaction,
   onReply,
+  onEdit,
   onDelete,
   onReport,
   onAvatarPress,
@@ -387,22 +407,33 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     closePicker();
   }, [m.body, closePicker]);
 
-  const handleDeletePress = useCallback(() => {
+  const handleUnsendPress = useCallback(() => {
     closePicker();
-    Alert.alert("Delete Message", "Are you sure you want to delete this message?", [
+    Alert.alert("Unsend message?", "People in the chat will see that you removed a message.", [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Delete",
+        text: "Unsend",
         style: "destructive",
         onPress: () => onDelete?.(m.id),
       },
     ]);
   }, [m.id, onDelete]);
 
+  const isDeleted = Boolean(m.deletedAt);
+  const canEdit =
+    isMine &&
+    Boolean(onEdit) &&
+    !isDeleted &&
+    !m.id.startsWith("optimistic") &&
+    (m.body?.trim().length ?? 0) > 0 &&
+    Date.now() - new Date(m.createdAt).getTime() <= MESSAGE_EDIT_WINDOW_MS;
+  const canUnsend =
+    isMine && Boolean(onDelete) && !isDeleted && !m.id.startsWith("optimistic");
+
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
     .onEnd(() => {
-      if (onReaction) {
+      if (onReaction && !isDeleted) {
         runOnJS(toggleHeart)();
       }
     });
@@ -416,7 +447,9 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const longPress = Gesture.LongPress()
     .minDuration(350)
     .onStart(() => {
-      runOnJS(showPicker)();
+      if (!isDeleted) {
+        runOnJS(showPicker)();
+      }
     });
 
   const [swiping, setSwiping] = useState(false);
@@ -428,6 +461,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       runOnJS(setSwiping)(true);
     })
     .onUpdate((e) => {
+      if (isDeleted) return;
       if (isMine) {
         if (e.translationX < 0) {
           translateX.value = Math.max(e.translationX, -80);
@@ -440,7 +474,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     })
     .onEnd(() => {
       const distance = Math.abs(translateX.value);
-      if (distance > SWIPE_THRESHOLD && onReply) {
+      if (!isDeleted && distance > SWIPE_THRESHOLD && onReply) {
         runOnJS(triggerReply)();
       }
       translateX.value = withSpring(0, {
@@ -452,7 +486,9 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       });
     });
 
-  const composed = Gesture.Race(panGesture, Gesture.Simultaneous(longPress, tapGestures));
+  const composed = isDeleted
+    ? tapGestures
+    : Gesture.Race(panGesture, Gesture.Simultaneous(longPress, tapGestures));
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -559,7 +595,12 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const imageUrls = getImageUrls(m.attachments);
   const hasImages = imageUrls.length > 0;
   const bodyText = m.body ?? "";
-  const emojiOnly = !hasImages && !m.parentPreview && isEmojiOnly(bodyText);
+  const emojiOnly = !isDeleted && !hasImages && !m.parentPreview && isEmojiOnly(bodyText);
+  const tombstoneLabel = isDeleted
+    ? isMine
+      ? "You removed this message."
+      : "This message was removed."
+    : null;
 
   const RADIUS = 18;
   const GROUPED_RADIUS = 4;
@@ -618,7 +659,17 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     <Text style={styles.senderName}>{m.user.name}</Text>
   ) : null;
 
-  const messageBody = hasImages ? (
+  const messageBody = tombstoneLabel ? (
+    isMine ? (
+      <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, bubbleRadii]}>
+        <Text style={styles.tombstoneMine}>{tombstoneLabel}</Text>
+      </View>
+    ) : (
+      <View style={[legacyStyles.bubble, legacyStyles.bubbleTheirs, bubbleRadii]}>
+        <Text style={styles.tombstoneTheirs}>{tombstoneLabel}</Text>
+      </View>
+    )
+  ) : hasImages ? (
     <View>
       <ImageMosaic urls={imageUrls} radii={bubbleRadii} onPress={handleMosaicPress} transition={isMine ? 0 : 200} />
     </View>
@@ -680,6 +731,9 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
               <View style={legacyStyles.bubbleRowFlex} />
               <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColMine]}>
                 {bubbleInnerContent}
+                {m.editedAt && !isDeleted ? (
+                  <Text style={[styles.editedLabel, styles.editedLabelMine]}>Edited</Text>
+                ) : null}
               </View>
             </>
           ) : (
@@ -687,6 +741,9 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
               {showAvatar ? avatarEl : avatarSpacer}
               <View ref={bubbleRef} style={[styles.bubbleCol, styles.bubbleColTheirs]}>
                 {bubbleInnerContent}
+                {m.editedAt && !isDeleted ? (
+                  <Text style={[styles.editedLabel, styles.editedLabelTheirs]}>Edited</Text>
+                ) : null}
               </View>
             </>
           )}
@@ -694,15 +751,41 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
       </GestureDetector>
 
       {showStatus && isMine ? (
-        <View style={styles.statusRow}>
-          <Ionicons
-            name={m.id.startsWith("optimistic-") ? "time-outline" : "checkmark"}
-            size={14}
-            color={colors.muted}
-          />
-          <Text style={styles.statusText}>
-            {m.id.startsWith("optimistic-") ? "Sending" : "Sent"}
-          </Text>
+        <View style={styles.statusColumn}>
+          <View style={styles.statusRow}>
+            <Ionicons
+              name={m.id.startsWith("optimistic-") ? "time-outline" : "checkmark"}
+              size={14}
+              color={colors.muted}
+            />
+            <Text style={styles.statusText}>
+              {m.id.startsWith("optimistic-") ? "Sending" : "Sent"}
+            </Text>
+          </View>
+          {readReceiptPeers && readReceiptPeers.length > 0 ? (
+            <View style={styles.readReceiptRow}>
+              {readReceiptPeers.slice(0, 3).map((p, i) => (
+                <View
+                  key={p.userId}
+                  style={[styles.readReceiptAvatarWrap, i > 0 && styles.readReceiptAvatarOverlap]}
+                >
+                  {p.avatar ? (
+                    <Image
+                      source={{ uri: toAbsoluteUrl(p.avatar) }}
+                      style={styles.readReceiptAvatar}
+                    />
+                  ) : (
+                    <View style={[styles.readReceiptAvatar, styles.readReceiptAvatarFallback]}>
+                      <Text style={styles.readReceiptInitial}>?</Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+              {readReceiptPeers.length > 3 ? (
+                <Text style={styles.readReceiptOverflow}>+{readReceiptPeers.length - 3}</Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -719,7 +802,12 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
             const screen = Dimensions.get("window");
             const PICKER_H = 54;
             const GAP = 8;
-            const actionCount = (bodyText ? 1 : 0) + (onReply ? 1 : 0) + (isMine && onDelete ? 1 : 0) + (!isMine && onReport ? 1 : 0);
+            const actionCount =
+              (bodyText && !isDeleted ? 1 : 0) +
+              (onReply && !isDeleted ? 1 : 0) +
+              (canEdit ? 1 : 0) +
+              (canUnsend ? 1 : 0) +
+              (!isMine && onReport ? 1 : 0);
             const MENU_H = actionCount * 48;
 
             let bubbleTop = bubbleLayout.y;
@@ -790,7 +878,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
                       <Text style={styles.contextActionText}>Copy</Text>
                     </Pressable>
                   ) : null}
-                  {onReply ? (
+                  {onReply && !isDeleted ? (
                     <Pressable
                       style={styles.contextAction}
                       onPress={() => {
@@ -802,10 +890,22 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
                       <Text style={styles.contextActionText}>Reply</Text>
                     </Pressable>
                   ) : null}
-                  {isMine && onDelete ? (
-                    <Pressable style={styles.contextAction} onPress={handleDeletePress}>
+                  {canEdit ? (
+                    <Pressable
+                      style={styles.contextAction}
+                      onPress={() => {
+                        closePicker();
+                        onEdit?.(m as CachedMessage);
+                      }}
+                    >
+                      <Ionicons name="pencil-outline" size={18} color={colors.text} />
+                      <Text style={styles.contextActionText}>Edit</Text>
+                    </Pressable>
+                  ) : null}
+                  {canUnsend ? (
+                    <Pressable style={styles.contextAction} onPress={handleUnsendPress}>
                       <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                      <Text style={[styles.contextActionText, { color: colors.danger }]}>Delete</Text>
+                      <Text style={[styles.contextActionText, { color: colors.danger }]}>Unsend</Text>
                     </Pressable>
                   ) : null}
                   {!isMine && onReport ? (
@@ -1084,16 +1184,77 @@ const styles = StyleSheet.create({
     color: "#fff",
     textDecorationLine: "underline",
   },
+  statusColumn: {
+    alignSelf: "flex-end",
+    alignItems: "flex-end",
+    marginTop: 2,
+    paddingRight: 4,
+    gap: 4,
+  },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 3,
-    paddingRight: 4,
-    marginTop: 2,
   },
   statusText: {
     fontSize: 11,
+    color: colors.muted,
+  },
+  readReceiptRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  readReceiptAvatarWrap: {
+    borderWidth: 2,
+    borderColor: "#fff",
+    borderRadius: 999,
+  },
+  readReceiptAvatarOverlap: {
+    marginLeft: -8,
+  },
+  readReceiptAvatar: {
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+  },
+  readReceiptAvatarFallback: {
+    backgroundColor: colors.fairwaySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  readReceiptInitial: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: colors.fairway,
+  },
+  readReceiptOverflow: {
+    marginLeft: 4,
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  editedLabel: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  editedLabelMine: {
+    alignSelf: "flex-end",
+    color: colors.muted,
+  },
+  editedLabelTheirs: {
+    alignSelf: "flex-start",
+    color: colors.muted,
+  },
+  tombstoneMine: {
+    fontSize: 14,
+    fontStyle: "italic",
+    color: "rgba(255,255,255,0.85)",
+  },
+  tombstoneTheirs: {
+    fontSize: 14,
+    fontStyle: "italic",
     color: colors.muted,
   },
 });

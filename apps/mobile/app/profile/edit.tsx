@@ -17,6 +17,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiGet, apiPatch, apiPost, toAbsoluteUrl } from "../../lib/api";
 import { uploadImage, AVATAR_MAX_BYTES } from "../../lib/upload-image";
+import { ensureMediaLibraryPermissionForPicker } from "../../lib/media-library-permission";
 import { getCachedMeProfile, setCachedMeProfile } from "../../lib/me-profile-cache";
 import { InitialAvatar } from "../../components/initial-avatar";
 import { colors } from "../../lib/theme";
@@ -172,11 +173,11 @@ export default function EditProfileScreen() {
   }, []);
 
   async function handleUploadAvatar() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError("Photo permission is required to upload your profile image.");
-      return;
-    }
+    const ok = await ensureMediaLibraryPermissionForPicker({
+      title: "Permission required",
+      message: "Photo library access is needed to upload your profile image.",
+    });
+    if (!ok) return;
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],

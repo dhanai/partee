@@ -10,8 +10,11 @@ import {
   FlatList,
   Keyboard,
   LayoutAnimation,
+  Modal,
+  Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type LayoutChangeEvent,
   type ScrollViewProps,
@@ -30,7 +33,7 @@ import { ChatTimestamp } from "../../../components/chat-timestamp";
 import { buildChatItems, chatItemKey, type ChatListItem } from "../../../lib/build-chat-items";
 import { RoundGroupChatComposer, type ComposerHandle, type PickedImageAsset, type ReplyTarget } from "../../../components/round-group-chat-composer";
 import { TypingIndicator } from "../../../components/typing-indicator";
-import { apiGet, apiPost, apiDelete } from "../../../lib/api";
+import { apiGet, apiPost, apiPatch, apiDelete } from "../../../lib/api";
 import { useAblyChatMounted } from "../../../lib/ably-chat-context";
 import { ablyChatMessageToCached } from "../../../lib/ably-chat-message-map";
 import { imageAttachments } from "../../../lib/attachment-types";
@@ -44,7 +47,9 @@ import {
   setCachedMessages,
   type CachedMessage,
 } from "../../../lib/message-cache";
+import { parfadeMutationMessageToCached, subscribeMessageMutations } from "../../../lib/message-mutation-events";
 import { subscribeReactionUpdates } from "../../../lib/reaction-events";
+import { subscribeReadReceiptUpdates } from "../../../lib/read-receipt-events";
 import { colors } from "../../../lib/theme";
 
 type ConversationMessage = CachedMessage;
@@ -69,7 +74,21 @@ type ConversationMetaResponse = {
   roundMode: string | null;
   participantAvatars: string[];
   participants?: { id: string; name: string; avatar: string | null }[];
+  participantReadReceipts?: {
+    userId: string;
+    avatar: string | null;
+    lastReadMessageId: string | null;
+    lastReadMessageCreatedAt: string | null;
+  }[];
 };
+
+type PeerRead = {
+  lastReadMessageId: string | null;
+  lastReadMessageCreatedAt: string | null;
+  avatar: string | null;
+};
+
+const MAX_MESSAGE_BODY = 2000;
 
 type ConversationMeta = {
   type: string;
@@ -163,6 +182,16 @@ function ConversationChatContent() {
           avatars = [data.imageUrl, ...avatars];
           userIds = [null, ...userSlotIds];
         }
+        const peerRead: Record<string, PeerRead> = {};
+        for (const r of data.participantReadReceipts ?? []) {
+          peerRead[r.userId] = {
+            lastReadMessageId: r.lastReadMessageId,
+            lastReadMessageCreatedAt: r.lastReadMessageCreatedAt,
+            avatar: r.avatar ?? null,
+          };
+        }
+        setPeerReadByUserId(peerRead);
+
         setMeta({
           type: data.type,
           title: data.title,
@@ -193,10 +222,15 @@ function ConversationChatContent() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<{ id: string; userId: string } | null>(null);
+  const [peerReadByUserId, setPeerReadByUserId] = useState<Record<string, PeerRead>>({});
+  const [editingMessage, setEditingMessage] = useState<ConversationMessage | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const flatListRef = useRef<FlatList>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const msgsRef = useRef<ConversationMessage[]>([]);
   msgsRef.current = msgs;
+  const viewerIdRef = useRef<string | null>(null);
+  viewerIdRef.current = viewerId;
   const prevMsgCountRef = useRef(msgs.length);
 
   const me = getCachedMeProfile();
@@ -322,18 +356,58 @@ function ConversationChatContent() {
 
   useEffect(() => {
     if (!conversationId) return;
-    const sendRead = async () => {
+    markConversationRead(conversationId);
+    return () => {
       markConversationRead(conversationId);
-      try {
-        const authToken = await getTokenRef.current();
-        await apiPost(`/api/conversations/${conversationId}/read`, {}, authToken);
-      } catch {
-        /* best-effort */
-      }
     };
-    void sendRead();
-    return () => void sendRead();
   }, [conversationId, markConversationRead]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    return () => {
+      const sorted = [...msgsRef.current].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+      const last = sorted[sorted.length - 1];
+      if (!last?.id || last.id.startsWith("optimistic")) return;
+      void (async () => {
+        try {
+          const authToken = await getTokenRef.current();
+          await apiPost(
+            `/api/conversations/${conversationId}/read`,
+            { lastMessageId: last.id },
+            authToken,
+          );
+        } catch {
+          /* best-effort */
+        }
+      })();
+    };
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const sorted = [...msgs].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    const last = sorted[sorted.length - 1];
+    if (!last?.id || last.id.startsWith("optimistic")) return;
+    const t = setTimeout(() => {
+      void (async () => {
+        try {
+          const authToken = await getTokenRef.current();
+          await apiPost(
+            `/api/conversations/${conversationId}/read`,
+            { lastMessageId: last.id },
+            authToken,
+          );
+        } catch {
+          /* best-effort */
+        }
+      })();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [conversationId, msgs]);
 
   const handleSend = useCallback(
     async (text: string): Promise<boolean> => {
@@ -357,6 +431,8 @@ function ConversationChatContent() {
         id: tempId,
         body: trimmed,
         createdAt: new Date().toISOString(),
+        editedAt: null,
+        deletedAt: null,
         isMine: true,
         parentId,
         parentPreview,
@@ -409,6 +485,8 @@ function ConversationChatContent() {
         body,
         attachments: assets.map((a) => ({ type: "image" as const, url: a.uri })),
         createdAt: new Date().toISOString(),
+        editedAt: null,
+        deletedAt: null,
         isMine: true,
         user: { id: me?.id ?? "", name: me?.name ?? "You", avatar: me?.avatar ?? null },
         reactions: {},
@@ -557,6 +635,40 @@ function ConversationChatContent() {
     });
   }, [conversationId]);
 
+  useEffect(() => {
+    if (!conversationId) return;
+    return subscribeMessageMutations((u) => {
+      if (u.conversationId !== conversationId) return;
+      const merged = parfadeMutationMessageToCached(u.message, viewerIdRef.current);
+      setMsgs((prev) => {
+        const idx = prev.findIndex((m) => m.id === merged.id);
+        if (idx < 0) return prev;
+        const next = [...prev];
+        next[idx] = merged;
+        void setCachedMessages(conversationId, next);
+        return next;
+      });
+    });
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId || !viewerId) return;
+    return subscribeReadReceiptUpdates((u) => {
+      if (u.conversationId !== conversationId || u.readerUserId === viewerId) return;
+      const readMsg = msgsRef.current.find((m) => m.id === u.lastReadMessageId);
+      setPeerReadByUserId((prev) => ({
+        ...prev,
+        [u.readerUserId]: {
+          lastReadMessageId: u.lastReadMessageId,
+          lastReadMessageCreatedAt: readMsg
+            ? readMsg.createdAt
+            : (prev[u.readerUserId]?.lastReadMessageCreatedAt ?? null),
+          avatar: u.readerAvatar ?? prev[u.readerUserId]?.avatar ?? null,
+        },
+      }));
+    });
+  }, [conversationId, viewerId]);
+
   const resolveMine = useCallback(
     (m: ConversationMessage): boolean => {
       if (typeof m.isMine === "boolean") return m.isMine;
@@ -578,6 +690,90 @@ function ConversationChatContent() {
     }
     return null;
   }, [invertedItems, resolveMine]);
+
+  const messageOrderMeta = useMemo(() => {
+    const chron = [...msgs].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    const indexById = new Map<string, number>();
+    chron.forEach((msg, i) => indexById.set(msg.id, i));
+    return { indexById };
+  }, [msgs]);
+
+  const readReceiptPeersForLastOwn = useMemo(() => {
+    if (!lastOwnMessageId || !viewerId) return [];
+    const ownIdx = messageOrderMeta.indexById.get(lastOwnMessageId);
+    const ownMsg = msgs.find((m) => m.id === lastOwnMessageId);
+    if (ownIdx === undefined || !ownMsg || !resolveMine(ownMsg)) return [];
+    const ownT = new Date(ownMsg.createdAt).getTime();
+    const out: { userId: string; avatar: string | null }[] = [];
+    for (const [uid, r] of Object.entries(peerReadByUserId)) {
+      if (uid === viewerId) continue;
+      if (!r.lastReadMessageId) continue;
+      const readIdx = messageOrderMeta.indexById.get(r.lastReadMessageId);
+      let hasRead = false;
+      if (readIdx !== undefined) {
+        hasRead = readIdx >= ownIdx;
+      } else if (r.lastReadMessageCreatedAt) {
+        hasRead = new Date(r.lastReadMessageCreatedAt).getTime() >= ownT;
+      }
+      if (hasRead) {
+        out.push({ userId: uid, avatar: r.avatar });
+      }
+    }
+    return out;
+  }, [lastOwnMessageId, viewerId, msgs, peerReadByUserId, messageOrderMeta, resolveMine]);
+
+  const handleUnsend = useCallback(
+    async (messageId: string) => {
+      if (!conversationId) return;
+      const prevSnapshot = msgsRef.current;
+      const nowIso = new Date().toISOString();
+      const optimistic = prevSnapshot.map((m) =>
+        m.id === messageId ? { ...m, body: null, attachments: null, deletedAt: nowIso } : m,
+      );
+      setMsgs(optimistic);
+      try {
+        const authToken = await getTokenRef.current();
+        await apiDelete(`/api/conversations/${conversationId}/messages/${messageId}`, authToken);
+        void setCachedMessages(conversationId, optimistic);
+      } catch {
+        setMsgs(prevSnapshot);
+        void setCachedMessages(conversationId, prevSnapshot);
+        setError("Could not unsend message.");
+      }
+    },
+    [conversationId],
+  );
+
+  const handleStartEdit = useCallback((msg: ConversationMessage) => {
+    setEditingMessage(msg);
+    setEditDraft(msg.body ?? "");
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!conversationId || !editingMessage) return;
+    const body = editDraft.trim();
+    if (!body) return;
+    try {
+      const authToken = await getTokenRef.current();
+      const data = await apiPatch<{ message: ConversationMessage }>(
+        `/api/conversations/${conversationId}/messages/${editingMessage.id}`,
+        { body },
+        authToken,
+      );
+      setMsgs((prev) => {
+        const next = prev.map((m) => (m.id === editingMessage.id ? { ...m, ...data.message } : m));
+        void setCachedMessages(conversationId, next);
+        return next;
+      });
+      setEditingMessage(null);
+      setEditDraft("");
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not edit message.");
+    }
+  }, [conversationId, editingMessage, editDraft]);
 
   const handleReply = useCallback((msg: { id: string; body: string | null; user: { name: string } }) => {
     setReplyTo({ id: msg.id, body: msg.body ?? "", user: { name: msg.user.name } });
@@ -687,6 +883,9 @@ function ConversationChatContent() {
           groupStyle={item.groupStyle}
           showStatus={item.data.id === lastOwnMessageId}
           highlighted={item.data.id === highlightedId}
+          readReceiptPeers={
+            item.data.id === lastOwnMessageId ? readReceiptPeersForLastOwn : undefined
+          }
           onImagePress={handleImagePress}
           userAvatarMap={userAvatarMap}
           userInfoMap={userInfoMap}
@@ -694,6 +893,8 @@ function ConversationChatContent() {
           viewerId={viewerId}
           onReaction={handleReaction}
           onReply={handleReply}
+          onEdit={handleStartEdit}
+          onDelete={handleUnsend}
           onReport={handleReport}
           onAvatarPress={handleAvatarPress}
           onGoToMessage={handleGoToMessage}
@@ -703,7 +904,27 @@ function ConversationChatContent() {
         />
       );
     },
-    [resolveMine, conversationId, viewerId, handleReaction, handleReply, handleReport, handleAvatarPress, handleImagePress, lastOwnMessageId, highlightedId, handleGoToMessage, handleContextMenuOpen, handleContextMenuClose, userAvatarMap, userInfoMap, onlineUserIds],
+    [
+      resolveMine,
+      conversationId,
+      viewerId,
+      handleReaction,
+      handleReply,
+      handleStartEdit,
+      handleUnsend,
+      handleReport,
+      handleAvatarPress,
+      handleImagePress,
+      lastOwnMessageId,
+      readReceiptPeersForLastOwn,
+      highlightedId,
+      handleGoToMessage,
+      handleContextMenuOpen,
+      handleContextMenuClose,
+      userAvatarMap,
+      userInfoMap,
+      onlineUserIds,
+    ],
   );
   const keyExtractor = useCallback(
     (item: ListItem) => chatItemKey(item),
@@ -844,6 +1065,57 @@ function ConversationChatContent() {
       targetUserId={reportTarget?.userId}
       targetLabel="this message"
     />
+
+    <Modal
+      visible={!!editingMessage}
+      transparent
+      animationType="fade"
+      onRequestClose={() => {
+        setEditingMessage(null);
+        setEditDraft("");
+      }}
+    >
+      <Pressable
+        style={cStyles.editModalBackdrop}
+        onPress={() => {
+          setEditingMessage(null);
+          setEditDraft("");
+        }}
+      >
+        <Pressable style={cStyles.editModalCard} onPress={(e) => e.stopPropagation()}>
+          <Text style={cStyles.editModalTitle}>Edit message</Text>
+          <TextInput
+            value={editDraft}
+            onChangeText={setEditDraft}
+            style={cStyles.editModalInput}
+            multiline
+            maxLength={MAX_MESSAGE_BODY}
+            autoFocus
+          />
+          <View style={cStyles.editModalActions}>
+            <Pressable
+              onPress={() => {
+                setEditingMessage(null);
+                setEditDraft("");
+              }}
+              style={cStyles.editModalBtnSecondary}
+            >
+              <Text style={cStyles.editModalBtnSecondaryText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void handleSaveEdit()}
+              style={[
+                cStyles.editModalBtnPrimary,
+                !editDraft.trim() ? cStyles.editModalBtnPrimaryDisabled : null,
+              ]}
+              disabled={!editDraft.trim()}
+            >
+              <Text style={cStyles.editModalBtnPrimaryText}>Save</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
     </>
   );
 }
@@ -977,5 +1249,63 @@ const cStyles = StyleSheet.create({
   },
   sendBtnDisabled: {
     opacity: 0.5,
+  },
+  editModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  editModalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    gap: 12,
+  },
+  editModalTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  editModalInput: {
+    minHeight: 100,
+    maxHeight: 200,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.text,
+    textAlignVertical: "top",
+  },
+  editModalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 4,
+  },
+  editModalBtnSecondary: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  editModalBtnSecondaryText: {
+    fontSize: 16,
+    color: colors.muted,
+    fontWeight: "600",
+  },
+  editModalBtnPrimary: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: colors.fairway,
+    borderRadius: 12,
+  },
+  editModalBtnPrimaryDisabled: {
+    opacity: 0.45,
+  },
+  editModalBtnPrimaryText: {
+    fontSize: 16,
+    color: "#fff",
+    fontWeight: "700",
   },
 });

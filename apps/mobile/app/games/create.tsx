@@ -19,6 +19,7 @@ import { GameSettingsSheetContent, gameSettingsSheetStyles } from "../../compone
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { apiGet, toAbsoluteUrl } from "../../lib/api";
 import { createGameSession } from "../../lib/games-api";
+import { emitGamesListShouldRefresh } from "../../lib/games-list-refresh";
 import { getGameDefinition, useGameTypesVersion } from "../../lib/games-registry";
 import { refreshGameTypes } from "../../lib/game-types-cache";
 
@@ -264,6 +265,7 @@ export default function CreateGameScreen() {
         body.roundInviteToken = String(roundInviteToken);
       }
       const created = await createGameSession(token, body);
+      emitGamesListShouldRefresh();
       router.replace({
         pathname: "/games/session/[sessionId]",
         params: { sessionId: created.session.id },

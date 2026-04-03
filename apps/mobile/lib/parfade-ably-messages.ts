@@ -1,4 +1,18 @@
 /** Mirrors `lib/parfade-ably-messages.ts` on the server. */
+export type ParfadeMappedMessageV1 = {
+  id: string;
+  body: string | null;
+  attachments?: unknown;
+  createdAt: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  isMine: boolean;
+  parentId?: string | null;
+  parentPreview?: { body: string; senderName: string } | null;
+  user: { id: string; name: string; avatar: string | null };
+  reactions: Record<string, { count: number; userIds: string[] }>;
+};
+
 export type ParfadeRealtimeMessageV1 =
   | { v: 1; type: "discover-refresh"; reason?: string }
   | { v: 1; type: "inbox-sync"; roundLists?: boolean; notificationBadge?: boolean; reason?: string }
@@ -67,6 +81,21 @@ export type ParfadeRealtimeMessageV1 =
       type: "group-activity-updated";
       groupId: string;
       reason: string;
+    }
+  | {
+      v: 1;
+      type: "conversation-message-mutation";
+      conversationId: string;
+      mutation: "edit" | "delete";
+      message: ParfadeMappedMessageV1;
+    }
+  | {
+      v: 1;
+      type: "conversation-read-receipt-updated";
+      conversationId: string;
+      readerUserId: string;
+      readerAvatar?: string;
+      lastReadMessageId: string;
     };
 
 export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessageV1 | null {
@@ -261,5 +290,85 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
       };
     }
   }
+  if (o.type === "conversation-message-mutation") {
+    const r = raw as {
+      conversationId?: unknown;
+      mutation?: unknown;
+      message?: unknown;
+    };
+    const msg = parseParfadeMappedMessageV1(r.message);
+    if (
+      typeof r.conversationId === "string" &&
+      (r.mutation === "edit" || r.mutation === "delete") &&
+      msg
+    ) {
+      return {
+        v: 1,
+        type: "conversation-message-mutation",
+        conversationId: r.conversationId,
+        mutation: r.mutation,
+        message: msg,
+      };
+    }
+  }
+  if (o.type === "conversation-read-receipt-updated") {
+    const r = raw as {
+      conversationId?: unknown;
+      readerUserId?: unknown;
+      readerAvatar?: unknown;
+      lastReadMessageId?: unknown;
+    };
+    if (
+      typeof r.conversationId === "string" &&
+      typeof r.readerUserId === "string" &&
+      typeof r.lastReadMessageId === "string"
+    ) {
+      return {
+        v: 1,
+        type: "conversation-read-receipt-updated",
+        conversationId: r.conversationId,
+        readerUserId: r.readerUserId,
+        readerAvatar: typeof r.readerAvatar === "string" ? r.readerAvatar : undefined,
+        lastReadMessageId: r.lastReadMessageId,
+      };
+    }
+  }
   return null;
+}
+
+function parseParfadeMappedMessageV1(raw: unknown): ParfadeMappedMessageV1 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const m = raw as Record<string, unknown>;
+  if (typeof m.id !== "string" || typeof m.createdAt !== "string") return null;
+  const user = m.user;
+  if (!user || typeof user !== "object") return null;
+  const u = user as Record<string, unknown>;
+  if (typeof u.id !== "string" || typeof u.name !== "string") return null;
+
+  let reactions: Record<string, { count: number; userIds: string[] }> = {};
+  if (m.reactions && typeof m.reactions === "object" && m.reactions !== null) {
+    reactions = m.reactions as Record<string, { count: number; userIds: string[] }>;
+  }
+
+  let parentPreview: { body: string; senderName: string } | undefined;
+  if (m.parentPreview && typeof m.parentPreview === "object") {
+    const p = m.parentPreview as Record<string, unknown>;
+    if (typeof p.body === "string" && typeof p.senderName === "string") {
+      parentPreview = { body: p.body, senderName: p.senderName };
+    }
+  }
+
+  return {
+    id: m.id,
+    body: m.body === null || typeof m.body === "string" ? m.body : null,
+    attachments: m.attachments,
+    createdAt: m.createdAt,
+    editedAt: typeof m.editedAt === "string" ? m.editedAt : m.editedAt === null ? null : undefined,
+    deletedAt: typeof m.deletedAt === "string" ? m.deletedAt : m.deletedAt === null ? null : undefined,
+    isMine: m.isMine === true,
+    parentId: typeof m.parentId === "string" ? m.parentId : m.parentId === null ? null : undefined,
+    parentPreview,
+    user: { id: u.id, name: u.name, avatar: typeof u.avatar === "string" ? u.avatar : null },
+    reactions,
+  };
 }

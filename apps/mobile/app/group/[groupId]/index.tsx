@@ -35,6 +35,7 @@ import {
   formatScheduledCardMeta,
   getTimeWindows,
 } from "../../../lib/round-card-meta";
+import { ensureMediaLibraryPermissionForPicker } from "../../../lib/media-library-permission";
 import { uploadImage, AVATAR_MAX_BYTES, COVER_MAX_BYTES } from "../../../lib/upload-image";
 import { FullscreenImageViewer } from "../../../components/fullscreen-image-viewer";
 import { useSnackbar } from "../../../lib/snackbar-context";
@@ -418,11 +419,11 @@ export default function GroupLandingScreen() {
 
   const pickAndUploadImage = useCallback(
     async (kind: "profile" | "hero") => {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert("Permission required", "Photo library access is needed to upload images.");
-        return;
-      }
+      const ok = await ensureMediaLibraryPermissionForPicker({
+        title: "Permission required",
+        message: "Photo library access is needed to upload images.",
+      });
+      if (!ok) return;
 
       const isProfile = kind === "profile";
       const result = await ImagePicker.launchImageLibraryAsync({

@@ -25,6 +25,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { toAbsoluteUrl } from "../lib/api";
+import { ensureMediaLibraryPermissionForSave } from "../lib/media-library-permission";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -181,11 +182,11 @@ export const FullscreenImageViewer = memo(function FullscreenImageViewer({
 
   const handleSave = useCallback(async () => {
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission required", "Photo library access is needed to save images.");
-        return;
-      }
+      const ok = await ensureMediaLibraryPermissionForSave({
+        title: "Permission required",
+        message: "Photo library access is needed to save images.",
+      });
+      if (!ok) return;
       const uri = toAbsoluteUrl(images[currentIndex]);
       const fileUri = `${FileSystem.cacheDirectory}partee-save-${Date.now()}.jpg`;
       await FileSystem.downloadAsync(uri, fileUri);
