@@ -126,9 +126,10 @@ export async function GET(req: Request) {
       .groupBy(rounds.id)
       .orderBy(asc(rounds.targetDate));
 
+    /** `requested` = guest asked to join (awaiting host) — lives on Invites tab, not Joined. */
     const joinedSpotStatuses = includeInvitedSpots
       ? (["confirmed", "requested", "invited"] as const)
-      : (["confirmed", "requested"] as const);
+      : (["confirmed"] as const);
 
     const joined = await db
       .select({
@@ -191,7 +192,7 @@ export async function GET(req: Request) {
         and(
           eq(spots.userId, user.id),
           ne(rounds.hostId, user.id),
-          inArray(spots.status, ["invited", "declined"]),
+          inArray(spots.status, ["invited", "declined", "requested"]),
         ),
       )
       .orderBy(asc(rounds.targetDate));
@@ -330,7 +331,9 @@ export async function GET(req: Request) {
         })),
       ),
     );
-    const pendingInvitesCount = invitedPayload.filter((round) => round.spotStatus === "invited").length;
+    const pendingInvitesCount = invitedPayload.filter(
+      (round) => round.spotStatus === "invited" || round.spotStatus === "requested",
+    ).length;
 
     if (tab === "hosting" || tab === "joined" || tab === "invited") {
       const source =

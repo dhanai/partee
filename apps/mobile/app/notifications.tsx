@@ -94,6 +94,7 @@ export default function NotificationsScreen() {
   >([]);
   const [requestBusyId, setRequestBusyId] = useState<string | null>(null);
   const [groupRequestBusyId, setGroupRequestBusyId] = useState<string | null>(null);
+  const [roundJoinBusyKey, setRoundJoinBusyKey] = useState<string | null>(null);
   const [followBackBusyId, setFollowBackBusyId] = useState<string | null>(null);
   const [followedBackUserIds, setFollowedBackUserIds] = useState<Set<string>>(new Set());
   const [pendingFollowBackUserIds, setPendingFollowBackUserIds] = useState<Set<string>>(new Set());
@@ -195,6 +196,35 @@ export default function NotificationsScreen() {
       setError(actionError instanceof Error ? actionError.message : "Unable to update request.");
     } finally {
       setRequestBusyId(null);
+    }
+  }
+
+  async function handleRoundJoinRequestAction(
+    inviteToken: string,
+    guestUserId: string,
+    action: "accept" | "decline",
+  ) {
+    const key = `${inviteToken}:${guestUserId}`;
+    setRoundJoinBusyKey(key);
+    try {
+      const authToken = await getTokenRef.current();
+      await apiPost(
+        `/api/rounds/${encodeURIComponent(inviteToken)}/join-requests`,
+        { guestUserId, action },
+        authToken,
+      );
+      setActivityItems((prev) =>
+        prev.map((item) =>
+          item.inviteToken === inviteToken && item.actorUserId === guestUserId
+            ? { ...item, stillPending: false }
+            : item,
+        ),
+      );
+      await refreshNotificationBadge();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Unable to update join request.");
+    } finally {
+      setRoundJoinBusyKey(null);
     }
   }
 
@@ -580,44 +610,100 @@ export default function NotificationsScreen() {
             : "";
         const timeLabel = formatNotificationTime(item.createdAt);
         const isDeclined = item.type === "round_rsvp_declined";
+        const inviteTok = item.inviteToken?.trim() ?? "";
+        const guestId = item.actorUserId?.trim() ?? "";
+        const isPendingHostJoinRequest =
+          item.type === "round_rsvp_accepted" &&
+          item.stillPending &&
+          item.roundRsvpMeta?.spotStatus === "requested" &&
+          inviteTok.length > 0 &&
+          guestId.length > 0;
+        const joinActionBusy = roundJoinBusyKey === `${inviteTok}:${guestId}`;
+        const joinAnyBusy = roundJoinBusyKey != null;
+
+        const headerRow = (
+          <View style={styles.notificationRow}>
+            {item.actorAvatar ? (
+              <Image
+                source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
+                style={styles.notificationAvatar}
+              />
+            ) : (
+              <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
+                <Ionicons name="person" size={16} color={colors.fairway} />
+              </View>
+            )}
+            <View style={styles.notificationRowText}>
+              <Text style={styles.notificationTitle} numberOfLines={1}>
+                {item.title}
+              </Text>
+              {renderMetaInline(rsvpBody, timeLabel)}
+            </View>
+            <View style={[styles.notificationInlineCta, isDeclined && styles.notificationInlineCtaMuted]}>
+              <Text
+                style={[
+                  styles.notificationInlineCtaText,
+                  isDeclined && styles.notificationInlineCtaTextMuted,
+                ]}
+              >
+                {isDeclined ? "Declined" : isPendingHostJoinRequest ? "Request" : "RSVP"}
+              </Text>
+            </View>
+          </View>
+        );
+
+        if (isPendingHostJoinRequest) {
+          return (
+            <View style={styles.notificationCard}>
+              <Pressable
+                onPressIn={() =>
+                  prefetchRoundOpen(inviteTok, rsvpCover, () => getTokenRef.current())
+                }
+                onPress={() => openRoundNotification(item)}
+              >
+                {headerRow}
+              </Pressable>
+              <View style={styles.notificationActionsRow}>
+                <Pressable
+                  style={[
+                    styles.requestBtn,
+                    styles.requestApprove,
+                    joinAnyBusy && styles.disabledBtn,
+                  ]}
+                  onPress={() => void handleRoundJoinRequestAction(inviteTok, guestId, "accept")}
+                  disabled={joinAnyBusy}
+                >
+                  {joinActionBusy ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.requestApproveText}>Approve</Text>
+                  )}
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.requestBtn,
+                    styles.requestDecline,
+                    joinAnyBusy && styles.disabledBtn,
+                  ]}
+                  onPress={() => void handleRoundJoinRequestAction(inviteTok, guestId, "decline")}
+                  disabled={joinAnyBusy}
+                >
+                  <Text style={styles.requestDeclineText}>Decline</Text>
+                </Pressable>
+              </View>
+            </View>
+          );
+        }
+
         return (
           <Pressable
             style={styles.notificationCard}
             onPressIn={() =>
-              prefetchRoundOpen(item.inviteToken, rsvpCover, () => getTokenRef.current())
+              prefetchRoundOpen(inviteTok, rsvpCover, () => getTokenRef.current())
             }
-            onPress={() =>
-              openRoundNotification(item)
-            }
+            onPress={() => openRoundNotification(item)}
           >
-            <View style={styles.notificationRow}>
-              {item.actorAvatar ? (
-                <Image
-                  source={{ uri: toAbsoluteUrl(item.actorAvatar) }}
-                  style={styles.notificationAvatar}
-                />
-              ) : (
-                <View style={[styles.notificationAvatar, styles.notificationAvatarFallback]}>
-                  <Ionicons name="person" size={16} color={colors.fairway} />
-                </View>
-              )}
-              <View style={styles.notificationRowText}>
-                <Text style={styles.notificationTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                {renderMetaInline(rsvpBody, timeLabel)}
-              </View>
-              <View style={[styles.notificationInlineCta, isDeclined && styles.notificationInlineCtaMuted]}>
-                <Text
-                  style={[
-                    styles.notificationInlineCtaText,
-                    isDeclined && styles.notificationInlineCtaTextMuted,
-                  ]}
-                >
-                  {isDeclined ? "Declined" : "RSVP"}
-                </Text>
-              </View>
-            </View>
+            {headerRow}
           </Pressable>
         );
       }
@@ -698,7 +784,9 @@ export default function NotificationsScreen() {
       followedBackUserIds,
       pendingFollowBackUserIds,
       groupRequestBusyId,
+      roundJoinBusyKey,
       handleGroupRequestAction,
+      handleRoundJoinRequestAction,
       handleFollowBack,
       openPostNotification,
       openRoundNotification,

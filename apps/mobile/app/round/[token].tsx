@@ -44,6 +44,7 @@ import { claimRsvpButtonStyles as btn } from "../../lib/claim-rsvp-button-styles
 import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-last-initial";
 import { TournamentMarkdownBody } from "../../lib/tournament-markdown";
 import { useSnackbar } from "../../lib/snackbar-context";
+import { useNotificationBadge } from "../../lib/notification-badge-context";
 import { colors } from "../../lib/theme";
 import { InitialAvatar } from "../../components/initial-avatar";
 import { RoundDetails } from "../../types/round";
@@ -107,9 +108,10 @@ function formatPlanningWindow(
 }
 
 export default function RoundDetailsScreen() {
-  const { token, roundHint } = useLocalSearchParams<{
+  const { token, roundHint, hostJoinRequests: rawHostJoinRequests } = useLocalSearchParams<{
     token: string;
     roundHint?: string | string[];
+    hostJoinRequests?: string | string[];
   }>();
   const router = useRouter();
   const navigation = useNavigation();
@@ -118,7 +120,12 @@ export default function RoundDetailsScreen() {
   const getTokenRef = useRef(getToken);
   const ablyChatMounted = useAblyChatMounted();
   const { show: showSnackbar } = useSnackbar();
+  const { refresh: refreshNotificationBadge } = useNotificationBadge();
   const scrollRef = useRef<ScrollView>(null);
+  const hostJoinRequestsSectionYRef = useRef(0);
+  const hostJoinScrollDoneRef = useRef(false);
+  const [hostJoinBusyUserId, setHostJoinBusyUserId] = useState<string | null>(null);
+  const [hostJoinSectionExpanded, setHostJoinSectionExpanded] = useState(true);
   const [round, setRound] = useState<RoundDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [apiResolved, setApiResolved] = useState(false);
@@ -169,6 +176,31 @@ export default function RoundDetailsScreen() {
   useEffect(() => {
     getTokenRef.current = getToken;
   }, [getToken]);
+
+  const openHostJoinRequests = useMemo(() => {
+    const v = rawHostJoinRequests;
+    if (v === "1") return true;
+    if (Array.isArray(v) && v[0] === "1") return true;
+    return false;
+  }, [rawHostJoinRequests]);
+
+  useEffect(() => {
+    hostJoinScrollDoneRef.current = false;
+  }, [token]);
+
+  useEffect(() => {
+    if (!openHostJoinRequests || !apiResolved || hostJoinScrollDoneRef.current) return;
+    const pending = round?.pendingJoinRequests?.length ?? 0;
+    if (pending === 0) return;
+    const timer = setTimeout(() => {
+      const y = hostJoinRequestsSectionYRef.current;
+      if (y > 0) {
+        scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+      }
+      hostJoinScrollDoneRef.current = true;
+    }, 420);
+    return () => clearTimeout(timer);
+  }, [openHostJoinRequests, apiResolved, round?.pendingJoinRequests?.length, round?.id]);
 
   useEffect(() => {
     return subscribeRoundListsRefresh((payload) => {
@@ -438,6 +470,28 @@ export default function RoundDetailsScreen() {
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function hostResolveGuestJoinRequest(guestUserId: string, action: "accept" | "decline") {
+    if (!token || !round?.isHost) return;
+    setHostJoinBusyUserId(guestUserId);
+    setError(null);
+    try {
+      const authToken = await getTokenRef.current();
+      await apiPost(`/api/rounds/${token}/join-requests`, { guestUserId, action }, authToken);
+      hapticSuccess();
+      showSnackbar(action === "accept" ? "Player confirmed for this round." : "Join request declined.");
+      emitRoundListsShouldRefresh();
+      void refreshNotificationBadge();
+      const next = await fetchRoundDetailsAndCache(token, authToken);
+      setRound(next);
+    } catch (resolveError) {
+      setError(
+        resolveError instanceof Error ? resolveError.message : "Could not update join request.",
+      );
+    } finally {
+      setHostJoinBusyUserId(null);
     }
   }
 
@@ -812,6 +866,84 @@ export default function RoundDetailsScreen() {
               );
             })}
           </View>
+        </View>
+      ) : null}
+
+      {apiResolved && round.isHost && (round.pendingJoinRequests?.length ?? 0) > 0 ? (
+        <View
+          onLayout={(e) => {
+            hostJoinRequestsSectionYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
+          <RoundDetailSection
+            title="Join requests"
+            hint="Players asked to join. Approve to add them to the group or decline to pass."
+            icon="mail-unread-outline"
+            expanded={hostJoinSectionExpanded}
+            onToggle={() => setHostJoinSectionExpanded((e) => !e)}
+          >
+            {(round.pendingJoinRequests ?? []).map((p) => {
+              const rowBusy = hostJoinBusyUserId === p.userId;
+              const anyBusy = hostJoinBusyUserId != null;
+              return (
+                <View key={p.userId} style={styles.hostJoinRequestRow}>
+                  <Pressable
+                    style={styles.hostJoinRequestUserTap}
+                    onPressIn={() => prefetchPublicProfile(p.userId, () => getTokenRef.current())}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/profile/[userId]",
+                        params: {
+                          userId: p.userId,
+                          userName: p.name,
+                          userAvatar: p.avatar ?? "",
+                        },
+                      })
+                    }
+                  >
+                    {p.avatar ? (
+                      <Image
+                        source={toAbsoluteUrl(p.avatar)}
+                        style={styles.hostJoinRequestAvatar}
+                        transition={0}
+                      />
+                    ) : (
+                      <InitialAvatar name={p.name} size={40} maxInitials={2} />
+                    )}
+                    <Text style={styles.hostJoinRequestName} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.hostJoinRequestActions}>
+                    <Pressable
+                      style={[
+                        styles.hostJoinApproveBtn,
+                        anyBusy && styles.disabledButton,
+                      ]}
+                      onPress={() => void hostResolveGuestJoinRequest(p.userId, "accept")}
+                      disabled={anyBusy}
+                    >
+                      {rowBusy ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.hostJoinApproveBtnText}>Approve</Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.hostJoinDeclineBtn,
+                        anyBusy && styles.disabledButton,
+                      ]}
+                      onPress={() => void hostResolveGuestJoinRequest(p.userId, "decline")}
+                      disabled={anyBusy}
+                    >
+                      <Text style={styles.hostJoinDeclineBtnText}>Decline</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })}
+          </RoundDetailSection>
         </View>
       ) : null}
 
@@ -1477,6 +1609,42 @@ const styles = StyleSheet.create({
     color: colors.muted,
     lineHeight: 20,
   },
+  hostJoinRequestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  hostJoinRequestUserTap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  hostJoinRequestAvatar: { width: 40, height: 40, borderRadius: 20 },
+  hostJoinRequestName: { flex: 1, fontSize: 15, fontWeight: "600", color: colors.text },
+  hostJoinRequestActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  hostJoinApproveBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: colors.fairway,
+    minWidth: 84,
+    alignItems: "center",
+  },
+  hostJoinApproveBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  hostJoinDeclineBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  hostJoinDeclineBtnText: { color: colors.text, fontWeight: "600", fontSize: 13 },
   errorText: {
     color: colors.danger,
     backgroundColor: "#fee4e2",

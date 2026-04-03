@@ -9,6 +9,10 @@ import { resolveValidatedUsLocationLabel } from "@/lib/places";
 import { resolveCourseLocation } from "@/lib/round-course-location";
 import { resolveRoundImageUrl } from "@/lib/round-images";
 import { publishAfterRoundDetailChanged } from "@/lib/parfade-ably-publish";
+import {
+  autoConfirmPendingJoinRequestsFifo,
+  listPendingJoinRequestsForRound,
+} from "@/lib/round-host-resolve-guest-request";
 import { getRoundsDbCapabilities } from "@/lib/rounds-db-capabilities";
 import { textArraySql, timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
@@ -182,6 +186,11 @@ export async function GET(req: Request, { params }: RouteContext) {
     .where(and(eq(spots.roundId, round.id), eq(spots.status, "declined")))
     .orderBy(asc(spots.createdAt));
 
+  const pendingJoinRequests =
+    currentUser?.id === round.hostId
+      ? await listPendingJoinRequestsForRound(round.id)
+      : [];
+
   const [conv] = currentUser
     ? await db
         .select({ id: conversations.id })
@@ -276,6 +285,7 @@ export async function GET(req: Request, { params }: RouteContext) {
         customImageUrl: round.customImageUrl,
         courseMetadata: round.courseMetadata,
       }),
+      ...(pendingJoinRequests.length > 0 ? { pendingJoinRequests } : {}),
       ...(chatAllowed ? { lastChatMessage, conversationId: conv?.id ?? null } : {}),
     },
   });
@@ -296,6 +306,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         id: rounds.id,
         hostId: rounds.hostId,
         mode: rounds.mode,
+        joinPolicy: rounds.joinPolicy,
       })
       .from(rounds)
       .where(eq(rounds.inviteToken, token));
@@ -452,9 +463,22 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       })
       .where(eq(rounds.id, existingRound.id));
 
+    let joinRequestsAutoConfirmed = 0;
+    if (existingRound.joinPolicy === "approval" && parsed.joinPolicy === "instant") {
+      const { confirmedUserIds } = await autoConfirmPendingJoinRequestsFifo({
+        roundId: existingRound.id,
+        inviteToken: token,
+        totalSpots: parsed.totalSpots,
+      });
+      joinRequestsAutoConfirmed = confirmedUserIds.length;
+    }
+
     await publishAfterRoundDetailChanged(token, "patch");
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      ...(joinRequestsAutoConfirmed > 0 ? { joinRequestsAutoConfirmed } : {}),
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       const flat = error.flatten();

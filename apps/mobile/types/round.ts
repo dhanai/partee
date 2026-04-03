@@ -71,6 +71,12 @@ export type RoundDetails = {
   spotsRemaining: number;
   isHost: boolean;
   currentUserSpotStatus: string | null;
+  /** Guests who requested to join (host-only); omitted when empty. */
+  pendingJoinRequests?: Array<{
+    userId: string;
+    name: string;
+    avatar: string | null;
+  }>;
   /** Present when the viewer may use group chat; null = no messages yet. */
   lastChatMessage?: {
     body: string;

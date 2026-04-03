@@ -1,7 +1,16 @@
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { courses, groupJoinRequests, inAppNotifications, posts, rounds, users } from "@/db/schema";
+import {
+  courses,
+  groupJoinRequests,
+  inAppNotifications,
+  posts,
+  rounds,
+  spots,
+  userFollows,
+  users,
+} from "@/db/schema";
 import { buildRoundNavHintJson } from "@/lib/activity-notification-round-hint";
 import { requireDbUser } from "@/lib/auth";
 import { formatVenueLabel } from "@/lib/round-invite-push-message";
@@ -55,6 +64,24 @@ export async function GET(req: Request) {
         actorProfileMap.set(a.id, { name: a.name, avatar: a.avatar });
       }
     }
+    const viewerFollowsActorMap = new Map<string, boolean>();
+    if (uniqueActorIds.length > 0) {
+      const followRows = await db
+        .select({
+          followedId: userFollows.followedId,
+          status: userFollows.status,
+        })
+        .from(userFollows)
+        .where(
+          and(
+            eq(userFollows.followerId, viewer.id),
+            inArray(userFollows.followedId, uniqueActorIds),
+          ),
+        );
+      for (const row of followRows) {
+        viewerFollowsActorMap.set(row.followedId, row.status === "accepted");
+      }
+    }
 
     const groupJoinRows = rows.filter((r) => r.type === "group_join_request");
     const actorIdsForGroupJoins = groupJoinRows
@@ -105,6 +132,18 @@ export async function GET(req: Request) {
           .filter((id): id is string => Boolean(id)),
       ),
     ];
+
+    const pendingRoundJoinSet = new Set<string>();
+    if (roundIdsForJoin.length > 0) {
+      const pendingSpots = await db
+        .select({ roundId: spots.roundId, userId: spots.userId })
+        .from(spots)
+        .where(and(inArray(spots.roundId, roundIdsForJoin), eq(spots.status, "requested")));
+      for (const s of pendingSpots) {
+        pendingRoundJoinSet.add(`${s.roundId}:${s.userId}`);
+      }
+    }
+
     const inviteTokensForJoin = [
       ...new Set(
         roundHintRows
@@ -240,6 +279,7 @@ export async function GET(req: Request) {
             : "";
 
         const actorProfile = actorUserId ? actorProfileMap.get(actorUserId) : undefined;
+        const viewerFollowsActor = actorUserId ? Boolean(viewerFollowsActorMap.get(actorUserId)) : false;
 
         if (actorUserId && !actorProfile) return [];
 
@@ -321,6 +361,16 @@ export async function GET(req: Request) {
           }
         }
 
+        let activityStillPending = requestEntry?.pending ?? false;
+        if (
+          r.type === "round_rsvp_accepted" &&
+          roundRsvpMeta?.spotStatus === "requested" &&
+          typeof d.roundId === "string" &&
+          actorUserId
+        ) {
+          activityStillPending = pendingRoundJoinSet.has(`${d.roundId}:${actorUserId}`);
+        }
+
         return [
           {
             id: r.id,
@@ -336,10 +386,11 @@ export async function GET(req: Request) {
             actorUserId,
             actorName: actorProfile?.name ?? "",
             actorAvatar: actorProfile?.avatar ?? null,
+            viewerFollowsActor,
             previewImageUrl:
               previewImageUrlFromData ||
               (postId ? (postPreviewById.get(postId) ?? "") : ""),
-            stillPending: requestEntry?.pending ?? false,
+            stillPending: activityStillPending,
             joinRequestId: requestEntry?.requestId ?? null,
             createdAt: toIsoTimestamp(r.createdAt),
             ...(roundRsvpMeta ? { roundRsvpMeta } : {}),

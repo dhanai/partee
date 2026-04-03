@@ -20,7 +20,18 @@ function openNotificationData(
     inviteToken.length > 0 &&
     (type === "round_invite" || type === "round_rsvp")
   ) {
-    router.push(`/round/${inviteToken}`);
+    const hostJoinRequests =
+      type === "round_rsvp" &&
+      (data.spotStatus === "requested" ||
+        data.hostJoinRequests === "1" ||
+        data.hostJoinRequests === 1);
+    router.push({
+      pathname: "/round/[token]",
+      params: {
+        token: inviteToken,
+        ...(hostJoinRequests ? { hostJoinRequests: "1" } : {}),
+      },
+    });
     return;
   }
   if (type === "follow_request") {

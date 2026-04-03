@@ -484,6 +484,36 @@ export default function MyRoundsScreen() {
     }
   }
 
+  async function cancelJoinRequestFromInvites(round: MineRound) {
+    setInviteActionRoundId(round.id);
+    setInviteRowError((prev) => {
+      const next = { ...prev };
+      delete next[round.id];
+      return next;
+    });
+    try {
+      const authToken = await getTokenRef.current();
+      await apiPost(`/api/rounds/${round.inviteToken}/join`, { action: "cancel_request" }, authToken);
+      setPendingInvitesCount((prev) =>
+        Math.max(
+          0,
+          prev - (round.spotStatus === "invited" || round.spotStatus === "requested" ? 1 : 0),
+        ),
+      );
+      setInvited((prev) => prev.filter((r) => r.id !== round.id));
+      emitRoundListsShouldRefresh();
+      void refreshNotificationBadge();
+    } catch (cancelError) {
+      setInviteRowError((prev) => ({
+        ...prev,
+        [round.id]:
+          cancelError instanceof Error ? cancelError.message : "Could not cancel request.",
+      }));
+    } finally {
+      setInviteActionRoundId(null);
+    }
+  }
+
   async function submitInviteAction(round: MineRound, action: "claim" | "decline") {
     setInviteActionRoundId(round.id);
     setInviteRowError((prev) => {
@@ -563,7 +593,7 @@ export default function MyRoundsScreen() {
   const emptyMessage =
     activeTab === "rounds"
       ? "Rounds you host and rounds you've joined show up here."
-      : "Invites show here until you respond. Declined rounds stay listed so you can open them again.";
+      : "Invites, join requests you’ve sent, and declined rounds you can reopen all show here.";
   const listHeader = (
     <>
       <Text style={styles.heading}>My rounds</Text>
@@ -791,15 +821,27 @@ export default function MyRoundsScreen() {
                 onPlayerPressIn={(player) =>
                   prefetchPublicProfile(player.id, () => getTokenRef.current())
                 }
-                trailingAfterSpots={
-                  activeTab === "rounds" && round.spotStatus === "requested" ? (
-                    <Text style={styles.badgeMutedSub}>Pending</Text>
-                  ) : undefined
-                }
                 footer={
                   activeTab === "invites" ? (
                     <View style={styles.inviteFooter}>
-                      {effectiveInviteOutcome ? (
+                      {round.spotStatus === "requested" ? (
+                        rowBusy ? (
+                          <ActivityIndicator color={colors.fairway} style={styles.inviteRowSpinner} />
+                        ) : (
+                          <>
+                            <Text style={styles.inviteResponseText}>
+                              Waiting for host approval.
+                            </Text>
+                            <Pressable
+                              style={[styles.inviteActionBtn, styles.inviteDeclineBtn, styles.inviteCancelRequestBtn]}
+                              onPress={() => void cancelJoinRequestFromInvites(round)}
+                              accessibilityLabel="Cancel join request"
+                            >
+                              <Text style={styles.inviteDeclineBtnText}>Cancel request</Text>
+                            </Pressable>
+                          </>
+                        )
+                      ) : effectiveInviteOutcome ? (
                         <Text
                           style={
                             effectiveInviteOutcome === "declined"
@@ -995,6 +1037,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: "700",
     fontSize: 14,
+  },
+  inviteCancelRequestBtn: {
+    marginTop: 10,
+    alignSelf: "flex-start",
   },
   inviteResponseText: {
     color: colors.fairway,

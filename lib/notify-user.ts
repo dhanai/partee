@@ -90,6 +90,7 @@ export async function recordHostRoundRsvpAndMaybePush(input: {
         type: "round_rsvp",
         inviteToken: input.inviteToken,
         spotStatus: input.spotStatus,
+        ...(input.spotStatus === "requested" ? { hostJoinRequests: "1" as const } : {}),
       },
     },
   ]);
