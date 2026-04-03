@@ -11,7 +11,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "drizzle-kit migrate && node -e \"console.log('\\n✓ db:migrate finished successfully. If the DB was already up to date, no new SQL ran.')\"",
     "db:profile-activity-baseline": "tsx db/profile-activity-baseline.ts",
     "db:ensure-user-columns": "tsx db/ensure-user-columns.ts",
     "db:fix-notifications-column": "tsx db/ensure-notifications-column.ts",
