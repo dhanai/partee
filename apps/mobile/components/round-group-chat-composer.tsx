@@ -9,6 +9,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -62,8 +63,6 @@ type Props = {
   onTyping?: () => void;
   replyTo?: ReplyTarget | null;
   onCancelReply?: () => void;
-  /** Fires when the + attachment menu opens or closes (for chat list dismiss overlay). */
-  onAttachMenuOpenChange?: (open: boolean) => void;
 };
 
 export type ComposerHandle = { focus: () => void; closeAttachMenu: () => void };
@@ -81,12 +80,14 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
     onTyping,
     replyTo,
     onCancelReply,
-    onAttachMenuOpenChange,
   }: Props, ref) {
   const [draft, setDraft] = useState("");
   const [stagedImages, setStagedImages] = useState<PickedImageAsset[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  /** Distance from window top to top of attach row — used to size the dismiss scrim above the composer. */
+  const [attachBackdropTop, setAttachBackdropTop] = useState(0);
   const inputRef = useRef<TextInput>(null);
+  const attachRowWrapRef = useRef<View>(null);
   const attachMenuScale = useRef(new Animated.Value(0)).current;
   const attachMenuOpenRef = useRef(false);
   attachMenuOpenRef.current = attachMenuOpen;
@@ -101,6 +102,34 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
   useEffect(() => {
     if (replyTo) inputRef.current?.focus();
   }, [replyTo]);
+
+  const measureAttachBackdrop = useCallback(() => {
+    attachRowWrapRef.current?.measureInWindow((_x, y) => {
+      setAttachBackdropTop(Math.max(0, y));
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!attachMenuOpen) {
+      setAttachBackdropTop(0);
+      return;
+    }
+    measureAttachBackdrop();
+    const id = requestAnimationFrame(measureAttachBackdrop);
+    return () => cancelAnimationFrame(id);
+  }, [attachMenuOpen, measureAttachBackdrop]);
+
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    const showEv = Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow";
+    const hideEv = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const subShow = Keyboard.addListener(showEv, measureAttachBackdrop);
+    const subHide = Keyboard.addListener(hideEv, measureAttachBackdrop);
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, [attachMenuOpen, measureAttachBackdrop]);
 
   const handleChangeText = useCallback(
     (text: string) => {
@@ -199,10 +228,6 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
     }),
     [closeAttachMenu],
   );
-
-  useEffect(() => {
-    onAttachMenuOpenChange?.(attachMenuOpen);
-  }, [attachMenuOpen, onAttachMenuOpenChange]);
 
   const handlePickImageFromMenu = useCallback(() => {
     closeAttachMenu(() => {
@@ -365,7 +390,12 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
       ) : null}
 
       {/* Full-width wrapper so the attach menu is not clipped by the narrow + column */}
-      <View style={composerOuterStyles.attachRowWrap} collapsable={false}>
+      <View
+        ref={attachRowWrapRef}
+        style={composerOuterStyles.attachRowWrap}
+        collapsable={false}
+        onLayout={attachMenuOpen ? measureAttachBackdrop : undefined}
+      >
         <View style={[s.composerRow, composerOuterStyles.composerRow]}>
           {onSendWithAttachments ? (
             <View style={composerBtnStyles.plusWrap} collapsable={false}>
@@ -406,7 +436,23 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
             )}
           </Pressable>
         </View>
-        {onSendWithAttachments && attachMenuOpen ? attachMenuPopover : null}
+        {onSendWithAttachments && attachMenuOpen ? (
+          <>
+            <Pressable
+              style={[
+                attachMenuStyles.dismissBackdrop,
+                {
+                  top: -attachBackdropTop,
+                  height: Math.max(attachBackdropTop, 1),
+                },
+              ]}
+              onPress={() => closeAttachMenu()}
+              accessibilityLabel="Dismiss attachment menu"
+              accessibilityRole="button"
+            />
+            {attachMenuPopover}
+          </>
+        ) : null}
       </View>
     </View>
     </>
@@ -439,6 +485,13 @@ const composerBtnStyles = StyleSheet.create({
 });
 
 const attachMenuStyles = StyleSheet.create({
+  /** Covers the message list only (above this row). Sits under the popover so menu rows stay tappable. */
+  dismissBackdrop: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 1,
+  },
   sheetInline: {
     position: "absolute",
     bottom: "100%",

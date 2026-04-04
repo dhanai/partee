@@ -46,8 +46,6 @@ export type AnimatedBottomSheetFrameProps = {
   enableContentPanningGesture?: boolean;
   /** Haptic when the sheet is presented. Default true. */
   hapticsOnOpen?: boolean;
-  /** Haptic when the user dismisses (gesture/backdrop), not when parent sets visible false. Default true. */
-  hapticsOnClose?: boolean;
 };
 
 /**
@@ -75,7 +73,6 @@ export function AnimatedBottomSheetFrame({
   topInset,
   enableContentPanningGesture = true,
   hapticsOnOpen = true,
-  hapticsOnClose = true,
 }: AnimatedBottomSheetFrameProps) {
   const ref = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
@@ -105,15 +102,11 @@ export function AnimatedBottomSheetFrame({
   );
 
   const handleDismiss = useCallback(() => {
-    const userInitiated = !programmaticRef.current;
-    if (userInitiated && hapticsOnClose) {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     if (!programmaticRef.current) {
       onCloseRef.current();
     }
     programmaticRef.current = false;
-  }, [hapticsOnClose]);
+  }, []);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (

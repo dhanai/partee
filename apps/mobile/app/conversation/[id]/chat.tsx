@@ -227,7 +227,6 @@ function ConversationChatContent() {
   const [peerReadByUserId, setPeerReadByUserId] = useState<Record<string, PeerRead>>({});
   const [editingMessage, setEditingMessage] = useState<ConversationMessage | null>(null);
   const [gifSheetVisible, setGifSheetVisible] = useState(false);
-  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [editDraft, setEditDraft] = useState("");
   const flatListRef = useRef<FlatList>(null);
 
@@ -424,6 +423,8 @@ function ConversationChatContent() {
       const trimmed = text.trim();
       if (!trimmed || !conversationId) return false;
 
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
       const me = getCachedMeProfile();
       const tempId = `optimistic-${Date.now()}`;
       const parentId = replyTo?.id ?? null;
@@ -484,6 +485,7 @@ function ConversationChatContent() {
   const handleSendWithAttachments = useCallback(
     async (text: string, assets: PickedImageAsset[]): Promise<boolean> => {
       if (!conversationId || assets.length === 0) return false;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       stopTyping();
 
       const me = getCachedMeProfile();
@@ -556,6 +558,7 @@ function ConversationChatContent() {
   const handleSendGif = useCallback(
     async (item: { sendUrl: string; id: string }) => {
       if (!conversationId) return;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       stopTyping();
 
       const me = getCachedMeProfile();
@@ -1096,14 +1099,6 @@ function ConversationChatContent() {
             )
           }
         />
-        {attachMenuOpen ? (
-          <Pressable
-            style={cStyles.attachMenuBackdrop}
-            onPress={() => composerRef.current?.closeAttachMenu()}
-            accessibilityLabel="Dismiss attachment menu"
-            accessibilityRole="button"
-          />
-        ) : null}
         <ChatScrollToBottom visible={showScrollBtn} onPress={scrollToBottom} />
       </View>
 
@@ -1122,7 +1117,6 @@ function ConversationChatContent() {
             onTyping={publishTyping}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
-            onAttachMenuOpenChange={setAttachMenuOpen}
           />
         </View>
       </KeyboardStickyView>
@@ -1289,11 +1283,6 @@ const cStyles = StyleSheet.create({
   },
   listWrap: {
     flex: 1,
-    position: "relative",
-  },
-  attachMenuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 5,
   },
   listContent: {
     paddingTop: MARGIN,
