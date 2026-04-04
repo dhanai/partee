@@ -9,17 +9,18 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
 } from "react";
+import { BlurView } from "expo-blur";
 import {
   ActivityIndicator,
   Animated,
-  Dimensions,
+  BackHandler,
   Easing,
+  Keyboard,
   LayoutAnimation,
-  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -82,9 +83,7 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
   const [draft, setDraft] = useState("");
   const [stagedImages, setStagedImages] = useState<PickedImageAsset[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const inputRef = useRef<TextInput>(null);
-  const attachAnchorRef = useRef<View>(null);
   const attachMenuScale = useRef(new Animated.Value(0)).current;
 
   useImperativeHandle(ref, () => ({
@@ -200,13 +199,14 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
 
   const openAttachMenu = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    attachAnchorRef.current?.measureInWindow((x, y, width, height) => {
-      attachMenuScale.stopAnimation();
-      attachMenuScale.setValue(0);
-      setMenuAnchor({ x, y, width, height });
-      setAttachMenuOpen(true);
-    });
-  }, [attachMenuScale]);
+    if (attachMenuOpen) {
+      closeAttachMenu();
+      return;
+    }
+    attachMenuScale.stopAnimation();
+    attachMenuScale.setValue(0);
+    setAttachMenuOpen(true);
+  }, [attachMenuOpen, attachMenuScale, closeAttachMenu]);
 
   useEffect(() => {
     if (!attachMenuOpen) return;
@@ -220,29 +220,87 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
     }).start();
   }, [attachMenuOpen, attachMenuScale]);
 
+  useEffect(() => {
+    if (Platform.OS !== "android" || !attachMenuOpen) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeAttachMenu();
+      return true;
+    });
+    return () => sub.remove();
+  }, [attachMenuOpen, closeAttachMenu]);
+
   const handleGifFromMenu = useCallback(() => {
+    Keyboard.dismiss();
     closeAttachMenu(() => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       onGifPress?.();
     });
   }, [closeAttachMenu, onGifPress]);
 
-  const windowW = Dimensions.get("window").width;
-
   const ATTACH_MENU_MAX_W = 188;
 
-  const attachMenuPosition = useMemo(() => {
-    const menuH = onGifPress ? 108 : 56;
-    const top = Math.max(52, menuAnchor.y - menuH - 8);
-    const left = Math.min(
-      Math.max(12, menuAnchor.x),
-      windowW - ATTACH_MENU_MAX_W - 12,
-    );
-    return { top, left };
-  }, [menuAnchor.x, menuAnchor.y, onGifPress, windowW]);
+  const attachMenuPopover = (
+    <Animated.View
+      style={[
+        attachMenuStyles.sheetInline,
+        {
+          maxWidth: ATTACH_MENU_MAX_W,
+          opacity: attachMenuScale.interpolate({
+            inputRange: [0, 0.15, 1],
+            outputRange: [0, 1, 1],
+          }),
+          transform: [{ scale: attachMenuScale }],
+          transformOrigin: "0% 100%",
+        },
+      ]}
+      pointerEvents="box-none"
+    >
+      <BlurView
+        intensity={Platform.OS === "ios" ? 88 : 48}
+        tint="light"
+        style={[
+          attachMenuStyles.blurChrome,
+          Platform.OS === "android" ? attachMenuStyles.blurChromeAndroid : null,
+        ]}
+      >
+        <Pressable
+          style={attachMenuStyles.row}
+          onPress={() => void handlePickImageFromMenu()}
+          accessibilityRole="button"
+          accessibilityLabel="Photo"
+        >
+          <View style={attachMenuStyles.iconSlot}>
+            <Ionicons name="image-outline" size={22} color={colors.fairway} />
+          </View>
+          <Text style={attachMenuStyles.rowLabel}>Photo</Text>
+        </Pressable>
+        {onGifPress ? (
+          <>
+            <View style={attachMenuStyles.separator} />
+            <Pressable
+              style={attachMenuStyles.row}
+              onPress={handleGifFromMenu}
+              accessibilityRole="button"
+              accessibilityLabel="GIF"
+            >
+              <View style={attachMenuStyles.iconSlot}>
+                <View style={attachMenuStyles.gifBadge}>
+                  <Text style={attachMenuStyles.gifBadgeText} allowFontScaling={false}>
+                    GIF
+                  </Text>
+                </View>
+              </View>
+              <Text style={attachMenuStyles.rowLabel}>GIF</Text>
+            </Pressable>
+          </>
+        ) : null}
+      </BlurView>
+    </Animated.View>
+  );
 
   return (
-    <View>
+    <>
+    <View style={composerOuterStyles.root}>
       {replyTo ? (
         <View style={replyStyles.banner}>
           <View style={replyStyles.bar} />
@@ -288,156 +346,108 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
         </ScrollView>
       ) : null}
 
-      <View style={s.composerRow}>
-        {onSendWithAttachments ? (
-          <View ref={attachAnchorRef} collapsable={false} style={composerBtnStyles.plusBtn}>
-            <Pressable
-              onPress={openAttachMenu}
-              hitSlop={6}
-              accessibilityLabel="Add attachment"
-              accessibilityHint="Opens photo and GIF options"
-            >
-              <Ionicons name="add-circle" size={28} color={colors.fairway} />
-            </Pressable>
-          </View>
-        ) : null}
-        <TextInput
-          ref={inputRef}
-          value={draft}
-          onChangeText={handleChangeText}
-          onContentSizeChange={handleContentSizeChange}
-          onFocus={() => onComposerFocus?.()}
-          placeholder="Message…"
-          placeholderTextColor={colors.muted}
-          style={s.input}
-          multiline
-          blurOnSubmit={false}
-          maxLength={2000}
-        />
-        <Pressable
-          style={[s.sendBtn, !canSend && s.sendBtnDisabled]}
-          onPress={() => void submit()}
-          disabled={!canSend}
-          hitSlop={8}
-          accessibilityLabel="Send message"
-        >
-          {sendBusy ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Ionicons name="arrow-up" size={20} color="#fff" />
-          )}
-        </Pressable>
-      </View>
-
-      <Modal
-        visible={attachMenuOpen}
-        transparent
-        animationType="none"
-        onRequestClose={() => closeAttachMenu()}
-      >
-        <View style={attachMenuStyles.root} pointerEvents="box-none">
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                backgroundColor: "rgba(0,0,0,0.35)",
-                opacity: attachMenuScale.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 1],
-                }),
-              },
-            ]}
-            pointerEvents="none"
+      {/* Full-width wrapper so the attach menu is not clipped by the narrow + column */}
+      <View style={composerOuterStyles.attachRowWrap} collapsable={false}>
+        <View style={[s.composerRow, composerOuterStyles.composerRow]}>
+          {onSendWithAttachments ? (
+            <View style={composerBtnStyles.plusWrap} collapsable={false}>
+              <Pressable
+                onPress={openAttachMenu}
+                hitSlop={6}
+                accessibilityLabel="Add attachment"
+                accessibilityHint="Opens photo and GIF options"
+              >
+                <Ionicons name="add-circle" size={28} color={colors.fairway} />
+              </Pressable>
+            </View>
+          ) : null}
+          <TextInput
+            ref={inputRef}
+            value={draft}
+            onChangeText={handleChangeText}
+            onContentSizeChange={handleContentSizeChange}
+            onFocus={() => onComposerFocus?.()}
+            placeholder="Message…"
+            placeholderTextColor={colors.muted}
+            style={s.input}
+            multiline
+            blurOnSubmit={false}
+            maxLength={2000}
           />
           <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => closeAttachMenu()}
-            accessibilityLabel="Dismiss"
-          />
-          <Animated.View
-            style={[
-              attachMenuStyles.sheet,
-              {
-                top: attachMenuPosition.top,
-                left: attachMenuPosition.left,
-                maxWidth: ATTACH_MENU_MAX_W,
-                opacity: attachMenuScale.interpolate({
-                  inputRange: [0, 0.15, 1],
-                  outputRange: [0, 1, 1],
-                }),
-                transform: [{ scale: attachMenuScale }],
-                transformOrigin: "0% 100%",
-              },
-            ]}
-            pointerEvents="box-none"
+            style={[s.sendBtn, !canSend && s.sendBtnDisabled]}
+            onPress={() => void submit()}
+            disabled={!canSend}
+            hitSlop={8}
+            accessibilityLabel="Send message"
           >
-            <Pressable
-              style={attachMenuStyles.row}
-              onPress={() => void handlePickImageFromMenu()}
-              accessibilityRole="button"
-              accessibilityLabel="Photo"
-            >
-              <View style={attachMenuStyles.iconSlot}>
-                <Ionicons name="image-outline" size={22} color={colors.fairway} />
-              </View>
-              <Text style={attachMenuStyles.rowLabel}>Photo</Text>
-            </Pressable>
-            {onGifPress ? (
-              <>
-                <View style={attachMenuStyles.separator} />
-                <Pressable
-                  style={attachMenuStyles.row}
-                  onPress={handleGifFromMenu}
-                  accessibilityRole="button"
-                  accessibilityLabel="GIF"
-                >
-                  <View style={attachMenuStyles.iconSlot}>
-                    <View style={attachMenuStyles.gifBadge}>
-                      <Text style={attachMenuStyles.gifBadgeText} allowFontScaling={false}>
-                        GIF
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={attachMenuStyles.rowLabel}>GIF</Text>
-                </Pressable>
-              </>
-            ) : null}
-          </Animated.View>
+            {sendBusy ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Ionicons name="arrow-up" size={20} color="#fff" />
+            )}
+          </Pressable>
         </View>
-      </Modal>
+        {onSendWithAttachments && attachMenuOpen ? attachMenuPopover : null}
+      </View>
     </View>
+    </>
   );
 }));
 
+const composerOuterStyles = StyleSheet.create({
+  root: {
+    overflow: "visible",
+    alignSelf: "stretch",
+  },
+  attachRowWrap: {
+    position: "relative",
+    width: "100%",
+    overflow: "visible",
+    zIndex: 1,
+  },
+  composerRow: {
+    overflow: "visible",
+  },
+});
+
 const composerBtnStyles = StyleSheet.create({
-  plusBtn: {
+  plusWrap: {
     justifyContent: "center",
     alignItems: "center",
     paddingBottom: 2,
+    alignSelf: "center",
   },
 });
 
 const attachMenuStyles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  sheet: {
+  sheetInline: {
     position: "absolute",
+    bottom: "100%",
+    left: 0,
+    marginBottom: 8,
     alignSelf: "flex-start",
-    backgroundColor: colors.surface,
     borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    overflow: "hidden",
+    zIndex: 1000,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    elevation: 24,
+  },
+  blurChrome: {
+    borderRadius: 10,
+    overflow: "hidden",
     paddingTop: 10,
     paddingBottom: 10,
     paddingLeft: 10,
     paddingRight: 14,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.72)",
+  },
+  blurChromeAndroid: {
+    backgroundColor: "rgba(255, 255, 255, 0.82)",
   },
   iconSlot: {
     width: 34,
@@ -457,7 +467,7 @@ const attachMenuStyles = StyleSheet.create({
   },
   separator: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
     marginLeft: 52,
   },
   gifBadge: {
