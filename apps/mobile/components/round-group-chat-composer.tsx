@@ -42,6 +42,8 @@ type Props = {
   sendBusy: boolean;
   onSend: (text: string) => Promise<boolean>;
   onSendWithAttachments?: (text: string, assets: PickedImageAsset[]) => Promise<boolean>;
+  /** Opens GIF search (e.g. Giphy). Shown next to the photo button when set. */
+  onGifPress?: () => void;
   onComposerFocus?: () => void;
   onTyping?: () => void;
   replyTo?: ReplyTarget | null;
@@ -58,6 +60,7 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
     sendBusy,
     onSend,
     onSendWithAttachments,
+    onGifPress,
     onComposerFocus,
     onTyping,
     replyTo,
@@ -203,14 +206,29 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
 
       <View style={s.composerRow}>
         {onSendWithAttachments ? (
-          <Pressable
-            style={composerBtnStyles.plusBtn}
-            onPress={() => void handlePickImage()}
-            hitSlop={6}
-            accessibilityLabel="Add photo"
-          >
-            <Ionicons name="add-circle" size={28} color={colors.fairway} />
-          </Pressable>
+          <View style={composerBtnStyles.leftActions}>
+            <Pressable
+              style={composerBtnStyles.plusBtn}
+              onPress={() => void handlePickImage()}
+              hitSlop={6}
+              accessibilityLabel="Add photo"
+            >
+              <Ionicons name="add-circle" size={28} color={colors.fairway} />
+            </Pressable>
+            {onGifPress ? (
+              <Pressable
+                style={composerBtnStyles.plusBtn}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onGifPress();
+                }}
+                hitSlop={6}
+                accessibilityLabel="Add GIF"
+              >
+                <Ionicons name="film-outline" size={26} color={colors.fairway} />
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
         <TextInput
           ref={inputRef}
@@ -244,6 +262,11 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
 }));
 
 const composerBtnStyles = StyleSheet.create({
+  leftActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
   plusBtn: {
     justifyContent: "center",
     alignItems: "center",

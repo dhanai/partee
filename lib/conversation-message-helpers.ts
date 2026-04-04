@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { conversations, messages, messageReactions, rounds, users } from "@/db/schema";
-import { type MessageAttachment, getImageUrls } from "@/lib/attachment-types";
+import { type MessageAttachment, getGifUrls, getImageUrls } from "@/lib/attachment-types";
 import {
   publishChatRoomMessage,
   publishConversationInboxToasts,
@@ -16,10 +16,21 @@ export const PAGE_SIZE = 50;
 
 export const VALID_EMOJIS = ["heart", "laugh", "shocked", "cry", "angry", "thumbs_up", "thumbs_down"] as const;
 
-const attachmentSchema = z.object({
+const imageAttachmentSchema = z.object({
   type: z.literal("image"),
   url: z.string().url(),
 });
+
+const gifAttachmentSchema = z.object({
+  type: z.literal("gif"),
+  url: z.string().url(),
+  giphyId: z.string().optional(),
+});
+
+const attachmentSchema = z.discriminatedUnion("type", [
+  imageAttachmentSchema,
+  gifAttachmentSchema,
+]);
 
 export const messagePostSchema = z
   .object({
@@ -289,13 +300,20 @@ export async function sendConversationMessage(input: {
   if (!inserted) throw new Error("Failed to insert message.");
 
   const imageCount = getImageUrls(input.attachments).length;
+  const gifCount = getGifUrls(input.attachments).length;
   const pushBody = input.body
     ? input.body
-    : imageCount === 1
-      ? "Sent a photo"
-      : imageCount > 1
-        ? `Sent ${imageCount} photos`
-        : "";
+    : imageCount === 0 && gifCount === 0
+      ? ""
+      : gifCount === 0
+        ? imageCount === 1
+          ? "Sent a photo"
+          : `Sent ${imageCount} photos`
+        : imageCount === 0
+          ? gifCount === 1
+            ? "Sent a GIF"
+            : `Sent ${gifCount} GIFs`
+          : "Sent photos and GIFs";
 
   let parentPreview: MappedMessage["parentPreview"] = null;
   if (inserted.parentId) {

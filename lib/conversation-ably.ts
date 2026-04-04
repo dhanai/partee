@@ -5,7 +5,7 @@ import { conversationParticipants } from "@/db/schema";
 import { batchPublishParfadeMessages } from "@/lib/parfade-ably-publish";
 import { parfadeUserInboxChannel } from "@/lib/parfade-ably-channels";
 import type { MappedMessage } from "@/lib/conversation-message-helpers";
-import { getImageUrls } from "@/lib/attachment-types";
+import { getGifUrls, getImageUrls } from "@/lib/attachment-types";
 
 let chatRest: Ably.Rest | null = null;
 function getChatRest(): Ably.Rest | null {
@@ -23,9 +23,17 @@ function chatTextPreview(message: MappedMessage): string {
     return message.body.length > 100 ? message.body.slice(0, 97) + "…" : message.body;
   }
   const imgCount = getImageUrls(message.attachments ?? null).length;
-  if (imgCount === 1) return "📷 Photo";
-  if (imgCount > 1) return `📷 ${imgCount} photos`;
-  return " ";
+  const gifCount = getGifUrls(message.attachments ?? null).length;
+  if (imgCount === 0 && gifCount === 0) return " ";
+  if (gifCount === 0) {
+    if (imgCount === 1) return "📷 Photo";
+    return `📷 ${imgCount} photos`;
+  }
+  if (imgCount === 0) {
+    if (gifCount === 1) return "GIF";
+    return `${gifCount} GIFs`;
+  }
+  return "📷 Media";
 }
 
 /**

@@ -24,7 +24,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { toAbsoluteUrl } from "../lib/api";
-import { getImageUrls } from "../lib/attachment-types";
+import { getMediaUrls } from "../lib/attachment-types";
 import type { CachedMessage } from "../lib/message-cache";
 import type { GroupStyle } from "../lib/chat-group-styles";
 import { colors } from "../lib/theme";
@@ -592,10 +592,10 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   const avatarSpacer = <View style={styles.avatarSpacer} />;
 
-  const imageUrls = getImageUrls(m.attachments);
-  const hasImages = imageUrls.length > 0;
+  const mediaUrls = getMediaUrls(m.attachments);
+  const hasMedia = mediaUrls.length > 0;
   const bodyText = m.body ?? "";
-  const emojiOnly = !isDeleted && !hasImages && !m.parentPreview && isEmojiOnly(bodyText);
+  const emojiOnly = !isDeleted && !hasMedia && !m.parentPreview && isEmojiOnly(bodyText);
   const tombstoneLabel = isDeleted
     ? isMine
       ? "You removed this message."
@@ -616,12 +616,12 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
 
   const handleMosaicPress = useCallback(
     (index: number) => {
-      onImagePress?.(imageUrls, index);
+      onImagePress?.(mediaUrls, index);
     },
-    [imageUrls, onImagePress],
+    [mediaUrls, onImagePress],
   );
 
-  const imageBodyBubble = hasImages && bodyText ? (
+  const imageBodyBubble = hasMedia && bodyText ? (
     isMine ? (
       <View style={[legacyStyles.bubble, legacyStyles.bubbleMine, {
         borderTopLeftRadius: RADIUS,
@@ -669,9 +669,9 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
         <Text style={styles.tombstoneTheirs}>{tombstoneLabel}</Text>
       </View>
     )
-  ) : hasImages ? (
+  ) : hasMedia ? (
     <View>
-      <ImageMosaic urls={imageUrls} radii={bubbleRadii} onPress={handleMosaicPress} transition={isMine ? 0 : 200} />
+      <ImageMosaic urls={mediaUrls} radii={bubbleRadii} onPress={handleMosaicPress} transition={isMine ? 0 : 200} />
     </View>
   ) : emojiOnly ? (
     <Text style={styles.emojiOnlyText}>{bodyText.trim()}</Text>

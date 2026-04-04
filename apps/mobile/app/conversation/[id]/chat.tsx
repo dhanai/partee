@@ -31,6 +31,7 @@ import { ChatHeaderAvatars, ChatHeaderInfoButton } from "../../../components/cha
 import { ChatScrollToBottom } from "../../../components/chat-scroll-to-bottom";
 import { ChatTimestamp } from "../../../components/chat-timestamp";
 import { buildChatItems, chatItemKey, type ChatListItem } from "../../../lib/build-chat-items";
+import { GiphyPickerSheet } from "../../../components/giphy-picker-sheet";
 import { RoundGroupChatComposer, type ComposerHandle, type PickedImageAsset, type ReplyTarget } from "../../../components/round-group-chat-composer";
 import { TypingIndicator } from "../../../components/typing-indicator";
 import { apiGet, apiPost, apiPatch, apiDelete } from "../../../lib/api";
@@ -224,6 +225,7 @@ function ConversationChatContent() {
   const [reportTarget, setReportTarget] = useState<{ id: string; userId: string } | null>(null);
   const [peerReadByUserId, setPeerReadByUserId] = useState<Record<string, PeerRead>>({});
   const [editingMessage, setEditingMessage] = useState<ConversationMessage | null>(null);
+  const [gifSheetVisible, setGifSheetVisible] = useState(false);
   const [editDraft, setEditDraft] = useState("");
   const flatListRef = useRef<FlatList>(null);
   const composerRef = useRef<ComposerHandle>(null);
@@ -538,6 +540,60 @@ function ConversationChatContent() {
         setMsgs((prev) => prev.filter((m) => m.id !== tempId));
         setError("Could not send image.");
         return false;
+      }
+    },
+    [conversationId],
+  );
+
+  const handleSendGif = useCallback(
+    async (item: { sendUrl: string; id: string }) => {
+      if (!conversationId) return;
+      stopTyping();
+
+      const me = getCachedMeProfile();
+      const tempId = `optimistic-gif-${Date.now()}`;
+      const att = { type: "gif" as const, url: item.sendUrl, giphyId: item.id };
+
+      const optimistic: ConversationMessage = {
+        id: tempId,
+        body: null,
+        attachments: [att],
+        createdAt: new Date().toISOString(),
+        editedAt: null,
+        deletedAt: null,
+        isMine: true,
+        user: { id: me?.id ?? "", name: me?.name ?? "You", avatar: me?.avatar ?? null },
+        reactions: {},
+      };
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setMsgs((prev) => [...prev, optimistic]);
+
+      try {
+        const authToken = await getTokenRef.current();
+        const data = await apiPost<{ message: ConversationMessage }>(
+          `/api/conversations/${conversationId}/messages`,
+          { attachments: [att] },
+          authToken,
+        );
+        setMsgs((prev) => {
+          if (prev.some((m) => m.id === data.message.id)) {
+            return prev.filter((m) => m.id !== tempId);
+          }
+          const optimisticMsg = prev.find((m) => m.id === tempId);
+          const updated = prev.map((m) =>
+            m.id === tempId
+              ? { ...data.message, attachments: optimisticMsg?.attachments ?? data.message.attachments }
+              : m,
+          );
+          void setCachedMessages(
+            conversationId,
+            updated.map((m) => (m.id === tempId ? data.message : m)),
+          );
+          return updated;
+        });
+      } catch {
+        setMsgs((prev) => prev.filter((m) => m.id !== tempId));
+        setError("Could not send GIF.");
       }
     },
     [conversationId],
@@ -1046,6 +1102,7 @@ function ConversationChatContent() {
             sendBusy={false}
             onSend={handleSend}
             onSendWithAttachments={handleSendWithAttachments}
+            onGifPress={() => setGifSheetVisible(true)}
             onTyping={publishTyping}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
@@ -1059,6 +1116,14 @@ function ConversationChatContent() {
       initialIndex={viewerIndex}
       visible={viewerVisible}
       onClose={() => setViewerVisible(false)}
+    />
+    <GiphyPickerSheet
+      visible={gifSheetVisible}
+      onClose={() => setGifSheetVisible(false)}
+      onSelect={async (item) => {
+        setGifSheetVisible(false);
+        await handleSendGif(item);
+      }}
     />
     <ReportSheet
       visible={!!reportTarget}
