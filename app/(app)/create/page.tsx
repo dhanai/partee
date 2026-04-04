@@ -12,6 +12,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
 import { PlanningTimeWindowChipsWeb } from "@/components/planning-time-window-chips-web";
+import { useCourseSearchBiasCoordsWeb } from "@/lib/use-course-search-bias-coords-web";
 
 type CourseResult = { id: string; name: string; address: string };
 type UserSearchResult = { id: string; name: string; email: string | null; avatar: string | null };
@@ -83,6 +84,7 @@ function CreateRoundPageInner() {
   const debouncedCourse = useDebounce(query, 300);
   const debouncedFriend = useDebounce(friendQuery, 300);
   const debouncedPlanningLocation = useDebounce(planningLocation, 300);
+  const courseBiasCoords = useCourseSearchBiasCoordsWeb();
   const canSubmit = useMemo(
     () =>
       isPlanningRound
@@ -111,16 +113,28 @@ function CreateRoundPageInner() {
     if (q.trim().length < 2) { setResults([]); return; }
     setLoadingCourses(true);
     try {
-      const res = await fetch("/api/courses/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: q }) });
+      const res = await fetch("/api/courses/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: q,
+          ...(courseBiasCoords
+            ? {
+                latitude: courseBiasCoords.latitude,
+                longitude: courseBiasCoords.longitude,
+              }
+            : {}),
+        }),
+      });
       const json = (await res.json()) as { courses: CourseResult[]; error?: string };
       if (!res.ok) throw new Error(json.error ?? "Search failed.");
       setResults(json.courses);
       setShowCourseResults(true);
     } catch (e) { setError(e instanceof Error ? e.message : "Search failed."); }
     finally { setLoadingCourses(false); }
-  }, []);
+  }, [courseBiasCoords]);
 
-  useEffect(() => { if (!selectedCourse) searchCourses(debouncedCourse); }, [debouncedCourse, searchCourses, selectedCourse]);
+  useEffect(() => { if (!selectedCourse) searchCourses(debouncedCourse); }, [debouncedCourse, searchCourses, selectedCourse, courseBiasCoords]);
 
   const searchFriends = useCallback(async (q: string) => {
     if (q.trim().length < 2) { setFriendResults([]); return; }

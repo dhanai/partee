@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { searchGolfCourses } from "@/lib/places";
+import {
+  getBiasCoordsFromProfileHomeCourse,
+  searchGolfCourses,
+  type GolfCourseSearchBias,
+} from "@/lib/places";
 import { db } from "@/db";
 import { courses } from "@/db/schema";
+import { ensureDbUser } from "@/lib/auth";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   query: z.string().min(2).max(120),
+  latitude: z.number().gte(-90).lte(90).optional(),
+  longitude: z.number().gte(-180).lte(180).optional(),
 });
 
 export async function POST(req: Request) {
@@ -16,7 +23,27 @@ export async function POST(req: Request) {
 
   try {
     const body = bodySchema.parse(await req.json());
-    const places = await searchGolfCourses(body.query);
+
+    let bias: GolfCourseSearchBias | undefined;
+    const hasClientCoords =
+      body.latitude !== undefined &&
+      body.longitude !== undefined &&
+      Number.isFinite(body.latitude) &&
+      Number.isFinite(body.longitude);
+    if (hasClientCoords) {
+      bias = { lat: body.latitude!, lng: body.longitude! };
+    } else {
+      const user = await ensureDbUser(req);
+      const home = user?.homeCourse?.trim();
+      if (home) {
+        const coords = await getBiasCoordsFromProfileHomeCourse(home);
+        if (coords) {
+          bias = { lat: coords.lat, lng: coords.lng };
+        }
+      }
+    }
+
+    const places = await searchGolfCourses(body.query, bias);
 
     if (places.length === 0) {
       return NextResponse.json({ courses: [] });

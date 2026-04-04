@@ -24,6 +24,7 @@ import { useSnackbar } from "../../lib/snackbar-context";
 import { hapticSuccess, hapticError } from "../../lib/haptics";
 import type { InviteSelectionUser } from "../../lib/invite-selection-store";
 import { ensureMediaLibraryPermissionForPicker } from "../../lib/media-library-permission";
+import { useCourseSearchBiasCoords } from "../../lib/use-course-search-bias-coords";
 import { colors } from "../../lib/theme";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { InviteFriendsSheet } from "../../components/invite-friends-sheet";
@@ -87,6 +88,7 @@ export default function CreateScreen() {
   const { getToken } = useAuth();
   const getTokenRef = useRef(getToken);
   const { show: showSnackbar } = useSnackbar();
+  const courseBiasCoords = useCourseSearchBiasCoords();
   const createType: CreateType = useMemo(() => {
     if (mode === "planning") return "planning";
     if (mode === "scheduled") return "scheduled";
@@ -362,7 +364,15 @@ export default function CreateScreen() {
         const token = await getTokenRef.current();
         const json = await apiPost<{ courses: CourseResult[] }>(
           "/api/courses/search",
-          { query: q },
+          {
+            query: q,
+            ...(courseBiasCoords
+              ? {
+                  latitude: courseBiasCoords.latitude,
+                  longitude: courseBiasCoords.longitude,
+                }
+              : {}),
+          },
           token,
         );
         if (!active) return;
@@ -380,7 +390,7 @@ export default function CreateScreen() {
     return () => {
       active = false;
     };
-  }, [debouncedCourseQuery, isScheduledLike, selectedCourse]);
+  }, [debouncedCourseQuery, isScheduledLike, selectedCourse, courseBiasCoords]);
 
 
   useEffect(() => {

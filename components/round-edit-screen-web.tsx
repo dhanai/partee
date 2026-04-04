@@ -14,6 +14,7 @@ import {
 } from "react";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
 import { PlanningTimeWindowChipsWeb } from "@/components/planning-time-window-chips-web";
+import { useCourseSearchBiasCoordsWeb } from "@/lib/use-course-search-bias-coords-web";
 
 type CourseResult = { id: string; name: string; address: string };
 type LocationResult = { label: string; city: string; state: string };
@@ -98,6 +99,7 @@ export function RoundEditScreenWeb({ inviteToken }: { inviteToken: string }) {
 
   const debouncedCourse = useDebounce(query, 300);
   const debouncedPlanningLocation = useDebounce(planningLocation, 300);
+  const courseBiasCoords = useCourseSearchBiasCoordsWeb();
 
   const authHeaders = useCallback(async () => {
     const t = await getToken();
@@ -172,7 +174,15 @@ export function RoundEditScreenWeb({ inviteToken }: { inviteToken: string }) {
       const res = await fetch("/api/courses/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q }),
+        body: JSON.stringify({
+          query: q,
+          ...(courseBiasCoords
+            ? {
+                latitude: courseBiasCoords.latitude,
+                longitude: courseBiasCoords.longitude,
+              }
+            : {}),
+        }),
       });
       const json = (await res.json()) as { courses: CourseResult[]; error?: string };
       if (!res.ok) throw new Error(json.error ?? "Search failed.");
@@ -183,14 +193,14 @@ export function RoundEditScreenWeb({ inviteToken }: { inviteToken: string }) {
     } finally {
       setLoadingCourses(false);
     }
-  }, []);
+  }, [courseBiasCoords]);
 
   useEffect(() => {
     if (isPlanning) return;
     if (!selectedCourse) {
       void searchCourses(debouncedCourse);
     }
-  }, [debouncedCourse, isPlanning, searchCourses, selectedCourse]);
+  }, [debouncedCourse, isPlanning, searchCourses, selectedCourse, courseBiasCoords]);
 
   useEffect(() => {
     if (!isPlanning) return;

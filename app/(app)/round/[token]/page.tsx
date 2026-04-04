@@ -8,6 +8,7 @@ import { ConfirmedSpotsRowWeb } from "@/components/confirmed-spots-row-web";
 import { OpenInParfadeAppBar } from "@/components/open-in-parfade-app";
 import { RoundDetailHostMenu } from "@/components/round-detail-host-menu";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
+import { useCourseSearchBiasCoordsWeb } from "@/lib/use-course-search-bias-coords-web";
 import { PlanningRoundBadgeWeb } from "@/components/planning-round-badge-web";
 type RoundPlayer = { id: string; name: string; avatar: string | null };
 
@@ -85,6 +86,7 @@ export default function RoundInvitePage({
   const [finalizing, setFinalizing] = useState(false);
   const finalizeDropdownRef = useRef<HTMLDivElement>(null);
   const debouncedFinalizeQuery = useDebounce(finalizeQuery, 300);
+  const courseBiasCoords = useCourseSearchBiasCoordsWeb();
   const [browserUrl, setBrowserUrl] = useState("");
 
   useEffect(() => {
@@ -133,7 +135,15 @@ export default function RoundInvitePage({
       const res = await fetch("/api/courses/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q }),
+        body: JSON.stringify({
+          query: q,
+          ...(courseBiasCoords
+            ? {
+                latitude: courseBiasCoords.latitude,
+                longitude: courseBiasCoords.longitude,
+              }
+            : {}),
+        }),
       });
       const json = (await res.json()) as {
         courses: CourseSearchResult[];
@@ -149,11 +159,11 @@ export default function RoundInvitePage({
     } finally {
       setLoadingFinalizeCourses(false);
     }
-  }, [round]);
+  }, [round, courseBiasCoords]);
 
   useEffect(() => {
     void searchFinalizeCourses(debouncedFinalizeQuery);
-  }, [debouncedFinalizeQuery, searchFinalizeCourses]);
+  }, [debouncedFinalizeQuery, searchFinalizeCourses, courseBiasCoords]);
 
   async function cancelJoinRequest() {
     setRsvpBusy(true);

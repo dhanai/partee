@@ -22,6 +22,7 @@ import {
 } from "../../../lib/api";
 import { getTimeWindows } from "../../../lib/round-card-meta";
 import { emitRoundListsShouldRefresh } from "../../../lib/round-lists-refresh";
+import { useCourseSearchBiasCoords } from "../../../lib/use-course-search-bias-coords";
 import { colors } from "../../../lib/theme";
 import { RoundDetails } from "../../../types/round";
 import { DatePickerModal } from "../../../components/date-picker-modal";
@@ -94,6 +95,7 @@ export default function EditRoundScreen() {
   const [showCourseResults, setShowCourseResults] = useState(false);
   const debouncedCourseQuery = useDebounce(query, 320);
   const debouncedPlanningLocation = useDebounce(planningLocation, 320);
+  const courseBiasCoords = useCourseSearchBiasCoords();
 
   const [totalSpots, setTotalSpots] = useState(4);
   const [visibility, setVisibility] = useState<"private" | "public">("private");
@@ -195,7 +197,15 @@ export default function EditRoundScreen() {
         const authToken = await getTokenRef.current();
         const data = await apiPost<{ courses: CourseResult[] }>(
           "/api/courses/search",
-          { query: q },
+          {
+            query: q,
+            ...(courseBiasCoords
+              ? {
+                  latitude: courseBiasCoords.latitude,
+                  longitude: courseBiasCoords.longitude,
+                }
+              : {}),
+          },
           authToken,
         );
         if (!active) return;
@@ -213,7 +223,7 @@ export default function EditRoundScreen() {
     return () => {
       active = false;
     };
-  }, [debouncedCourseQuery, planningMode, selectedCourse]);
+  }, [debouncedCourseQuery, planningMode, selectedCourse, courseBiasCoords]);
 
   useEffect(() => {
     let active = true;

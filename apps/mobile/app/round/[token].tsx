@@ -45,6 +45,7 @@ import { formatInviterFirstLastInitial } from "../../lib/format-inviter-first-la
 import { TournamentMarkdownBody } from "../../lib/tournament-markdown";
 import { useSnackbar } from "../../lib/snackbar-context";
 import { useNotificationBadge } from "../../lib/notification-badge-context";
+import { useCourseSearchBiasCoords } from "../../lib/use-course-search-bias-coords";
 import { colors } from "../../lib/theme";
 import { InitialAvatar } from "../../components/initial-avatar";
 import { RoundDetails } from "../../types/round";
@@ -163,6 +164,7 @@ export default function RoundDetailsScreen() {
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const debouncedFinalizeQuery = useDebounce(finalizeQuery, 320);
+  const courseBiasCoords = useCourseSearchBiasCoords();
   const [inviteBusy, setInviteBusy] = useState(false);
   const [finalizeExpanded, setFinalizeExpanded] = useState(true);
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
@@ -345,7 +347,15 @@ export default function RoundDetailsScreen() {
         const authToken = await getTokenRef.current();
         const data = await apiPost<{ courses: CourseResult[] }>(
           "/api/courses/search",
-          { query: q },
+          {
+            query: q,
+            ...(courseBiasCoords
+              ? {
+                  latitude: courseBiasCoords.latitude,
+                  longitude: courseBiasCoords.longitude,
+                }
+              : {}),
+          },
           authToken,
         );
         if (!active) return;
@@ -364,7 +374,7 @@ export default function RoundDetailsScreen() {
     return () => {
       active = false;
     };
-  }, [debouncedFinalizeQuery, finalizeCourse]);
+  }, [debouncedFinalizeQuery, finalizeCourse, courseBiasCoords]);
 
 
   function startOfDay(date: Date) {

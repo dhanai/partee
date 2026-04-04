@@ -52,7 +52,25 @@ function normalizeLocationLabel(input: string): string | null {
   return `${city}, ${state}`;
 }
 
-export async function searchGolfCourses(query: string): Promise<PlacesCourse[]> {
+/** Places Text Search allows up to 50km radius for location restriction. */
+export const GOLF_COURSE_SEARCH_RADIUS_METERS = 50_000;
+
+export type GolfCourseSearchBias = {
+  lat: number;
+  lng: number;
+  radiusMeters?: number;
+};
+
+const GEOCODE_BIAS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const geocodeBiasCache = new Map<
+  string,
+  { lat: number; lng: number; expires: number }
+>();
+
+export async function searchGolfCourses(
+  query: string,
+  bias?: GolfCourseSearchBias,
+): Promise<PlacesCourse[]> {
   const apiKey = env.server.GOOGLE_PLACES_API_KEY.trim();
   if (!apiKey || apiKey.includes("placeholder") || !apiKey.startsWith("AIza")) {
     throw new Error(
@@ -65,6 +83,11 @@ export async function searchGolfCourses(query: string): Promise<PlacesCourse[]> 
     type: "golf_course",
     key: apiKey,
   });
+  if (bias) {
+    const radius = bias.radiusMeters ?? GOLF_COURSE_SEARCH_RADIUS_METERS;
+    params.set("location", `${bias.lat},${bias.lng}`);
+    params.set("radius", String(radius));
+  }
 
   const response = await fetch(
     `https://maps.googleapis.com/maps/api/place/textsearch/json?${params.toString()}`,
@@ -182,4 +205,29 @@ export async function resolveValidatedUsLocation(
     (candidate) => candidate.label.toLowerCase() === normalized.toLowerCase(),
   );
   return exact ?? null;
+}
+
+/**
+ * Geocode profile `homeCourse` ("City, ST") to coordinates for Places bias, with in-memory cache
+ * to avoid repeated Geocoding API calls on debounced course search.
+ */
+export async function getBiasCoordsFromProfileHomeCourse(
+  homeCourse: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const key = homeCourse.trim().toLowerCase();
+  if (!key) return null;
+  const hit = geocodeBiasCache.get(key);
+  if (hit && hit.expires > Date.now()) {
+    return { lat: hit.lat, lng: hit.lng };
+  }
+  const resolved = await resolveValidatedUsLocation(homeCourse);
+  if (!resolved || resolved.lat == null || resolved.lng == null) {
+    return null;
+  }
+  geocodeBiasCache.set(key, {
+    lat: resolved.lat,
+    lng: resolved.lng,
+    expires: Date.now() + GEOCODE_BIAS_CACHE_TTL_MS,
+  });
+  return { lat: resolved.lat, lng: resolved.lng };
 }
