@@ -135,6 +135,7 @@ export const FullscreenImageViewer = memo(function FullscreenImageViewer({
       bgOpacity.value = 1;
       dismissY.value = 0;
       setCurrentIndex(initialIndex);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   }, [visible, initialIndex, bgOpacity, dismissY]);
 

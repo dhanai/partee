@@ -62,9 +62,11 @@ type Props = {
   onTyping?: () => void;
   replyTo?: ReplyTarget | null;
   onCancelReply?: () => void;
+  /** Fires when the + attachment menu opens or closes (for chat list dismiss overlay). */
+  onAttachMenuOpenChange?: (open: boolean) => void;
 };
 
-export type ComposerHandle = { focus: () => void };
+export type ComposerHandle = { focus: () => void; closeAttachMenu: () => void };
 
 const MAX_STAGED = 5;
 
@@ -79,16 +81,15 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
     onTyping,
     replyTo,
     onCancelReply,
+    onAttachMenuOpenChange,
   }: Props, ref) {
   const [draft, setDraft] = useState("");
   const [stagedImages, setStagedImages] = useState<PickedImageAsset[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const attachMenuScale = useRef(new Animated.Value(0)).current;
-
-  useImperativeHandle(ref, () => ({
-    focus: () => inputRef.current?.focus(),
-  }));
+  const attachMenuOpenRef = useRef(false);
+  attachMenuOpenRef.current = attachMenuOpen;
 
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -185,6 +186,23 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
     },
     [attachMenuScale],
   );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => inputRef.current?.focus(),
+      closeAttachMenu: () => {
+        if (attachMenuOpenRef.current) {
+          closeAttachMenu();
+        }
+      },
+    }),
+    [closeAttachMenu],
+  );
+
+  useEffect(() => {
+    onAttachMenuOpenChange?.(attachMenuOpen);
+  }, [attachMenuOpen, onAttachMenuOpenChange]);
 
   const handlePickImageFromMenu = useCallback(() => {
     closeAttachMenu(() => {

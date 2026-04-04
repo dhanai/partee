@@ -1,7 +1,5 @@
-import { useEffect, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { AnimatedBottomSheetFrame } from "./animated-bottom-sheet-frame";
 import { colors } from "../lib/theme";
 
@@ -20,14 +18,6 @@ type Props = {
 };
 
 export function OverflowMenuSheet({ visible, onClose, items }: Props) {
-  const wasVisible = useRef(false);
-  useEffect(() => {
-    if (visible && !wasVisible.current) {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    wasVisible.current = visible;
-  }, [visible]);
-
   return (
     <AnimatedBottomSheetFrame
       visible={visible}

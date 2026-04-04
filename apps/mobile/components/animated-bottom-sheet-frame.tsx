@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import {
@@ -43,6 +44,10 @@ export type AnimatedBottomSheetFrameProps = {
   topInset?: number;
   /** Allow dragging the sheet closed from the content area. Default true. Set false for scrollable sheets. */
   enableContentPanningGesture?: boolean;
+  /** Haptic when the sheet is presented. Default true. */
+  hapticsOnOpen?: boolean;
+  /** Haptic when the user dismisses (gesture/backdrop), not when parent sets visible false. Default true. */
+  hapticsOnClose?: boolean;
 };
 
 /**
@@ -69,6 +74,8 @@ export function AnimatedBottomSheetFrame({
   androidKeyboardInputMode,
   topInset,
   enableContentPanningGesture = true,
+  hapticsOnOpen = true,
+  hapticsOnClose = true,
 }: AnimatedBottomSheetFrameProps) {
   const ref = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
@@ -81,11 +88,14 @@ export function AnimatedBottomSheetFrame({
     if (visible) {
       programmaticRef.current = false;
       ref.current?.present();
+      if (hapticsOnOpen) {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
     } else {
       programmaticRef.current = true;
       ref.current?.dismiss();
     }
-  }, [visible]);
+  }, [visible, hapticsOnOpen]);
 
   useEffect(
     () => () => {
@@ -95,11 +105,15 @@ export function AnimatedBottomSheetFrame({
   );
 
   const handleDismiss = useCallback(() => {
+    const userInitiated = !programmaticRef.current;
+    if (userInitiated && hapticsOnClose) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     if (!programmaticRef.current) {
       onCloseRef.current();
     }
     programmaticRef.current = false;
-  }, []);
+  }, [hapticsOnClose]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (

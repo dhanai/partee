@@ -1,5 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
+import { useCallback } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
@@ -60,10 +62,15 @@ export function SocialPostCard({
   const heartScale = useSharedValue(0);
   const heartOpacity = useSharedValue(0);
 
+  const fireDoubleTapLike = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onDoubleTapLike();
+  }, [onDoubleTapLike]);
+
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
     .onEnd(() => {
-      runOnJS(onDoubleTapLike)();
+      runOnJS(fireDoubleTapLike)();
       heartScale.value = withSequence(withTiming(1.2, { duration: 180 }), withTiming(1, { duration: 100 }));
       heartOpacity.value = withSequence(
         withTiming(1, { duration: 120 }),
@@ -107,7 +114,13 @@ export function SocialPostCard({
             </View>
           ) : null}
           <View style={styles.postFooter}>
-            <Pressable style={styles.postLikeBtn} onPress={onToggleLike}>
+            <Pressable
+              style={styles.postLikeBtn}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onToggleLike();
+              }}
+            >
               <Ionicons name={viewerLiked ? "heart" : "heart-outline"} size={18} color={viewerLiked ? colors.danger : colors.muted} />
               {likeCount > 0 ? <Text style={[styles.postLikeCount, viewerLiked && styles.postLikeCountActive]}>{likeCount}</Text> : null}
             </Pressable>

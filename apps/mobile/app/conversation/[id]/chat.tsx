@@ -2,6 +2,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { ChatRoomProvider } from "@ably/chat/react";
 import { ChatMessageEventType, type ChatMessageEvent } from "@ably/chat";
 import { useMessages, useTyping, usePresence, usePresenceListener } from "@ably/chat/react";
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -226,8 +227,15 @@ function ConversationChatContent() {
   const [peerReadByUserId, setPeerReadByUserId] = useState<Record<string, PeerRead>>({});
   const [editingMessage, setEditingMessage] = useState<ConversationMessage | null>(null);
   const [gifSheetVisible, setGifSheetVisible] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [editDraft, setEditDraft] = useState("");
   const flatListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    if (editingMessage) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, [editingMessage]);
   const composerRef = useRef<ComposerHandle>(null);
   const msgsRef = useRef<ConversationMessage[]>([]);
   msgsRef.current = msgs;
@@ -1088,6 +1096,14 @@ function ConversationChatContent() {
             )
           }
         />
+        {attachMenuOpen ? (
+          <Pressable
+            style={cStyles.attachMenuBackdrop}
+            onPress={() => composerRef.current?.closeAttachMenu()}
+            accessibilityLabel="Dismiss attachment menu"
+            accessibilityRole="button"
+          />
+        ) : null}
         <ChatScrollToBottom visible={showScrollBtn} onPress={scrollToBottom} />
       </View>
 
@@ -1106,6 +1122,7 @@ function ConversationChatContent() {
             onTyping={publishTyping}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
+            onAttachMenuOpenChange={setAttachMenuOpen}
           />
         </View>
       </KeyboardStickyView>
@@ -1272,6 +1289,11 @@ const cStyles = StyleSheet.create({
   },
   listWrap: {
     flex: 1,
+    position: "relative",
+  },
+  attachMenuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
   },
   listContent: {
     paddingTop: MARGIN,
