@@ -3,6 +3,7 @@ export type ReadReceiptUpdate = {
   readerUserId: string;
   readerAvatar: string | null;
   lastReadMessageId: string;
+  lastReadMessageCreatedAt?: string | null;
 };
 
 type Listener = (update: ReadReceiptUpdate) => void;

@@ -98,4 +98,5 @@ export type ParfadeRealtimeMessageV1 =
       readerUserId: string;
       readerAvatar?: string;
       lastReadMessageId: string;
+      lastReadMessageCreatedAt?: string;
     };

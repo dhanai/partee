@@ -96,6 +96,7 @@ export type ParfadeRealtimeMessageV1 =
       readerUserId: string;
       readerAvatar?: string;
       lastReadMessageId: string;
+      lastReadMessageCreatedAt?: string;
     };
 
 export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessageV1 | null {
@@ -317,6 +318,7 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
       readerUserId?: unknown;
       readerAvatar?: unknown;
       lastReadMessageId?: unknown;
+      lastReadMessageCreatedAt?: unknown;
     };
     if (
       typeof r.conversationId === "string" &&
@@ -330,6 +332,8 @@ export function parseParfadeRealtimeMessage(data: unknown): ParfadeRealtimeMessa
         readerUserId: r.readerUserId,
         readerAvatar: typeof r.readerAvatar === "string" ? r.readerAvatar : undefined,
         lastReadMessageId: r.lastReadMessageId,
+        lastReadMessageCreatedAt:
+          typeof r.lastReadMessageCreatedAt === "string" ? r.lastReadMessageCreatedAt : undefined,
       };
     }
   }

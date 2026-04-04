@@ -656,13 +656,16 @@ function ConversationChatContent() {
     return subscribeReadReceiptUpdates((u) => {
       if (u.conversationId !== conversationId || u.readerUserId === viewerId) return;
       const readMsg = msgsRef.current.find((m) => m.id === u.lastReadMessageId);
+      const createdAtFromEvent = u.lastReadMessageCreatedAt?.trim() || null;
       setPeerReadByUserId((prev) => ({
         ...prev,
         [u.readerUserId]: {
           lastReadMessageId: u.lastReadMessageId,
-          lastReadMessageCreatedAt: readMsg
-            ? readMsg.createdAt
-            : (prev[u.readerUserId]?.lastReadMessageCreatedAt ?? null),
+          lastReadMessageCreatedAt:
+            readMsg?.createdAt ??
+            createdAtFromEvent ??
+            prev[u.readerUserId]?.lastReadMessageCreatedAt ??
+            null,
           avatar: u.readerAvatar ?? prev[u.readerUserId]?.avatar ?? null,
         },
       }));

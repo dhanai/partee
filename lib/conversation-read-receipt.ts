@@ -15,9 +15,10 @@ export async function markConversationRead(
   const now = new Date();
   let lastReadMessageId: string | null = null;
 
+  let lastReadMessageCreatedAt: string | null = null;
   if (options?.lastMessageId) {
     const [msg] = await db
-      .select({ id: messages.id })
+      .select({ id: messages.id, createdAt: messages.createdAt })
       .from(messages)
       .where(and(eq(messages.id, options.lastMessageId), eq(messages.conversationId, conversationId)))
       .limit(1);
@@ -25,6 +26,7 @@ export async function markConversationRead(
       throw new Error("INVALID_LAST_MESSAGE");
     }
     lastReadMessageId = msg.id;
+    lastReadMessageCreatedAt = msg.createdAt.toISOString();
   }
 
   const setCols =
@@ -56,6 +58,7 @@ export async function markConversationRead(
       readerUserId: userId,
       readerAvatar: reader?.avatar ?? null,
       lastReadMessageId,
+      lastReadMessageCreatedAt: lastReadMessageCreatedAt ?? undefined,
     }).catch((err) => console.error("[markConversationRead] receipt pub", err));
   }
 }

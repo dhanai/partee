@@ -161,6 +161,7 @@ export async function publishReadReceiptUpdate(input: {
   readerUserId: string;
   readerAvatar: string | null;
   lastReadMessageId: string;
+  lastReadMessageCreatedAt?: string;
 }): Promise<void> {
   const participants = await db
     .select({ userId: conversationParticipants.userId })
@@ -178,6 +179,9 @@ export async function publishReadReceiptUpdate(input: {
         readerUserId: input.readerUserId,
         readerAvatar: input.readerAvatar ?? undefined,
         lastReadMessageId: input.lastReadMessageId,
+        ...(input.lastReadMessageCreatedAt
+          ? { lastReadMessageCreatedAt: input.lastReadMessageCreatedAt }
+          : {}),
       },
     })),
   );

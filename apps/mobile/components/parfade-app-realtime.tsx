@@ -99,6 +99,7 @@ export function ParfadeAppRealtime() {
           readerUserId: parsed.readerUserId,
           readerAvatar: parsed.readerAvatar ?? null,
           lastReadMessageId: parsed.lastReadMessageId,
+          lastReadMessageCreatedAt: parsed.lastReadMessageCreatedAt ?? null,
         });
       }
       if (parsed.type === "round-invite-toast") {
