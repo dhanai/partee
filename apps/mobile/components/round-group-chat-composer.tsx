@@ -3,10 +3,23 @@ import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { ensureMediaLibraryPermissionForPicker } from "../lib/media-library-permission";
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
   LayoutAnimation,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -42,7 +55,7 @@ type Props = {
   sendBusy: boolean;
   onSend: (text: string) => Promise<boolean>;
   onSendWithAttachments?: (text: string, assets: PickedImageAsset[]) => Promise<boolean>;
-  /** Opens GIF search (e.g. Giphy). Shown next to the photo button when set. */
+  /** Opens GIF search (e.g. Giphy). Listed in the + attachment menu when set. */
   onGifPress?: () => void;
   onComposerFocus?: () => void;
   onTyping?: () => void;
@@ -68,7 +81,11 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
   }: Props, ref) {
   const [draft, setDraft] = useState("");
   const [stagedImages, setStagedImages] = useState<PickedImageAsset[]>([]);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const inputRef = useRef<TextInput>(null);
+  const attachAnchorRef = useRef<View>(null);
+  const attachMenuScale = useRef(new Animated.Value(0)).current;
 
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
@@ -127,7 +144,7 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
     });
   }, []);
 
-  const handlePickImage = useCallback(async () => {
+  const openImagePickerAfterMenu = useCallback(async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const ok = await ensureMediaLibraryPermissionForPicker({
       title: "Permission required",
@@ -152,10 +169,77 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
     }
   }, []);
 
+  const closeAttachMenu = useCallback(
+    (afterClose?: () => void) => {
+      attachMenuScale.stopAnimation();
+      Animated.timing(attachMenuScale, {
+        toValue: 0,
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        if (finished) {
+          setAttachMenuOpen(false);
+          afterClose?.();
+        }
+      });
+    },
+    [attachMenuScale],
+  );
+
+  const handlePickImageFromMenu = useCallback(() => {
+    closeAttachMenu(() => {
+      void openImagePickerAfterMenu();
+    });
+  }, [closeAttachMenu, openImagePickerAfterMenu]);
+
   const removeStaged = useCallback((index: number) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setStagedImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
+
+  const openAttachMenu = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    attachAnchorRef.current?.measureInWindow((x, y, width, height) => {
+      attachMenuScale.stopAnimation();
+      attachMenuScale.setValue(0);
+      setMenuAnchor({ x, y, width, height });
+      setAttachMenuOpen(true);
+    });
+  }, [attachMenuScale]);
+
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    attachMenuScale.stopAnimation();
+    attachMenuScale.setValue(0);
+    Animated.spring(attachMenuScale, {
+      toValue: 1,
+      friction: 9,
+      tension: 280,
+      useNativeDriver: false,
+    }).start();
+  }, [attachMenuOpen, attachMenuScale]);
+
+  const handleGifFromMenu = useCallback(() => {
+    closeAttachMenu(() => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      onGifPress?.();
+    });
+  }, [closeAttachMenu, onGifPress]);
+
+  const windowW = Dimensions.get("window").width;
+
+  const ATTACH_MENU_MAX_W = 188;
+
+  const attachMenuPosition = useMemo(() => {
+    const menuH = onGifPress ? 108 : 56;
+    const top = Math.max(52, menuAnchor.y - menuH - 8);
+    const left = Math.min(
+      Math.max(12, menuAnchor.x),
+      windowW - ATTACH_MENU_MAX_W - 12,
+    );
+    return { top, left };
+  }, [menuAnchor.x, menuAnchor.y, onGifPress, windowW]);
 
   return (
     <View>
@@ -206,28 +290,15 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
 
       <View style={s.composerRow}>
         {onSendWithAttachments ? (
-          <View style={composerBtnStyles.leftActions}>
+          <View ref={attachAnchorRef} collapsable={false} style={composerBtnStyles.plusBtn}>
             <Pressable
-              style={composerBtnStyles.plusBtn}
-              onPress={() => void handlePickImage()}
+              onPress={openAttachMenu}
               hitSlop={6}
-              accessibilityLabel="Add photo"
+              accessibilityLabel="Add attachment"
+              accessibilityHint="Opens photo and GIF options"
             >
               <Ionicons name="add-circle" size={28} color={colors.fairway} />
             </Pressable>
-            {onGifPress ? (
-              <Pressable
-                style={composerBtnStyles.plusBtn}
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  onGifPress();
-                }}
-                hitSlop={6}
-                accessibilityLabel="Add GIF"
-              >
-                <Ionicons name="film-outline" size={26} color={colors.fairway} />
-              </Pressable>
-            ) : null}
           </View>
         ) : null}
         <TextInput
@@ -257,20 +328,152 @@ export const RoundGroupChatComposer = memo(forwardRef<ComposerHandle, Props>(
           )}
         </Pressable>
       </View>
+
+      <Modal
+        visible={attachMenuOpen}
+        transparent
+        animationType="none"
+        onRequestClose={() => closeAttachMenu()}
+      >
+        <View style={attachMenuStyles.root} pointerEvents="box-none">
+          <Animated.View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: "rgba(0,0,0,0.35)",
+                opacity: attachMenuScale.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                }),
+              },
+            ]}
+            pointerEvents="none"
+          />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => closeAttachMenu()}
+            accessibilityLabel="Dismiss"
+          />
+          <Animated.View
+            style={[
+              attachMenuStyles.sheet,
+              {
+                top: attachMenuPosition.top,
+                left: attachMenuPosition.left,
+                maxWidth: ATTACH_MENU_MAX_W,
+                opacity: attachMenuScale.interpolate({
+                  inputRange: [0, 0.15, 1],
+                  outputRange: [0, 1, 1],
+                }),
+                transform: [{ scale: attachMenuScale }],
+                transformOrigin: "0% 100%",
+              },
+            ]}
+            pointerEvents="box-none"
+          >
+            <Pressable
+              style={attachMenuStyles.row}
+              onPress={() => void handlePickImageFromMenu()}
+              accessibilityRole="button"
+              accessibilityLabel="Photo"
+            >
+              <View style={attachMenuStyles.iconSlot}>
+                <Ionicons name="image-outline" size={22} color={colors.fairway} />
+              </View>
+              <Text style={attachMenuStyles.rowLabel}>Photo</Text>
+            </Pressable>
+            {onGifPress ? (
+              <>
+                <View style={attachMenuStyles.separator} />
+                <Pressable
+                  style={attachMenuStyles.row}
+                  onPress={handleGifFromMenu}
+                  accessibilityRole="button"
+                  accessibilityLabel="GIF"
+                >
+                  <View style={attachMenuStyles.iconSlot}>
+                    <View style={attachMenuStyles.gifBadge}>
+                      <Text style={attachMenuStyles.gifBadgeText} allowFontScaling={false}>
+                        GIF
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={attachMenuStyles.rowLabel}>GIF</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }));
 
 const composerBtnStyles = StyleSheet.create({
-  leftActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
   plusBtn: {
     justifyContent: "center",
     alignItems: "center",
     paddingBottom: 2,
+  },
+});
+
+const attachMenuStyles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  sheet: {
+    position: "absolute",
+    alignSelf: "flex-start",
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingLeft: 10,
+    paddingRight: 14,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  iconSlot: {
+    width: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  rowLabel: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: "500",
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginLeft: 52,
+  },
+  gifBadge: {
+    width: 28,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: colors.fairway,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  gifBadgeText: {
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    color: colors.fairway,
   },
 });
 
