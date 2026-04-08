@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { conversationParticipants, conversations, courses, messages, rounds, spots, users } from "@/db/schema";
@@ -186,6 +186,35 @@ export async function GET(req: Request, { params }: RouteContext) {
     .where(and(eq(spots.roundId, round.id), eq(spots.status, "declined")))
     .orderBy(asc(spots.createdAt));
 
+  /** `invited` or `requested` — POST /invites skips them; list for client invite picker exclusion. */
+  const invitedPlayers = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      avatar: users.avatar,
+    })
+    .from(spots)
+    .innerJoin(users, eq(users.id, spots.userId))
+    .where(
+      and(eq(spots.roundId, round.id), inArray(spots.status, ["invited", "requested"])),
+    )
+    .orderBy(asc(spots.createdAt));
+
+  /** Host-only: still on `invited` (not join-request `requested`). */
+  const hostInvitedPlayers =
+    currentUser?.id === round.hostId
+      ? await db
+          .select({
+            id: users.id,
+            name: users.name,
+            avatar: users.avatar,
+          })
+          .from(spots)
+          .innerJoin(users, eq(users.id, spots.userId))
+          .where(and(eq(spots.roundId, round.id), eq(spots.status, "invited")))
+          .orderBy(asc(spots.createdAt))
+      : [];
+
   const pendingJoinRequests =
     currentUser?.id === round.hostId
       ? await listPendingJoinRequestsForRound(round.id)
@@ -278,6 +307,8 @@ export async function GET(req: Request, { params }: RouteContext) {
       confirmedCount: round.confirmedCount,
       confirmedPlayers,
       declinedPlayers,
+      invitedPlayers,
+      ...(currentUser?.id === round.hostId ? { hostInvitedPlayers } : {}),
       spotsRemaining: Math.max(0, round.totalSpots - round.confirmedCount),
       isHost: currentUser?.id === round.hostId,
       currentUserSpotStatus,

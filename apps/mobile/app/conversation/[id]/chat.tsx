@@ -3,6 +3,7 @@ import { ChatRoomProvider } from "@ably/chat/react";
 import { ChatMessageEventType, type ChatMessageEvent } from "@ably/chat";
 import { useMessages, useTyping, usePresence, usePresenceListener } from "@ably/chat/react";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -16,6 +17,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type LayoutChangeEvent,
   type ScrollViewProps,
@@ -63,6 +65,10 @@ type MessagesResponse = {
 };
 
 const MARGIN = 8;
+
+/** Same RGB as `colors.background` (#faf8f5); alpha 0 at top, partial at bottom so messages stay readable. */
+const CHAT_BG_FADE_TOP = "rgba(250,248,245,0)";
+const CHAT_BG_FADE_BOTTOM = "rgba(250,248,245,0.42)";
 
 const ROOM_OPTIONS = {
   typing: { heartbeatThrottleMs: 5000 },
@@ -133,6 +139,11 @@ function ConversationChatContent() {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const listBottomFadeHeight = useMemo(
+    () => Math.min(72, Math.max(36, windowHeight * 0.09)),
+    [windowHeight],
+  );
   const { markConversationRead } = useChatUnread();
 
   const paramAvatars = useMemo<string[]>(() => {
@@ -1105,19 +1116,33 @@ function ConversationChatContent() {
       {error ? <Text style={cStyles.errorText}>{error}</Text> : null}
 
       <KeyboardStickyView offset={stickyOffset}>
-        <View style={[cStyles.composerWrap, { paddingBottom: insets.bottom + 8 }]} onLayout={onComposerLayout}>
-          <TypingIndicator names={typingNames} />
-          <RoundGroupChatComposer
-            ref={composerRef}
-            styles={composerStyles}
-            sendBusy={false}
-            onSend={handleSend}
-            onSendWithAttachments={handleSendWithAttachments}
-            onGifPress={() => setGifSheetVisible(true)}
-            onTyping={publishTyping}
-            replyTo={replyTo}
-            onCancelReply={() => setReplyTo(null)}
+        <View style={cStyles.composerStickyInner}>
+          <LinearGradient
+            pointerEvents="none"
+            colors={[CHAT_BG_FADE_TOP, CHAT_BG_FADE_BOTTOM]}
+            locations={[0, 1]}
+            style={[
+              cStyles.composerTopFade,
+              {
+                height: listBottomFadeHeight,
+                top: -listBottomFadeHeight,
+              },
+            ]}
           />
+          <View style={[cStyles.composerWrap, { paddingBottom: insets.bottom + 8 }]} onLayout={onComposerLayout}>
+            <TypingIndicator names={typingNames} />
+            <RoundGroupChatComposer
+              ref={composerRef}
+              styles={composerStyles}
+              sendBusy={false}
+              onSend={handleSend}
+              onSendWithAttachments={handleSendWithAttachments}
+              onGifPress={() => setGifSheetVisible(true)}
+              onTyping={publishTyping}
+              replyTo={replyTo}
+              onCancelReply={() => setReplyTo(null)}
+            />
+          </View>
         </View>
       </KeyboardStickyView>
     </View>
@@ -1271,6 +1296,7 @@ const cStyles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     paddingHorizontal: 16,
+    backgroundColor: colors.background,
   },
   emptyInverted: {
     transform: [{ scaleY: -1 }],
@@ -1283,6 +1309,18 @@ const cStyles = StyleSheet.create({
   },
   listWrap: {
     flex: 1,
+    position: "relative",
+  },
+  /** Sits above the keyboard-sticky composer so the fade stays visible when the keyboard is open. */
+  composerStickyInner: {
+    position: "relative",
+    overflow: "visible",
+  },
+  composerTopFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 1,
   },
   listContent: {
     paddingTop: MARGIN,

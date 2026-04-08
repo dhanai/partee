@@ -12,6 +12,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
 import { PlanningTimeWindowChipsWeb } from "@/components/planning-time-window-chips-web";
+import { ROUND_INVITE_USER_IDS_MAX_PER_REQUEST } from "@/lib/round-invite-limits";
 import { useCourseSearchBiasCoordsWeb } from "@/lib/use-course-search-bias-coords-web";
 
 type CourseResult = { id: string; name: string; address: string };
@@ -278,6 +279,11 @@ function CreateRoundPageInner() {
         !isPlanningRound && teeDate && teeTimePart
           ? new Date(`${teeDate}T${teeTimePart}:00`).toISOString()
           : undefined;
+      const friendIds = selectedFriends.map((f) => f.id);
+      const inviteMax = ROUND_INVITE_USER_IDS_MAX_PER_REQUEST;
+      const firstChunk = friendIds.slice(0, inviteMax);
+      const restIds = friendIds.slice(inviteMax);
+
       const res = await fetch("/api/rounds", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -293,13 +299,30 @@ function CreateRoundPageInner() {
           totalSpots,
           visibility,
           joinPolicy,
-          inviteeUserIds: selectedFriends.map((f) => f.id),
+          inviteeUserIds: firstChunk,
         }),
       });
       const json = (await res.json()) as CreateRoundResponse & { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Failed.");
+
+      let invitedTotal = json.invitedCount;
+      if (restIds.length > 0) {
+        const t = json.round.inviteToken;
+        for (let o = 0; o < restIds.length; o += inviteMax) {
+          const chunk = restIds.slice(o, o + inviteMax);
+          const r = await fetch(`/api/rounds/${t}/invites`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ inviteeUserIds: chunk }),
+          });
+          const extra = (await r.json()) as { invitedCount?: number; error?: string };
+          if (!r.ok) throw new Error(extra.error ?? "Failed to send invites.");
+          invitedTotal += extra.invitedCount ?? 0;
+        }
+      }
+
       setCreatedInvitePath(json.invitePath);
-      setCreatedInvitedCount(json.invitedCount);
+      setCreatedInvitedCount(invitedTotal);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed."); }
     finally { setSubmitting(false); }
   }
@@ -480,6 +503,9 @@ function CreateRoundPageInner() {
               </button>
             ))}
           </div>
+          <p className="mt-2 text-xs leading-snug text-[#6e6e6e]">
+            Player count for the round — you can still blast more invites; first to claim get the spots.
+          </p>
         </div>
 
         <div>

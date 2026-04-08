@@ -28,6 +28,7 @@ import { useCourseSearchBiasCoords } from "../../lib/use-course-search-bias-coor
 import { colors } from "../../lib/theme";
 import { DatePickerModal } from "../../components/date-picker-modal";
 import { InviteFriendsSheet } from "../../components/invite-friends-sheet";
+import { ROUND_INVITE_USER_IDS_MAX_PER_REQUEST } from "../../lib/round-invite-limits";
 import { PlanningTimeWindowChips } from "../../components/planning-time-window-chips";
 import { SelectGroupSheet } from "../../components/select-group-sheet";
 import { TimePickerModal } from "../../components/time-picker-modal";
@@ -488,6 +489,11 @@ export default function CreateScreen() {
             })()
           : undefined;
 
+      const friendIds = selectedFriends.map((friend) => friend.id);
+      const inviteMax = ROUND_INVITE_USER_IDS_MAX_PER_REQUEST;
+      const firstInviteChunk = friendIds.slice(0, inviteMax);
+      const remainingInviteIds = friendIds.slice(inviteMax);
+
       const json = await apiPost<CreateRoundResponse>(
         "/api/rounds",
         {
@@ -501,7 +507,7 @@ export default function CreateScreen() {
           totalSpots: totalSpotsPayload,
           visibility,
           joinPolicy,
-          inviteeUserIds: selectedFriends.map((friend) => friend.id),
+          inviteeUserIds: firstInviteChunk,
           groupId: selectedGroupId || undefined,
           ...(isTournamentRound
             ? {
@@ -512,11 +518,26 @@ export default function CreateScreen() {
         },
         token,
       );
+
+      let invitedTotal = json.invitedCount;
+      if (remainingInviteIds.length > 0) {
+        const t = json.round.inviteToken;
+        for (let o = 0; o < remainingInviteIds.length; o += inviteMax) {
+          const chunk = remainingInviteIds.slice(o, o + inviteMax);
+          const extra = await apiPost<{ invitedCount: number }>(
+            `/api/rounds/${t}/invites`,
+            { inviteeUserIds: chunk },
+            token,
+          );
+          invitedTotal += extra.invitedCount;
+        }
+      }
+
       hapticSuccess();
       emitRoundListsShouldRefresh();
       showSnackbar(
-        json.invitedCount > 0
-          ? `Round created — ${json.invitedCount} invited`
+        invitedTotal > 0
+          ? `Round created — ${invitedTotal} invited`
           : "Round created",
       );
       router.replace({
@@ -766,6 +787,10 @@ export default function CreateScreen() {
                     </Pressable>
                   ))}
                 </View>
+                <Text style={styles.fieldHint}>
+                  Player count for the round — you can still blast more invites; first to claim get the
+                  spots.
+                </Text>
               </>
             )}
 

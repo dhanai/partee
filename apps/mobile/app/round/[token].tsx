@@ -24,6 +24,7 @@ import { useAblyChatMounted } from "../../lib/ably-chat-context";
 import { ParfadeRoundDetailLiveRefresh } from "../../components/parfade-round-detail-live-refresh";
 import { RoundCoverImage } from "../../components/round-cover-image";
 import { apiDelete, apiPost, publicWebOrigin, toAbsoluteUrl } from "../../lib/api";
+import { ROUND_INVITE_USER_IDS_MAX_PER_REQUEST } from "../../lib/round-invite-limits";
 import { hapticSuccess, hapticWarning, hapticLight } from "../../lib/haptics";
 import { getCachedMeProfile } from "../../lib/me-profile-cache";
 import type { InviteSelectionUser } from "../../lib/invite-selection-store";
@@ -61,7 +62,7 @@ import {
   AnimatedBottomSheetFrame,
   BottomSheetScrollView,
 } from "../../components/animated-bottom-sheet-frame";
-import { ConfirmedSpotsRow } from "../../components/confirmed-spots-row";
+import { ConfirmedSpotsRow, HostInvitedSpotsScrollRow } from "../../components/confirmed-spots-row";
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../components/report-sheet";
 import { RoundCourseLocationSheet } from "../../components/round-course-location-sheet";
@@ -170,10 +171,13 @@ export default function RoundDetailsScreen() {
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
   const [sideGamesSheetOpen, setSideGamesSheetOpen] = useState(false);
   const [courseLocationSheetOpen, setCourseLocationSheetOpen] = useState(false);
-  const confirmedPlayerIds = useMemo(
-    () => new Set(round?.confirmedPlayers.map((p) => p.id) ?? []),
-    [round],
-  );
+  const inviteFriendExcludeIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const p of round?.confirmedPlayers ?? []) ids.add(p.id);
+    for (const p of round?.invitedPlayers ?? []) ids.add(p.id);
+    for (const r of round?.pendingJoinRequests ?? []) ids.add(r.userId);
+    return ids;
+  }, [round]);
 
   useEffect(() => {
     getTokenRef.current = getToken;
@@ -628,17 +632,28 @@ export default function RoundDetailsScreen() {
     if (!token || users.length === 0) return;
     setInviteBusy(true);
     setError(null);
-    
+
     try {
       const authToken = await getTokenRef.current();
-      const response = await apiPost<{ invitedCount: number; skippedCount: number }>(
-        `/api/rounds/${token}/invites`,
-        { inviteeUserIds: users.map((u) => u.id) },
-        authToken,
-      );
+      const ids = users.map((u) => u.id);
+      let totalInvited = 0;
+      const max = ROUND_INVITE_USER_IDS_MAX_PER_REQUEST;
+      for (let offset = 0; offset < ids.length; offset += max) {
+        const chunk = ids.slice(offset, offset + max);
+        const response = await apiPost<{ invitedCount: number; skippedCount: number }>(
+          `/api/rounds/${token}/invites`,
+          { inviteeUserIds: chunk },
+          authToken,
+        );
+        totalInvited += response.invitedCount;
+      }
+      if (totalInvited > 0) {
+        const refreshed = await fetchRoundDetailsAndCache(token, authToken);
+        setRound(refreshed);
+      }
       showSnackbar(
-        response.invitedCount > 0
-          ? `Invite blast sent to ${response.invitedCount} golfer${response.invitedCount === 1 ? "" : "s"}`
+        totalInvited > 0
+          ? `Invite blast sent to ${totalInvited} golfer${totalInvited === 1 ? "" : "s"}`
           : "No new invites sent",
       );
     } catch (inviteError) {
@@ -811,6 +826,30 @@ export default function RoundDetailsScreen() {
           />
         </View>
       ) : null}
+      {apiResolved && round.isHost && (round.hostInvitedPlayers?.length ?? 0) > 0 ? (
+        <View style={styles.claimedRow}>
+          <Text style={styles.claimedLabel}>Invited</Text>
+          <HostInvitedSpotsScrollRow
+            roundId={round.id}
+            players={round.hostInvitedPlayers ?? []}
+            size="md"
+            initialTone="muted"
+            onPlayerPress={(player) =>
+              router.push({
+                pathname: "/profile/[userId]",
+                params: {
+                  userId: player.id,
+                  userName: player.name,
+                  userAvatar: player.avatar ?? "",
+                },
+              })
+            }
+            onPlayerPressIn={(player) =>
+              prefetchPublicProfile(player.id, () => getTokenRef.current())
+            }
+          />
+        </View>
+      ) : null}
       <View style={styles.claimedRow}>
         <Text style={styles.claimedLabel}>
           Claimed {round.confirmedPlayers.length}/{round.totalSpots}
@@ -837,36 +876,27 @@ export default function RoundDetailsScreen() {
         />
       </View>
       {round.declinedPlayers.length > 0 ? (
-        <View style={styles.declinedRow}>
+        <View style={styles.claimedRow}>
           <Text style={styles.claimedLabel}>Declined</Text>
-          <View style={styles.declinedList}>
-            {round.declinedPlayers.map((player) => {
-              return (
-              <Pressable
-                key={player.id}
-                style={styles.declinedChip}
-                onPressIn={() => prefetchPublicProfile(player.id, () => getTokenRef.current())}
-                onPress={() =>
-                  router.push({
-                    pathname: "/profile/[userId]",
-                    params: {
-                      userId: player.id,
-                      userName: player.name,
-                      userAvatar: player.avatar ?? "",
-                    },
-                  })
-                }
-              >
-                {player.avatar ? (
-                  <Image source={toAbsoluteUrl(player.avatar)} style={styles.declinedAvatar} transition={0} />
-                ) : (
-                  <InitialAvatar name={player.name} size={22} maxInitials={1} />
-                )}
-                <Text style={styles.declinedName}>{player.name}</Text>
-              </Pressable>
-              );
-            })}
-          </View>
+          <HostInvitedSpotsScrollRow
+            roundId={`${round.id}-declined`}
+            players={round.declinedPlayers}
+            size="md"
+            initialTone="muted"
+            onPlayerPress={(player) =>
+              router.push({
+                pathname: "/profile/[userId]",
+                params: {
+                  userId: player.id,
+                  userName: player.name,
+                  userAvatar: player.avatar ?? "",
+                },
+              })
+            }
+            onPlayerPressIn={(player) =>
+              prefetchPublicProfile(player.id, () => getTokenRef.current())
+            }
+          />
         </View>
       ) : null}
 
@@ -1358,7 +1388,7 @@ export default function RoundDetailsScreen() {
           void sendInvites(users);
         }}
         confirmLabel="Send invites"
-        excludeIds={confirmedPlayerIds}
+        excludeIds={inviteFriendExcludeIds}
       />
 
       <AnimatedBottomSheetFrame
@@ -1542,21 +1572,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   claimedThumbInitial: { color: colors.muted, fontSize: 12, fontWeight: "700" },
-  declinedRow: { marginTop: 8, gap: 6 },
-  declinedList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  declinedChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#f5f3ef",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  declinedAvatar: { width: 22, height: 22, borderRadius: 999 },
-  declinedName: { color: colors.muted, fontSize: 12, fontWeight: "600" },
   chatPreviewRow: {
     marginTop: 10,
     flexDirection: "row",

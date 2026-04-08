@@ -18,6 +18,7 @@ import {
   getRoundsDbCapabilities,
   roundInsertReturningFields,
 } from "@/lib/rounds-db-capabilities";
+import { ROUND_INVITE_USER_IDS_MAX_PER_REQUEST } from "@/lib/round-invite-limits";
 import { textArraySql, timeWindowResponseFields } from "@/lib/round-time-window-compat";
 
 const createRoundSchema = z
@@ -54,7 +55,10 @@ const createRoundSchema = z
       )
       .optional()
       .nullable(),
-    inviteeUserIds: z.array(z.string().uuid()).max(30).default([]),
+    inviteeUserIds: z
+      .array(z.string().uuid())
+      .max(ROUND_INVITE_USER_IDS_MAX_PER_REQUEST)
+      .default([]),
     groupId: z.string().uuid().optional().nullable(),
     tournamentTitle: z.string().trim().max(120).optional().nullable(),
     tournamentDetails: z.string().max(8000).optional().nullable(),

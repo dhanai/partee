@@ -68,6 +68,18 @@ export type RoundDetails = {
     name: string;
     avatar: string | null;
   }>;
+  /** Pending invite/request spots — excluded from host invite picker (POST /invites skips them). */
+  invitedPlayers?: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+  }>;
+  /** Host-only: people with a pending direct invite (`invited` spot, not join-request `requested`). */
+  hostInvitedPlayers?: Array<{
+    id: string;
+    name: string;
+    avatar: string | null;
+  }>;
   spotsRemaining: number;
   isHost: boolean;
   currentUserSpotStatus: string | null;

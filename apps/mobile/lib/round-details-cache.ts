@@ -188,6 +188,7 @@ function hintToRoundDetails(h: RoundListHint): RoundDetails {
     confirmedCount: players.length,
     confirmedPlayers: players,
     declinedPlayers: [],
+    invitedPlayers: [],
     spotsRemaining: remaining,
     isHost: false,
     currentUserSpotStatus: h.spotStatus ?? null,

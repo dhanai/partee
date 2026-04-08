@@ -11,9 +11,13 @@ import {
   publishRoundInviteToast,
 } from "@/lib/parfade-ably-publish";
 import { formatChatPushTitleLine } from "@/lib/round-invite-push-message";
+import { ROUND_INVITE_USER_IDS_MAX_PER_REQUEST } from "@/lib/round-invite-limits";
 
 const inviteSchema = z.object({
-  inviteeUserIds: z.array(z.string().uuid()).min(1).max(30),
+  inviteeUserIds: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(ROUND_INVITE_USER_IDS_MAX_PER_REQUEST),
 });
 
 type RouteContext = {
@@ -72,28 +76,55 @@ export async function POST(req: Request, { params }: RouteContext) {
       .where(inArray(users.id, dedupedInviteeIds));
 
     const existingSpots = await db
-      .select({ userId: spots.userId })
+      .select({ userId: spots.userId, status: spots.status })
       .from(spots)
       .where(
         and(eq(spots.roundId, round.id), inArray(spots.userId, validInvitees.map((u) => u.id))),
       );
 
-    const existingUserIds = new Set(existingSpots.map((spot) => spot.userId));
+    const statusByUserId = new Map(existingSpots.map((s) => [s.userId, s.status]));
+
     const inviteRows = validInvitees
-      .filter((invitee) => !existingUserIds.has(invitee.id))
+      .filter((invitee) => !statusByUserId.has(invitee.id))
       .map((invitee) => ({
         roundId: round.id,
         userId: invitee.id,
         status: "invited" as const,
       }));
 
+    /** Users who declined earlier still have a spot row; allow host to invite them again. */
+    const reinviteFromDeclinedIds = validInvitees
+      .filter((invitee) => statusByUserId.get(invitee.id) === "declined")
+      .map((invitee) => invitee.id);
+
     if (inviteRows.length > 0) {
       await db.insert(spots).values(inviteRows).onConflictDoNothing({
         target: [spots.roundId, spots.userId],
       });
+    }
+
+    if (reinviteFromDeclinedIds.length > 0) {
+      await db
+        .update(spots)
+        .set({ status: "invited" })
+        .where(
+          and(
+            eq(spots.roundId, round.id),
+            inArray(spots.userId, reinviteFromDeclinedIds),
+            eq(spots.status, "declined"),
+          ),
+        );
+    }
+
+    const notifiedUserIds = [
+      ...inviteRows.map((r) => r.userId),
+      ...reinviteFromDeclinedIds,
+    ];
+
+    if (notifiedUserIds.length > 0) {
       await notifyRoundInvites({
         inviteToken: params.token,
-        inviteeUserIds: inviteRows.map((r) => r.userId),
+        inviteeUserIds: notifiedUserIds,
         inviterUserId: currentUser.id,
         body: buildRoundInvitePushBody({
           inviterDisplayName: currentUser.name,
@@ -114,9 +145,9 @@ export async function POST(req: Request, { params }: RouteContext) {
       targetDate: round.targetDate,
     });
     await Promise.all([
-      ...inviteRows.map((row) =>
+      ...notifiedUserIds.map((userId) =>
         publishRoundInviteToast({
-          inviteeUserId: row.userId,
+          inviteeUserId: userId,
           inviteToken: params.token,
           roundTitle,
           inviterName: currentUser.name,
@@ -126,9 +157,11 @@ export async function POST(req: Request, { params }: RouteContext) {
       publishAfterRoundDetailChanged(params.token, "invites"),
     ]);
 
+    const invitedCount = notifiedUserIds.length;
+
     return NextResponse.json({
-      invitedCount: inviteRows.length,
-      skippedCount: Math.max(0, dedupedInviteeIds.length - inviteRows.length),
+      invitedCount,
+      skippedCount: Math.max(0, dedupedInviteeIds.length - invitedCount),
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

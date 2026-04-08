@@ -1,4 +1,4 @@
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { toAbsoluteUrl } from "../lib/api";
 import { colors } from "../lib/theme";
 
@@ -93,7 +93,90 @@ export function ConfirmedSpotsRow({
   );
 }
 
+type InvitedScrollProps = {
+  roundId: string;
+  players: ConfirmedSpotPlayer[];
+  size?: "sm" | "md";
+  initialTone?: "fairway" | "muted";
+  onPlayerPress?: (player: ConfirmedSpotPlayer) => void;
+  onPlayerPressIn?: (player: ConfirmedSpotPlayer) => void;
+};
+
+/** Same avatar treatment as {@link ConfirmedSpotsRow}, horizontal scroll when the list is long. */
+export function HostInvitedSpotsScrollRow({
+  roundId,
+  players,
+  size = "md",
+  initialTone = "muted",
+  onPlayerPress,
+  onPlayerPressIn,
+}: InvitedScrollProps) {
+  const s = SIZES[size];
+  const dimStyle = { width: s.dim, height: s.dim, borderRadius: s.dim / 2 };
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={players.length > 6}
+      style={styles.invitedScroll}
+      contentContainerStyle={[styles.invitedScrollContent, { gap: s.gap }]}
+      keyboardShouldPersistTaps="handled"
+    >
+      {players.map((player) => {
+        const avatarInner =
+          player.avatar ? (
+            <Image
+              source={{ uri: toAbsoluteUrl(player.avatar) }}
+              style={[styles.avatarBase, dimStyle]}
+            />
+          ) : (
+            <View style={[styles.avatarBase, styles.fallback, dimStyle]}>
+              <Text
+                style={[
+                  styles.initial,
+                  { fontSize: s.font },
+                  initialTone === "fairway" ? styles.initialFairway : styles.initialMuted,
+                ]}
+              >
+                {(player.name ?? "?").trim().charAt(0).toUpperCase() || "?"}
+              </Text>
+            </View>
+          );
+
+        const key = `${roundId}-${player.id}`;
+
+        if (onPlayerPress) {
+          return (
+            <Pressable
+              key={key}
+              accessibilityLabel={`${player.name}, view profile`}
+              accessibilityRole="button"
+              hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+              onPress={() => onPlayerPress(player)}
+              onPressIn={() => onPlayerPressIn?.(player)}
+            >
+              {avatarInner}
+            </Pressable>
+          );
+        }
+
+        return (
+          <View key={key}>
+            {avatarInner}
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
+  invitedScroll: { flexGrow: 0 },
+  invitedScrollContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 4,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",

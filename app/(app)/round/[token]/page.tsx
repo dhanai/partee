@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
-import { ConfirmedSpotsRowWeb } from "@/components/confirmed-spots-row-web";
+import {
+  ConfirmedSpotsRowWeb,
+  HostInvitedSpotsScrollRowWeb,
+} from "@/components/confirmed-spots-row-web";
 import { OpenInParfadeAppBar } from "@/components/open-in-parfade-app";
 import { RoundDetailHostMenu } from "@/components/round-detail-host-menu";
 import { ParfadeLoadingBlock, ParfadeSpinner } from "@/components/parfade-spinner";
@@ -31,6 +34,9 @@ type RoundDetails = {
   confirmedCount: number;
   confirmedPlayers: RoundPlayer[];
   declinedPlayers: RoundPlayer[];
+  invitedPlayers?: RoundPlayer[];
+  /** Host-only: pending direct invites. */
+  hostInvitedPlayers?: RoundPlayer[];
   spotsRemaining: number;
   isHost: boolean;
   currentUserSpotStatus: string | null;
@@ -267,6 +273,7 @@ export default function RoundInvitePage({
   const isFull = round.spotsRemaining <= 0;
   const confirmedPlayers = round.confirmedPlayers ?? [];
   const declinedPlayers = round.declinedPlayers ?? [];
+  const hostInvitedPlayers = round.hostInvitedPlayers ?? [];
   return (
     <section className="space-y-5">
       <RoundDetailHostMenu inviteToken={params.token} isHost={round.isHost} />
@@ -335,6 +342,20 @@ export default function RoundInvitePage({
           </div>
         ) : null}
 
+        {round.isHost && hostInvitedPlayers.length > 0 ? (
+          <div className="mt-3">
+            <p className="mb-1.5 text-xs font-bold uppercase tracking-[0.06em] text-[#6e6e6e]">
+              Invited
+            </p>
+            <HostInvitedSpotsScrollRowWeb
+              roundId={round.id}
+              players={hostInvitedPlayers}
+              size="md"
+              initialTone="muted"
+            />
+          </div>
+        ) : null}
+
         <div className="mt-3">
           <p className="mb-1.5 text-xs font-bold uppercase tracking-[0.06em] text-[#6e6e6e]">
             Claimed {confirmedPlayers.length}/{round.totalSpots}
@@ -349,35 +370,16 @@ export default function RoundInvitePage({
         </div>
 
         {declinedPlayers.length > 0 ? (
-          <div className="mt-2">
+          <div className="mt-3">
             <p className="mb-1.5 text-xs font-bold uppercase tracking-[0.06em] text-[#6e6e6e]">
               Declined
             </p>
-            <div className="flex flex-wrap gap-2">
-              {declinedPlayers.map((player) => (
-                <div
-                  key={player.id}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[#ece8e1] bg-[#f5f3ef] px-2 py-1.5"
-                >
-                  {player.avatar ? (
-                    <Image
-                      src={player.avatar}
-                      alt=""
-                      width={22}
-                      height={22}
-                      className="rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-[22px] w-[22px] items-center justify-center rounded-full border border-[#ece8e1] bg-[#f1efea] text-[11px] font-bold text-[#6e6e6e]">
-                      {player.name.trim().charAt(0).toUpperCase() || "?"}
-                    </div>
-                  )}
-                  <span className="max-w-[140px] truncate text-xs font-semibold text-[#6e6e6e]">
-                    {player.name}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <HostInvitedSpotsScrollRowWeb
+              roundId={`${round.id}-declined`}
+              players={declinedPlayers}
+              size="md"
+              initialTone="muted"
+            />
           </div>
         ) : null}
       </div>
