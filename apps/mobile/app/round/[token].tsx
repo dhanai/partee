@@ -62,7 +62,11 @@ import {
   AnimatedBottomSheetFrame,
   BottomSheetScrollView,
 } from "../../components/animated-bottom-sheet-frame";
-import { ConfirmedSpotsRow, HostInvitedSpotsScrollRow } from "../../components/confirmed-spots-row";
+import {
+  ConfirmedSpotsRow,
+  HostInvitedSpotsScrollRow,
+  type ConfirmedSpotPlayer,
+} from "../../components/confirmed-spots-row";
 import { OverflowMenuSheet } from "../../components/overflow-menu-sheet";
 import { ReportSheet } from "../../components/report-sheet";
 import { RoundCourseLocationSheet } from "../../components/round-course-location-sheet";
@@ -171,6 +175,8 @@ export default function RoundDetailsScreen() {
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
   const [sideGamesSheetOpen, setSideGamesSheetOpen] = useState(false);
   const [courseLocationSheetOpen, setCourseLocationSheetOpen] = useState(false);
+  /** Host: long-press avatar on Invited / Claimed for Remove / View profile. */
+  const [hostSpotMenuPlayer, setHostSpotMenuPlayer] = useState<ConfirmedSpotPlayer | null>(null);
   const inviteFriendExcludeIds = useMemo(() => {
     const ids = new Set<string>();
     for (const p of round?.confirmedPlayers ?? []) ids.add(p.id);
@@ -663,6 +669,24 @@ export default function RoundDetailsScreen() {
     }
   }
 
+  async function removeGuestFromRound(player: ConfirmedSpotPlayer) {
+    if (!token) return;
+    setError(null);
+    try {
+      const authToken = await getTokenRef.current();
+      await apiPost(`/api/rounds/${token}/remove-guest`, { targetUserId: player.id }, authToken);
+      hapticSuccess();
+      emitRoundListsShouldRefresh();
+      void refreshNotificationBadge();
+      const refreshed = await fetchRoundDetailsAndCache(token, authToken);
+      setRound(refreshed);
+      showSnackbar("Player removed");
+    } catch (err) {
+      hapticWarning();
+      showSnackbar(err instanceof Error ? err.message : "Could not remove player.");
+    }
+  }
+
   if (loading) {
     return (
       <>
@@ -847,6 +871,11 @@ export default function RoundDetailsScreen() {
             onPlayerPressIn={(player) =>
               prefetchPublicProfile(player.id, () => getTokenRef.current())
             }
+            onPlayerLongPress={
+              round.isHost && apiResolved
+                ? (player) => setHostSpotMenuPlayer(player)
+                : undefined
+            }
           />
         </View>
       ) : null}
@@ -872,6 +901,11 @@ export default function RoundDetailsScreen() {
           }
           onPlayerPressIn={(player) =>
             prefetchPublicProfile(player.id, () => getTokenRef.current())
+          }
+          onPlayerLongPress={
+            round.isHost && apiResolved
+              ? (player) => setHostSpotMenuPlayer(player)
+              : undefined
           }
         />
       </View>
@@ -1368,6 +1402,58 @@ export default function RoundDetailsScreen() {
                   },
                 },
               ]
+        }
+      />
+
+      <OverflowMenuSheet
+        visible={hostSpotMenuPlayer !== null}
+        onClose={() => setHostSpotMenuPlayer(null)}
+        items={
+          hostSpotMenuPlayer
+            ? [
+                ...(hostSpotMenuPlayer.id !== round.hostId
+                  ? [
+                      {
+                        key: "remove-spot",
+                        label: "Remove user",
+                        icon: "trash-outline" as const,
+                        destructive: true,
+                        onPress: () => {
+                          const p = hostSpotMenuPlayer;
+                          Alert.alert(
+                            "Remove player?",
+                            `${p.name} will be removed from this round.`,
+                            [
+                              { text: "Cancel", style: "cancel" },
+                              {
+                                text: "Remove",
+                                style: "destructive",
+                                onPress: () => void removeGuestFromRound(p),
+                              },
+                            ],
+                          );
+                        },
+                      },
+                    ]
+                  : []),
+                {
+                  key: "view-profile-spot",
+                  label: "View profile",
+                  icon: "person-outline" as const,
+                  onPress: () => {
+                    const p = hostSpotMenuPlayer;
+                    router.push({
+                      pathname: "/profile/[userId]",
+                      params: {
+                        userId: p.id,
+                        userName: p.name,
+                        userAvatar: p.avatar ?? "",
+                      },
+                    });
+                  },
+                },
+              ]
+            : []
         }
       />
 

@@ -1,3 +1,4 @@
+import { useRef, type ReactNode } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { toAbsoluteUrl } from "../lib/api";
 import { colors } from "../lib/theme";
@@ -17,12 +18,59 @@ type Props = {
   initialTone?: "fairway" | "muted";
   onPlayerPress?: (player: ConfirmedSpotPlayer) => void;
   onPlayerPressIn?: (player: ConfirmedSpotPlayer) => void;
+  /** Host overflow menu; single tap still opens profile when set with onPlayerPress. */
+  onPlayerLongPress?: (player: ConfirmedSpotPlayer) => void;
 };
 
 const SIZES = {
   sm: { dim: 24, gap: 6, font: 11 },
   md: { dim: 32, gap: 8, font: 12 },
 } as const;
+
+function RoundSpotAvatarPressable({
+  player,
+  onPlayerPress,
+  onPlayerPressIn,
+  onPlayerLongPress,
+  children,
+}: {
+  player: ConfirmedSpotPlayer;
+  onPlayerPress?: (p: ConfirmedSpotPlayer) => void;
+  onPlayerPressIn?: (p: ConfirmedSpotPlayer) => void;
+  onPlayerLongPress?: (p: ConfirmedSpotPlayer) => void;
+  children: ReactNode;
+}) {
+  const suppressNextPress = useRef(false);
+  if (!onPlayerPress && !onPlayerLongPress) {
+    return <>{children}</>;
+  }
+  return (
+    <Pressable
+      accessibilityLabel={`${player.name}, view profile`}
+      accessibilityRole="button"
+      delayLongPress={450}
+      hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+      onLongPress={
+        onPlayerLongPress
+          ? () => {
+              suppressNextPress.current = true;
+              onPlayerLongPress(player);
+            }
+          : undefined
+      }
+      onPress={() => {
+        if (suppressNextPress.current) {
+          suppressNextPress.current = false;
+          return;
+        }
+        onPlayerPress?.(player);
+      }}
+      onPressIn={() => onPlayerPressIn?.(player)}
+    >
+      {children}
+    </Pressable>
+  );
+}
 
 export function ConfirmedSpotsRow({
   roundId,
@@ -32,6 +80,7 @@ export function ConfirmedSpotsRow({
   initialTone = "fairway",
   onPlayerPress,
   onPlayerPressIn,
+  onPlayerLongPress,
 }: Props) {
   const s = SIZES[size];
   const dimStyle = { width: s.dim, height: s.dim, borderRadius: s.dim / 2 };
@@ -68,18 +117,17 @@ export function ConfirmedSpotsRow({
             </View>
           );
 
-        if (onPlayerPress) {
+        if (onPlayerPress || onPlayerLongPress) {
           return (
-            <Pressable
+            <RoundSpotAvatarPressable
               key={key}
-              accessibilityLabel={`${player.name}, view profile`}
-              accessibilityRole="button"
-              hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-              onPress={() => onPlayerPress(player)}
-              onPressIn={() => onPlayerPressIn?.(player)}
+              player={player}
+              onPlayerPress={onPlayerPress}
+              onPlayerPressIn={onPlayerPressIn}
+              onPlayerLongPress={onPlayerLongPress}
             >
               {avatarInner}
-            </Pressable>
+            </RoundSpotAvatarPressable>
           );
         }
 
@@ -100,6 +148,7 @@ type InvitedScrollProps = {
   initialTone?: "fairway" | "muted";
   onPlayerPress?: (player: ConfirmedSpotPlayer) => void;
   onPlayerPressIn?: (player: ConfirmedSpotPlayer) => void;
+  onPlayerLongPress?: (player: ConfirmedSpotPlayer) => void;
 };
 
 /** Same avatar treatment as {@link ConfirmedSpotsRow}, horizontal scroll when the list is long. */
@@ -110,6 +159,7 @@ export function HostInvitedSpotsScrollRow({
   initialTone = "muted",
   onPlayerPress,
   onPlayerPressIn,
+  onPlayerLongPress,
 }: InvitedScrollProps) {
   const s = SIZES[size];
   const dimStyle = { width: s.dim, height: s.dim, borderRadius: s.dim / 2 };
@@ -145,18 +195,17 @@ export function HostInvitedSpotsScrollRow({
 
         const key = `${roundId}-${player.id}`;
 
-        if (onPlayerPress) {
+        if (onPlayerPress || onPlayerLongPress) {
           return (
-            <Pressable
+            <RoundSpotAvatarPressable
               key={key}
-              accessibilityLabel={`${player.name}, view profile`}
-              accessibilityRole="button"
-              hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-              onPress={() => onPlayerPress(player)}
-              onPressIn={() => onPlayerPressIn?.(player)}
+              player={player}
+              onPlayerPress={onPlayerPress}
+              onPlayerPressIn={onPlayerPressIn}
+              onPlayerLongPress={onPlayerLongPress}
             >
               {avatarInner}
-            </Pressable>
+            </RoundSpotAvatarPressable>
           );
         }
 
