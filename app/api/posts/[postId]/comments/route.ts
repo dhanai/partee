@@ -16,7 +16,12 @@ export async function GET(req: Request, { params }: Ctx) {
     const { postId } = params;
 
     const [post] = await db
-      .select({ id: posts.id, groupId: posts.groupId, userId: posts.userId })
+      .select({
+        id: posts.id,
+        groupId: posts.groupId,
+        userId: posts.userId,
+        profileUserId: posts.profileUserId,
+      })
       .from(posts)
       .where(eq(posts.id, postId))
       .limit(1);
@@ -117,7 +122,12 @@ export async function POST(req: Request, { params }: Ctx) {
     const input = createSchema.parse(await req.json());
 
     const [post] = await db
-      .select({ id: posts.id, groupId: posts.groupId, userId: posts.userId })
+      .select({
+        id: posts.id,
+        groupId: posts.groupId,
+        userId: posts.userId,
+        profileUserId: posts.profileUserId,
+      })
       .from(posts)
       .where(eq(posts.id, postId))
       .limit(1);
@@ -241,6 +251,7 @@ export async function POST(req: Request, { params }: Ctx) {
           postId,
           kind: "commented",
           groupId: post.groupId,
+          profileUserId: post.profileUserId,
           commentBody: input.body,
           commentContext: "reply",
           commentId: comment.id,
@@ -256,6 +267,7 @@ export async function POST(req: Request, { params }: Ctx) {
         postId,
         kind: "commented",
         groupId: post.groupId,
+        profileUserId: post.profileUserId,
         commentBody: input.body,
         commentContext: "comment",
         commentId: comment.id,

@@ -41,6 +41,8 @@ type ActivityNotificationItem = {
   inviteToken: string;
   groupId: string;
   postId: string;
+  /** Profile feed owner when post is a mutual-friend wall post (author may differ). */
+  profileUserId: string;
   commentId: string;
   parentCommentId: string;
   replyToCommentId: string;
@@ -328,6 +330,19 @@ export default function NotificationsScreen() {
           pathname: "/group/[groupId]",
           params: {
             groupId: item.groupId,
+            ...(item.postId ? { postId: item.postId } : {}),
+            ...(item.commentId ? { commentId: item.commentId } : {}),
+            ...(item.replyToCommentId ? { replyToCommentId: item.replyToCommentId } : {}),
+          },
+        });
+        return;
+      }
+      const wallUserId = item.profileUserId?.trim() ?? "";
+      if (wallUserId.length > 0) {
+        router.push({
+          pathname: "/profile/[userId]",
+          params: {
+            userId: wallUserId,
             ...(item.postId ? { postId: item.postId } : {}),
             ...(item.commentId ? { commentId: item.commentId } : {}),
             ...(item.replyToCommentId ? { replyToCommentId: item.replyToCommentId } : {}),

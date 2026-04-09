@@ -256,6 +256,7 @@ export async function GET(req: Request) {
           inviteToken?: string;
           groupId?: string;
           postId?: string;
+          profileUserId?: string;
           commentId?: string;
           parentCommentId?: string;
           replyToCommentId?: string;
@@ -269,6 +270,7 @@ export async function GET(req: Request) {
         const inviteToken = typeof d.inviteToken === "string" ? d.inviteToken : "";
         const groupId = typeof d.groupId === "string" ? d.groupId : "";
         const postId = typeof d.postId === "string" ? d.postId : "";
+        const profileUserId = typeof d.profileUserId === "string" ? d.profileUserId : "";
         const commentId = typeof d.commentId === "string" ? d.commentId : "";
         const parentCommentId = typeof d.parentCommentId === "string" ? d.parentCommentId : "";
         const replyToCommentId = typeof d.replyToCommentId === "string" ? d.replyToCommentId : "";
@@ -380,6 +382,7 @@ export async function GET(req: Request) {
             inviteToken,
             groupId,
             postId,
+            profileUserId,
             commentId,
             parentCommentId,
             replyToCommentId,

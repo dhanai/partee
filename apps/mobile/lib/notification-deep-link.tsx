@@ -166,6 +166,23 @@ function openNotificationData(
       });
       return;
     }
+    const profileWallUserId = payloadString(
+      normalized,
+      "profileUserId",
+      "profile_user_id",
+    );
+    if (profileWallUserId.length > 0) {
+      router.push({
+        pathname: "/profile/[userId]",
+        params: {
+          userId: profileWallUserId,
+          ...(postId ? { postId } : {}),
+          ...(commentId ? { commentId } : {}),
+          ...(replyToCommentId ? { replyToCommentId } : {}),
+        },
+      });
+      return;
+    }
     router.push({
       pathname: "/(tabs)/profile",
       params: {

@@ -314,6 +314,8 @@ export async function notifyPostInteraction(input: {
   postId: string;
   kind: "liked" | "commented";
   groupId?: string | null;
+  /** Whose profile feed the post appears on (mutual-friend wall posts); omit for group-only posts. */
+  profileUserId?: string | null;
   commentBody?: string;
   commentContext?: "comment" | "reply";
   commentId?: string;
@@ -348,6 +350,7 @@ export async function notifyPostInteraction(input: {
       ...(input.parentCommentId ? { parentCommentId: input.parentCommentId } : {}),
       ...(input.replyToCommentId ? { replyToCommentId: input.replyToCommentId } : {}),
       ...(input.groupId ? { groupId: input.groupId } : {}),
+      ...(input.profileUserId ? { profileUserId: input.profileUserId } : {}),
     },
   });
 
@@ -375,6 +378,7 @@ export async function notifyPostInteraction(input: {
         ...(input.parentCommentId ? { parentCommentId: input.parentCommentId } : {}),
         ...(input.replyToCommentId ? { replyToCommentId: input.replyToCommentId } : {}),
         ...(input.groupId ? { groupId: input.groupId } : {}),
+        ...(input.profileUserId ? { profileUserId: input.profileUserId } : {}),
       },
     },
   ]);

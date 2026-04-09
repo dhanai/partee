@@ -14,7 +14,12 @@ export async function POST(req: Request, { params }: Ctx) {
     const { postId } = params;
 
     const [post] = await db
-      .select({ id: posts.id, userId: posts.userId, groupId: posts.groupId })
+      .select({
+        id: posts.id,
+        userId: posts.userId,
+        groupId: posts.groupId,
+        profileUserId: posts.profileUserId,
+      })
       .from(posts)
       .where(eq(posts.id, postId))
       .limit(1);
@@ -64,6 +69,7 @@ export async function POST(req: Request, { params }: Ctx) {
         postId,
         kind: "liked",
         groupId: post.groupId,
+        profileUserId: post.profileUserId,
       }).catch(() => {});
     }
 
