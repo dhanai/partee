@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray, max, ne } from "drizzle-orm";
+import { and, count, eq, inArray, max, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { inAppNotifications, rounds, spots, userFollows, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
@@ -34,6 +34,19 @@ export async function GET(req: Request) {
         ),
       );
 
+    /** Direct invites not yet claimed or declined (app icon badge). Excludes completed rounds. */
+    const [openInviteAgg] = await db
+      .select({ n: count() })
+      .from(spots)
+      .innerJoin(rounds, eq(rounds.id, spots.roundId))
+      .where(
+        and(
+          eq(spots.userId, viewer.id),
+          eq(spots.status, "invited"),
+          ne(rounds.status, "completed"),
+        ),
+      );
+
     const [activityAgg] = await db
       .select({ latest: max(inAppNotifications.createdAt) })
       .from(inAppNotifications)
@@ -57,9 +70,12 @@ export async function GET(req: Request) {
       }
     }
 
+    const pendingOpenInviteCount = Number(openInviteAgg?.n ?? 0);
+
     return NextResponse.json({
       showBadge,
       lastViewedAt: lastViewed != null ? toIsoTimestamp(lastViewed) : null,
+      pendingOpenInviteCount,
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

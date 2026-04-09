@@ -17,6 +17,8 @@ import { configureExpoNotificationBehavior, registerExpoPushTokenWithBackend } f
 type BadgeResponse = {
   showBadge: boolean;
   lastViewedAt: string | null;
+  /** Round spots with status `invited` on non-completed rounds (claim/decline pending). */
+  pendingOpenInviteCount?: number;
 };
 
 type NotificationBadgeContextValue = {
@@ -84,9 +86,10 @@ export function NotificationBadgeProvider({ children }: { children: ReactNode })
     };
   }, [isSignedIn]);
 
-  const syncAppIconBadge = useCallback(async (next: boolean) => {
+  const syncAppIconBadge = useCallback(async (inviteCount: number) => {
     try {
-      await Notifications.setBadgeCountAsync(next ? 1 : 0);
+      const n = Math.max(0, Math.min(Math.floor(inviteCount), 99));
+      await Notifications.setBadgeCountAsync(n);
     } catch {
       // Unsupported or denied (e.g. simulator, permissions).
     }
@@ -95,14 +98,14 @@ export function NotificationBadgeProvider({ children }: { children: ReactNode })
   const refresh = useCallback(async () => {
     if (!isSignedInRef.current) {
       setShowBadge(false);
-      await syncAppIconBadge(false);
+      await syncAppIconBadge(0);
       return;
     }
     try {
       const token = await getTokenRef.current();
       const data = await apiGet<BadgeResponse>("/api/users/me/notification-badge", token);
       setShowBadge(data.showBadge);
-      await syncAppIconBadge(data.showBadge);
+      await syncAppIconBadge(data.pendingOpenInviteCount ?? 0);
     } catch {
       // Keep prior UI state on failure.
     }
