@@ -142,8 +142,16 @@ export default function GameSessionScreen() {
    * API returns 403 Forbidden — that was the red banner flash above standings.
    */
   const suppressLoadErrorsRef = useRef(false);
+  /**
+   * Bumped when `sessionId` changes or after a successful “mark complete” PATCH so a slower
+   * in-flight GET (focus effect, hole save refresh, or Ably) cannot overwrite fresh local state
+   * with a stale `active` session — that caused recap ↔ hole grid flicker (especially noticeable
+   * on Wolf after the recap transition).
+   */
+  const loadEpochRef = useRef(0);
 
   useEffect(() => {
+    loadEpochRef.current += 1;
     setSession(null);
     if (SHOW_GAME_RECAP_SHARE_TO_PROFILE) setViewerUserId(null);
     setPlayers([]);
@@ -170,9 +178,13 @@ export default function GameSessionScreen() {
       setRefreshing(false);
       return;
     }
+    const epochAtStart = loadEpochRef.current;
     try {
       const token = await getToken();
       const data = await getGameSession(token, sessionId);
+      if (epochAtStart !== loadEpochRef.current) {
+        return;
+      }
       setSession(data.session ?? null);
       setViewerIsCreator(data.viewerIsCreator);
       if (SHOW_GAME_RECAP_SHARE_TO_PROFILE) {
@@ -182,6 +194,9 @@ export default function GameSessionScreen() {
       setHoles(data.holes ?? []);
       setError(null);
     } catch (e) {
+      if (epochAtStart !== loadEpochRef.current) {
+        return;
+      }
       if (!suppressLoadErrorsRef.current) {
         setError(e instanceof Error ? e.message : "Could not load");
       }
@@ -323,6 +338,7 @@ export default function GameSessionScreen() {
         sessionId,
         "completed",
       );
+      loadEpochRef.current += 1;
       // Recap is painted under this full-screen Modal; when ad + Modal clear, recap is already there.
       setSession(nextSession);
       emitRoundListsShouldRefresh();
