@@ -277,9 +277,9 @@ export default function PublicProfileScreen() {
   const loadProfile = useCallback(async (options?: { silent?: boolean }) => {
     if (!userId) return;
     const silent = options?.silent ?? false;
-    setRoundsLoading(true);
-    setPostsLoading(true);
     if (!silent) {
+      setRoundsLoading(true);
+      setPostsLoading(true);
       setLoading(true);
     }
     setError(null);
@@ -356,6 +356,7 @@ export default function PublicProfileScreen() {
     profileScreenFocusCountRef.current = 0;
   }, [userId]);
 
+  const lastBlurTimestampRef = useRef(0);
   useFocusEffect(
     useCallback(() => {
       if (!userId) return;
@@ -363,7 +364,16 @@ export default function PublicProfileScreen() {
       if (profileScreenFocusCountRef.current === 1) {
         return;
       }
-      void loadProfile({ silent: true });
+      // Skip refetch when returning from a child screen (game card, round, etc.)
+      // within a short window — avoids replacing state arrays and losing scroll position.
+      // Only refetch on longer absences (tab switch, background return, etc.).
+      const elapsed = Date.now() - lastBlurTimestampRef.current;
+      if (elapsed > 30_000) {
+        void loadProfile({ silent: true });
+      }
+      return () => {
+        lastBlurTimestampRef.current = Date.now();
+      };
     }, [userId, loadProfile]),
   );
 
