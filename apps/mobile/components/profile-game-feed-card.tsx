@@ -81,7 +81,12 @@ export function ProfileGameFeedCard({
   const openRecap = () => {
     router.push({
       pathname: "/games/session/[sessionId]",
-      params: { sessionId: game.sessionId, recap: "1" },
+      params: {
+        sessionId: game.sessionId,
+        recap: "1",
+        /** Lets non-participants load completed sessions (server checks this user is in the game). */
+        profileUserId,
+      },
     });
   };
 

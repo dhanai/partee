@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,7 +11,12 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+  type Href,
+} from "expo-router";
 import { useAbly } from "ably/react";
 import { Ionicons } from "@expo/vector-icons";
 import { SwipeableMineRoundRow } from "../../components/swipeable-mine-round-row";
@@ -154,6 +159,9 @@ export default function GamesScreen() {
     }
   }, [getToken]);
 
+  const loadRef = useRef(load);
+  loadRef.current = load;
+
   useFocusEffect(
     useCallback(() => {
       void load();
@@ -167,9 +175,20 @@ export default function GamesScreen() {
   useEffect(() => subscribeGamesListRefresh(() => void load()), [load]);
 
   const ably = useAbly();
-  const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
+  /**
+   * Stable only when the *set* of session ids changes. If this lived in `useEffect(..., [sessions])`,
+   * every `/api/games/mine` refetch (new `sessions` array) would tear down and recreate **all**
+   * game Ably subscriptions. Round-linked rows trigger more mine + round refreshes → extra churn
+   * and session recap flicker. Compare a sorted id fingerprint (primitive) instead.
+   */
+  const subscribedSessionIdsKey = [...sessions]
+    .map((s) => s.id)
+    .sort()
+    .join("|");
+
   useEffect(() => {
-    if (sessionIds.length === 0) return;
+    if (!subscribedSessionIdsKey) return;
+    const sessionIds = subscribedSessionIdsKey.split("|");
     const subs: { channel: ReturnType<typeof ably.channels.get>; handler: (msg: import("ably").Message) => void }[] = [];
     for (const id of sessionIds) {
       const channel = ably.channels.get(parfadeGameSessionChannel(id));
@@ -178,8 +197,8 @@ export default function GamesScreen() {
         if (parsed?.type === "game-session-updated") {
           if (parsed.reason === "deleted") {
             setSessions((prev) => prev.filter((s) => s.id !== id));
-          } else {
-            void load();
+          } else if (parsed.reason !== "hole") {
+            void loadRef.current();
           }
         }
       };
@@ -191,7 +210,7 @@ export default function GamesScreen() {
         void channel.unsubscribe("parfade", handler);
       }
     };
-  }, [ably, sessionIds, load]);
+  }, [ably, subscribedSessionIdsKey]);
 
   return (
     <ScrollView
@@ -283,17 +302,13 @@ export default function GamesScreen() {
                   params: { token: invite },
                 });
               } else {
-                router.push({
-                  pathname: "/games/session/[sessionId]",
-                  params: { sessionId: s.id, recap: "1" },
-                });
+                // Full href so `recap` is in the URL immediately (object pushes from this list were
+                // still flickering recap vs grid — likely param hydration + Swipeable row interactions).
+                router.push(`/games/session/${s.id}?recap=1` as Href);
               }
               return;
             }
-            router.push({
-              pathname: "/games/session/[sessionId]",
-              params: { sessionId: s.id },
-            });
+            router.push(`/games/session/${s.id}` as Href);
           };
           return (
             <View key={s.id} style={styles.sessionSwipeWrap}>
@@ -309,10 +324,7 @@ export default function GamesScreen() {
               hostRightIconColor={canCancelForEveryone ? "#fff" : colors.text}
               onSwipeActiveChange={onGameRowSwipeActiveChange}
               onHostEdit={() => {
-                router.push({
-                  pathname: "/games/session/[sessionId]/settings",
-                  params: { sessionId: s.id },
-                });
+                router.push(`/games/session/${s.id}/settings` as Href);
               }}
               onHostDelete={onRightSwipe}
             >

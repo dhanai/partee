@@ -1,7 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { rounds, spots, users } from "@/db/schema";
+import { gameSessions, rounds, spots, users } from "@/db/schema";
 import { requireDbUser } from "@/lib/auth";
 import { orderConfirmedPlayersHostFirstByClaimOrder } from "@/lib/confirmed-players-order";
 import { buildRoundResultsPayload } from "@/lib/games/round-results-stats";
@@ -75,6 +75,16 @@ export async function GET(req: Request, context: RouteContext) {
 
     const stats = await buildRoundResultsPayload(round.id, roster);
 
+    const completedGameSessions = await db
+      .select({ id: gameSessions.id, gameType: gameSessions.gameType })
+      .from(gameSessions)
+      .where(
+        and(
+          eq(gameSessions.roundId, round.id),
+          eq(gameSessions.status, "completed"),
+        ),
+      );
+
     return NextResponse.json({
       round: {
         id: round.id,
@@ -86,6 +96,10 @@ export async function GET(req: Request, context: RouteContext) {
         mode: round.mode,
       },
       ...stats,
+      gameSessions: completedGameSessions.map((s) => ({
+        id: s.id,
+        gameType: s.gameType,
+      })),
     });
   } catch (e) {
     if (e instanceof Error && e.message === "Unauthorized") {

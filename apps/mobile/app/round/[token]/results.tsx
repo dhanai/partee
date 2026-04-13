@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -10,8 +10,9 @@ import {
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { fetchRoundResults, type RoundResultsResponse } from "../../../lib/round-results-api";
+import { getGameDefinition } from "../../../lib/games-registry";
 import { toAbsoluteUrl } from "../../../lib/api";
 import { colors } from "../../../lib/theme";
 
@@ -42,16 +43,18 @@ export default function RoundResultsScreen() {
   const { token } = useLocalSearchParams<{ token?: string | string[] }>();
   const inviteToken = Array.isArray(token) ? token[0] : token;
   const { getToken } = useAuth();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const [data, setData] = useState<RoundResultsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!inviteToken) return;
-    setLoading(true);
+    if (!data) setLoading(true);
     setError(null);
     try {
-      const auth = await getToken();
+      const auth = await getTokenRef.current();
       const res = await fetchRoundResults(auth, inviteToken);
       setData(res);
     } catch (e) {
@@ -59,7 +62,7 @@ export default function RoundResultsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken, inviteToken]);
+  }, [inviteToken]);
 
   useEffect(() => {
     void load();
@@ -179,11 +182,33 @@ export default function RoundResultsScreen() {
         </View>
       ) : null}
 
+      {(data.gameSessions ?? []).length > 0 ? (
+        <View style={styles.gameLinksSection}>
+          {data.gameSessions!.map((gs) => {
+            const def = getGameDefinition(gs.gameType);
+            const label = def?.title ?? gs.gameType;
+            return (
+              <Pressable
+                key={gs.id}
+                style={styles.completeBtn}
+                onPress={() =>
+                  router.push(`/games/session/${gs.id}?recap=0` as Href)
+                }
+              >
+                <Text style={styles.completeBtnText}>
+                  {label} — hole-by-hole breakdown
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
       <Pressable
         style={styles.backBtn}
         onPress={() => (router.canGoBack() ? router.back() : router.replace(`/round/${inviteToken}`))}
       >
-        <Text style={styles.backBtnText}>Back to round</Text>
+        <Text style={styles.backBtnText}>Back</Text>
       </Pressable>
     </ScrollView>
   );
@@ -276,8 +301,16 @@ const styles = StyleSheet.create({
   rowFullName: { fontSize: 12, color: colors.muted, marginTop: 2 },
   guestTag: { fontWeight: "600", color: colors.muted },
   pts: { fontSize: 18, fontWeight: "800", color: colors.fairway, minWidth: 44, textAlign: "right" },
+  gameLinksSection: { marginTop: 20, gap: 10 },
+  completeBtn: {
+    paddingVertical: 14,
+    alignItems: "center",
+    borderRadius: 14,
+    backgroundColor: colors.fairway,
+  },
+  completeBtnText: { fontSize: 16, fontWeight: "800", color: "#fff" },
   backBtn: {
-    marginTop: 20,
+    marginTop: 12,
     paddingVertical: 14,
     alignItems: "center",
     borderRadius: 14,

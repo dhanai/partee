@@ -16,6 +16,11 @@ export type RoundResultsPlayerRow = {
   wolfPoints: number;
 };
 
+export type RoundResultsGameSession = {
+  id: string;
+  gameType: string;
+};
+
 export type RoundResultsResponse = {
   round: {
     id: string;
@@ -29,6 +34,7 @@ export type RoundResultsResponse = {
   wolfSummary: RoundResultsWolfSummary | null;
   standings: RoundResultsPlayerRow[];
   highlights: string[];
+  gameSessions?: RoundResultsGameSession[];
 };
 
 export async function fetchRoundResults(

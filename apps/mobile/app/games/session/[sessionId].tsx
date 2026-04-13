@@ -86,6 +86,21 @@ function chunkBy<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+/** Avoid replacing React state when GET returns the same rows (stops recap UI flashing on redundant refetch). */
+function holesDataSignature(holes: GameHoleRow[]): string {
+  if (holes.length === 0) return "";
+  return [...holes]
+    .sort((a, b) => a.holeNumber - b.holeNumber)
+    .map((h) => `${h.holeNumber}:${h.version}`)
+    .join("|");
+}
+
+function playersDataSignature(players: GamePlayerRow[]): string {
+  return players
+    .map((p) => `${p.userId}:${p.sortOrder}:${p.name}:${p.isGuest ? "1" : "0"}`)
+    .join("|");
+}
+
 export default function GameSessionScreen() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -93,12 +108,20 @@ export default function GameSessionScreen() {
   const router = useRouter();
   /** Root stack (same bar as title “Game” / back to Games). Leaf `useNavigation()` targets an inner navigator for this route depth. */
   const rootNavigation = useNavigation("/");
-  const { sessionId: sessionIdRaw, recap: recapRaw } = useLocalSearchParams<{
-    sessionId?: string | string[];
-    recap?: string | string[];
-  }>();
+  const { sessionId: sessionIdRaw, recap: recapRaw, profileUserId: profileUserIdRaw } =
+    useLocalSearchParams<{
+      sessionId?: string | string[];
+      recap?: string | string[];
+      /** Profile feed anchor: required for viewers who are not game participants (GET allows when completed). */
+      profileUserId?: string | string[];
+    }>();
   const sessionId = normalizeRouteParam(sessionIdRaw);
-  const recapParam = normalizeRouteParam(recapRaw);
+  const recapParam = (() => {
+    const r = normalizeRouteParam(recapRaw);
+    if (r == null || String(r).trim() === "") return undefined;
+    return String(r).trim();
+  })();
+  const anchorProfileUserId = normalizeRouteParam(profileUserIdRaw);
   const { getToken } = useAuth();
   const gameTypesVersion = useGameTypesVersion();
   const [session, setSession] = useState<GameSessionSummary | null>(null);
@@ -133,6 +156,8 @@ export default function GameSessionScreen() {
   const [completing, setCompleting] = useState(false);
   /** True after interstitial closes until URL has `recap=1` (deep links / sync). */
   const [pendingRecapAfterComplete, setPendingRecapAfterComplete] = useState(false);
+  /** Stable completed-game layout; avoids recap hole-grid flashing when `recap` flickers or reloads. */
+  const [completedSessionLayout, setCompletedSessionLayout] = useState<"recap" | "holes">("recap");
   /** Opaque layer during complete → ad so recap is not visible until the ad dismisses. */
   const [adHandoffCover, setAdHandoffCover] = useState(false);
   const [houseGameEndPromo, setHouseGameEndPromo] = useState<HousePromoSlotClient | null>(null);
@@ -143,15 +168,16 @@ export default function GameSessionScreen() {
    */
   const suppressLoadErrorsRef = useRef(false);
   /**
-   * Bumped when `sessionId` changes or after a successful “mark complete” PATCH so a slower
-   * in-flight GET (focus effect, hole save refresh, or Ably) cannot overwrite fresh local state
-   * with a stale `active` session — that caused recap ↔ hole grid flicker (especially noticeable
-   * on Wolf after the recap transition).
+   * Invalidates in-flight GETs when `sessionId` changes or after a successful “mark complete”
+   * PATCH so stale responses cannot overwrite fresh state.
    */
-  const loadEpochRef = useRef(0);
+  const loadInvalidationRef = useRef(0);
+  /** Monotonic per load() invocation; latest completion wins among concurrent GETs. */
+  const loadTicketRef = useRef(0);
 
   useEffect(() => {
-    loadEpochRef.current += 1;
+    if (!sessionId) return;
+    loadInvalidationRef.current += 1;
     setSession(null);
     if (SHOW_GAME_RECAP_SHARE_TO_PROFILE) setViewerUserId(null);
     setPlayers([]);
@@ -160,6 +186,7 @@ export default function GameSessionScreen() {
     setLoading(true);
     setRefreshing(false);
     setPendingRecapAfterComplete(false);
+    setCompletedSessionLayout("recap");
     setAdHandoffCover(false);
     setHouseGameEndPromo(null);
     housePromoResolveRef.current = null;
@@ -173,72 +200,155 @@ export default function GameSessionScreen() {
     }
   }, [recapParam]);
 
+  useEffect(() => {
+    if (session?.status !== "completed") {
+      return;
+    }
+    if (recapParam === "0") {
+      setCompletedSessionLayout("holes");
+      return;
+    }
+    if (recapParam === "1" || pendingRecapAfterComplete) {
+      setCompletedSessionLayout("recap");
+      return;
+    }
+    // `recap` missing or unstable: keep layout (router + realtime can transiently omit params).
+  }, [session?.status, recapParam, pendingRecapAfterComplete]);
+
   const load = useCallback(async () => {
     if (!sessionId) {
       setRefreshing(false);
       return;
     }
-    const epochAtStart = loadEpochRef.current;
+    const invalidationAtStart = loadInvalidationRef.current;
+    const ticket = ++loadTicketRef.current;
     try {
       const token = await getToken();
-      const data = await getGameSession(token, sessionId);
-      if (epochAtStart !== loadEpochRef.current) {
+      const data = await getGameSession(
+        token,
+        sessionId,
+        anchorProfileUserId ? { profileUserId: anchorProfileUserId } : undefined,
+      );
+      if (
+        ticket !== loadTicketRef.current ||
+        invalidationAtStart !== loadInvalidationRef.current
+      ) {
         return;
       }
-      setSession(data.session ?? null);
-      setViewerIsCreator(data.viewerIsCreator);
+      setSession((prev) => {
+        const next = data.session ?? null;
+        if (
+          prev &&
+          next &&
+          prev.id === next.id &&
+          prev.updatedAt === next.updatedAt &&
+          prev.status === next.status &&
+          prev.holesCount === next.holesCount &&
+          prev.endedAt === next.endedAt &&
+          prev.roundId === next.roundId &&
+          (prev.roundInviteToken ?? null) === (next.roundInviteToken ?? null)
+        ) {
+          return prev;
+        }
+        return next;
+      });
+      setViewerIsCreator((prev) =>
+        prev === data.viewerIsCreator ? prev : data.viewerIsCreator,
+      );
       if (SHOW_GAME_RECAP_SHARE_TO_PROFILE) {
         setViewerUserId(data.viewerUserId ?? null);
       }
-      setPlayers(data.players ?? []);
-      setHoles(data.holes ?? []);
+      setPlayers((prev) => {
+        const next = data.players ?? [];
+        return playersDataSignature(prev) === playersDataSignature(next) ? prev : next;
+      });
+      setHoles((prev) => {
+        const next = data.holes ?? [];
+        return holesDataSignature(prev) === holesDataSignature(next) ? prev : next;
+      });
       setError(null);
     } catch (e) {
-      if (epochAtStart !== loadEpochRef.current) {
+      if (
+        ticket !== loadTicketRef.current ||
+        invalidationAtStart !== loadInvalidationRef.current
+      ) {
         return;
       }
       if (!suppressLoadErrorsRef.current) {
         setError(e instanceof Error ? e.message : "Could not load");
       }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (
+        ticket === loadTicketRef.current &&
+        invalidationAtStart === loadInvalidationRef.current
+      ) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [getToken, sessionId]);
+  }, [getToken, sessionId, anchorProfileUserId]);
+
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+ }, [load]),
   );
 
   const ably = useAbly();
+  /** Coalesce bursty `game-session-updated` messages (common for round-linked games with many hole saves). */
+  const ablyReloadDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!sessionId) return;
     const channel = ably.channels.get(parfadeGameSessionChannel(sessionId));
+    const scheduleReloadFromAbly = () => {
+      if (ablyReloadDebounceRef.current != null) {
+        clearTimeout(ablyReloadDebounceRef.current);
+      }
+      ablyReloadDebounceRef.current = setTimeout(() => {
+        ablyReloadDebounceRef.current = null;
+        void loadRef.current();
+      }, 220);
+    };
     const handler = (msg: import("ably").Message) => {
       const parsed = parseParfadeRealtimeMessage(msg.data);
       if (parsed?.type === "game-session-updated" && parsed.sessionId === sessionId) {
         if (parsed.reason === "deleted") {
+          if (ablyReloadDebounceRef.current != null) {
+            clearTimeout(ablyReloadDebounceRef.current);
+            ablyReloadDebounceRef.current = null;
+          }
           router.back();
         } else {
-          void load();
+          scheduleReloadFromAbly();
         }
-        emitGamesListShouldRefresh();
+        // Hole saves are high-frequency; broadcasting list refresh + remounting Games Ably listeners
+        // was still destabilizing this screen for round-linked games (double fetch + layout churn).
+        if (parsed.reason !== "hole") {
+          emitGamesListShouldRefresh();
+        }
         if (parsed.reason === "status") {
           emitRoundListsShouldRefresh();
         }
       }
     };
     void channel.subscribe("parfade", handler);
-    return () => { void channel.unsubscribe("parfade", handler); };
-  }, [ably, sessionId, load, router]);
+    return () => {
+      if (ablyReloadDebounceRef.current != null) {
+        clearTimeout(ablyReloadDebounceRef.current);
+        ablyReloadDebounceRef.current = null;
+      }
+      void channel.unsubscribe("parfade", handler);
+    };
+  }, [ably, sessionId, router]);
 
   const recapOnly =
     Boolean(sessionId) &&
     session != null &&
     session.status === "completed" &&
-    (recapParam === "1" || pendingRecapAfterComplete);
+    completedSessionLayout === "recap";
 
   useLayoutEffect(() => {
     if (!sessionId || loading || !session) {
@@ -338,12 +448,15 @@ export default function GameSessionScreen() {
         sessionId,
         "completed",
       );
-      loadEpochRef.current += 1;
+      loadInvalidationRef.current += 1;
       // Recap is painted under this full-screen Modal; when ad + Modal clear, recap is already there.
       setSession(nextSession);
       emitRoundListsShouldRefresh();
       setPendingRecapAfterComplete(true);
-      router.setParams({ recap: "1" });
+      router.setParams({
+        recap: "1",
+        ...(anchorProfileUserId ? { profileUserId: anchorProfileUserId } : {}),
+      });
       let promos: Awaited<ReturnType<typeof getHousePromosCached>> | null = null;
       try {
         promos = await getHousePromosCached(true);
@@ -513,7 +626,7 @@ export default function GameSessionScreen() {
     );
   }
 
-  if (loading) {
+  if (loading && !session) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator color={colors.fairway} size="large" />
@@ -637,9 +750,9 @@ export default function GameSessionScreen() {
                 onPress={() => {
                   if (!sessionId) return;
                   setPendingRecapAfterComplete(false);
-                  router.push({
-                    pathname: "/games/session/[sessionId]",
-                    params: { sessionId },
+                  router.setParams({
+                    recap: "0",
+                    ...(anchorProfileUserId ? { profileUserId: anchorProfileUserId } : {}),
                   });
                 }}
               >
